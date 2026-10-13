@@ -209,8 +209,37 @@ T.eq(keymap.unreachable["f2"], nil, "nor is a plain f2")
 -- everybody.
 T.eq(keymap.map["ctrl+s+l"], { "test:dead" },
   "an unreachable stroke is still bound: it is said out loud, not dropped")
-T.eq(keymap.get_binding("test:live"), "ctrl+alt+shift+n",
-  "and a reachable one reverse-maps as usual")
+
+-- `test:live` and `test:dead` are each bound to two strokes above, and
+-- reverse_map holds exactly one stroke per command. Which one is an artefact:
+-- keymap.add walks its argument with pairs(), so the survivor is whichever key
+-- the table's hash order produced last, and Lua seeds its string hash from
+-- time and addresses, so it differs between runs of the same binary on the same
+-- input. Measured on this machine: 7 of 10 runs gave "ctrl+alt+shift+n" and 3
+-- gave "f2", from one unchanged table.
+--
+-- Asserting a specific stroke made this test fail intermittently — the worst
+-- shape a test can have, since it spends CI budget and tells the reader
+-- nothing. The contract is "one of the strokes bound to it", and that is what
+-- is asserted, plus the single-binding case a caller actually depends on.
+local function binding_is_one_of(cmd, a, b)
+  local got = keymap.get_binding(cmd)
+  T.ok(got == a or got == b,
+    "a command bound to two strokes reverse-maps to one of them (got " ..
+    tostring(got) .. ")")
+end
+binding_is_one_of("test:live", "ctrl+alt+shift+n", "f2")
+binding_is_one_of("test:dead", "ctrl+s+l", "ctrl+shift+alt+n")
+
+-- The single-binding case, because that is the one a caller relies on: "what
+-- key does this command answer to" has one right answer or none, and that must
+-- not depend on hash order.
+keymap.add({ ["ctrl+b"] = "test:solo" })
+T.eq(keymap.get_binding("test:solo"), "ctrl+b",
+  "a command bound to a single stroke reverse-maps exactly")
+keymap.remove({ ["ctrl+b"] = "test:solo" })
+T.eq(keymap.get_binding("test:solo"), nil,
+  "and unbinding it clears the reverse mapping")
 
 
 -- ── the suggestion is the string on_key_pressed actually looks up ──────────
