@@ -229,9 +229,18 @@ function Node:get_locked_size()
     local x1, y1 = self.a:get_locked_size()
     local x2, y2 = self.b:get_locked_size()
     if x1 and x2 then
+      -- Along the split's own axis the two panes sit side by side, so their
+      -- sizes add (plus the divider). Across it they share the same extent, so
+      -- the size is the larger of the two. Summing both axes made a locked pane
+      -- split out of another locked pane (title bar + panel) report twice its
+      -- height, and since each child is then handed the parent's height, the
+      -- height doubled every frame.
       local dsx = (x1 < 1 or x2 < 1) and 0 or style.divider_size
       local dsy = (y1 < 1 or y2 < 1) and 0 or style.divider_size
-      return x1 + x2 + dsx, y1 + y2 + dsy
+      if self.type == "hsplit" then
+        return x1 + x2 + dsx, math.max(y1, y2)
+      end
+      return math.max(x1, x2), y1 + y2 + dsy
     end
   end
 end
