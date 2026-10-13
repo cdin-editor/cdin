@@ -2,7 +2,11 @@ NOTICE
 ======
 
 cdin — Copyright (c) 2026 m-mdy-m
-Licensed under the MIT License. See LICENSE for details.
+Project license: GNU General Public License v3.0 or later (GPL-3.0-or-later).
+See LICENSE for the full license text.
+
+The project license does not replace or remove the licenses of third-party
+components. Preserve their applicable notices when redistributing those parts.
 
 -------------------------------------------------------------------------------
 
@@ -10,11 +14,13 @@ This project is a fork of lite by rxi.
 
   lite — Copyright (c) 2020 rxi
   Source:  https://github.com/rxi/lite
-  License: MIT
+  Original license: MIT
 
   The original lite source provided the foundational editor loop, renderer
-  pipeline, Lua embedding model, and core document/view
-  architecture. Portions of that code remain in cdin, modified and extended.
+  pipeline, Lua embedding model, and core document/view architecture. Portions
+  of that code remain in cdin, modified and extended. The original MIT notice
+  remains applicable to the original lite portions; the combined cdin project
+  is distributed under GPL-3.0-or-later.
 
 -------------------------------------------------------------------------------
 
@@ -23,3 +29,13 @@ This project uses the following third-party libraries:
   SDL3 — Simple DirectMedia Layer
   Source:  https://www.libsdl.org
   License: zlib
+
+  stb_truetype — TrueType font rasterization
+  Source:  https://github.com/nothings/stb
+  License: MIT / public-domain dedication, as stated by upstream.
+
+  Lua — Lua programming language
+  Source:  https://www.lua.org
+  License: MIT
+
+-------------------------------------------------------------------------------
