@@ -46,7 +46,9 @@ jobs:
   create-release:
     name: Publish GitHub Release
     needs: [build-linux, build-windows, build-macos]
-    if: always() && startsWith(github.ref, 'refs/tags/')
+    # Do not publish a partial release if a platform build or package smoke test
+    # failed. The implicit always() in the old condition allowed that to happen.
+    if: success() && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
     steps:
@@ -59,17 +61,19 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
-        continue-on-error: true
 
       - name: Collect release assets
         run: |
+          set -euo pipefail
           mkdir -p release
-          if [[ -d artifacts ]]; then
-            find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*setup*.exe' \) \
-              -exec cp {} release/ \;
-          fi
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*setup*.exe' \) \
+            -exec cp {} release/ \;
           echo "Release assets:"
-          ls -lh release/ || echo "(none)"
+          ls -lh release/
+          if ! find release -maxdepth 1 -type f -print -quit | grep -q .; then
+            echo "::error::No release assets were downloaded"
+            exit 1
+          fi
 
       - name: Extract version from tag
         id: version
@@ -80,31 +84,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           CURRENT_TAG="${GITHUB_REF#refs/tags/}"
           REPO="${{ github.repository }}"
-          PREV_TAG=$(git tag --sort=v:refname | grep -B1 "^${CURRENT_TAG}$" | head -1)
+          PREV_TAG=$(git tag --sort=v:refname | grep -B1 "^${CURRENT_TAG}$" | head -1 || true)
 
           if [[ -z "$PREV_TAG" || "$PREV_TAG" == "$CURRENT_TAG" ]]; then
             HEADER="## Contributors"
             CONTRIB=$(gh api "repos/${REPO}/contributors?per_page=100" \
               --jq '.[].login' \
               | grep -v 'github-actions\[bot\]' \
-              | sed 's/^/- @/')
+              | sed 's/^/- @/' || true)
           else
             HEADER="## Contributors (${PREV_TAG} → ${CURRENT_TAG})"
             CONTRIB=$(git log "${PREV_TAG}..${CURRENT_TAG}" --format='%H' \
               | while read -r sha; do
                   gh api "repos/${REPO}/commits/${sha}" \
-                    --jq '.author.login // empty' 2>/dev/null
+                    --jq '.author.login // empty' 2>/dev/null || true
                 done \
               | grep -v '^$' | grep -v 'github-actions\[bot\]' \
-              | sort -u | sed 's/^/- @/')
+              | sort -u | sed 's/^/- @/' || true)
           fi
           { echo "header=${HEADER}"; echo "list<<EOF"; echo "${CONTRIB}"; echo "EOF"; } \
             >> "$GITHUB_OUTPUT"
 
       - name: Build release notes
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.VERSION }}"
           CHANGELOG="CHANGELOG.md"
 
@@ -187,7 +193,7 @@ jobs:
           2. Drag **cdin** into the **Applications** folder shortcut.
           3. Eject the disk image and open cdin from Launchpad or Spotlight.
 
-          > SDL3 is **bundled inside** the .app — no Homebrew or extra installs needed.
+          > SDL3 is **bundled inside** the `.app` — no Homebrew or extra installs needed.
 
           ---
 
@@ -263,7 +269,7 @@ jobs:
 
       - name: Prepare platform tag
         id: platform
-        run: echo "pair=${PLATFORM/\//-}" >> "$GITHUB_OUTPUT"
+        run: echo "pair=${PLATFORM//\//-}" >> "$GITHUB_OUTPUT"
         env:
           PLATFORM: ${{ matrix.platform }}
 
@@ -340,5 +346,4 @@ jobs:
           DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
 
       - name: Inspect published image
-        run: |
-          docker buildx imagetools inspect bitsgenix/cdin:${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect bitsgenix/cdin:${{ steps.meta.outputs.version }}

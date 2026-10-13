@@ -112,6 +112,35 @@ jobs:
           sudo ldconfig
           PKG_CONFIG_PATH=/opt/sdl3/lib/pkgconfig pkg-config --modversion sdl3
 
+      - name: Determine version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${REQUESTED_VERSION}" ]]; then
+            VER="${REQUESTED_VERSION}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"
+          else
+            VER="dev-$(git rev-parse --short HEAD)"
+          fi
+
+          # Debian reads the last hyphen as the boundary between the upstream
+          # version and the Debian revision, so replace '-' with '~'. A stable
+          # version carries no hyphen and is untouched.
+          DEB_VER="$(printf '%s' "${VER#v}" | sed 's/-/~/')"
+          BUILD_VER="${VER#v}"
+
+          {
+            echo "version=${VER}"
+            echo "build-version=${BUILD_VER}"
+            echo "deb-version=${DEB_VER}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "package version=${VER}  (binary ${BUILD_VER}; deb ${DEB_VER})"
+
       # ── Cache: pip (Pillow) ──────────────────────────────────────────────
       - name: Cache pip
         uses: actions/cache@v4
@@ -142,71 +171,68 @@ jobs:
       - name: Build release binary
         env:
           PKG_CONFIG_PATH: /opt/sdl3/lib/pkgconfig
-        run: make -j$(nproc) BUILD=release PLATFORM=linux SDL_VERSION=3
+          CDIN_RELEASE_VERSION: ${{ steps.version.outputs.build-version }}
+        run: make -j"$(nproc)" BUILD=release PLATFORM=linux SDL_VERSION=3 VERSION="${CDIN_RELEASE_VERSION}"
 
-      - name: Verify binary
+      - name: Verify binary and assembled runtime data
         run: |
-          BIN="$(find build/linux-release -maxdepth 1 -name 'cdin' | head -1)"
+          set -euo pipefail
+          BIN="$(find build/linux-release -maxdepth 1 -name 'cdin' -type f | head -1)"
           if [[ -z "$BIN" ]]; then
             echo "::error::Binary not found under build/linux-release/"
             find build/ -type f 2>/dev/null || echo "(build/ empty)"
             exit 1
           fi
-          file "$BIN"
-          echo "Binary: $BIN  ($(du -sh "$BIN" | cut -f1))"
-          echo "BIN_PATH=$BIN" >> "$GITHUB_ENV"
 
-      # ── Version for the package names ────────────────────────────────────
-      # pre-release.yml passes the version it computed for this commit; a tag
-      # push takes it from the tag; anything else is a local dev build.
-      - name: Determine version
-        id: version
-        env:
-          REQUESTED_VERSION: ${{ inputs.version }}
-        run: |
-          if [[ -n "${REQUESTED_VERSION}" ]]; then
-            VER="${REQUESTED_VERSION}"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VER="${GITHUB_REF#refs/tags/}"
-          else
-            VER="dev-$(git rev-parse --short HEAD)"
+          BUILD_DIR="$(dirname "$BIN")"
+          DATA_DIR="${BUILD_DIR}/data"
+          if [[ ! -f "${DATA_DIR}/core/init.lua" ]]; then
+            echo "::error::Assembled runtime core is missing: ${DATA_DIR}/core/init.lua"
+            ls -la "${DATA_DIR}" 2>/dev/null || true
+            find "${DATA_DIR}" -maxdepth 3 -print 2>/dev/null || true
+            exit 1
           fi
 
-          # Debian reads the last hyphen as the boundary between the upstream
-          # version and the Debian revision, so `0.2.1-beta.1` would be read as
-          # upstream 0.2.1 + revision beta.1. `~` is valid there and sorts
-          # *before* the plain release — the right way round for a
-          # pre-release. A stable version carries no hyphen and is untouched.
-          #
-          # sed, not ${VER//-/~}: bash expands a `~` that appears in a
-          # parameter substitution, which would quietly turn `~beta` into
-          # `~<username>` — and fpm would then be handed a home directory.
-          DEB_VER="$(printf '%s' "${VER#v}" | sed 's/-/~/')"
-
-          {
-            echo "version=${VER}"
-            echo "deb-version=${DEB_VER}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "version=${VER}  (deb ${DEB_VER})"
+          file "$BIN"
+          echo "Binary: $BIN  ($(du -sh "$BIN" | cut -f1))"
+          echo "Runtime core: $(readlink -f "${DATA_DIR}/core/init.lua")"
+          echo "BIN_PATH=$BIN" >> "$GITHUB_ENV"
 
       - name: Package tarball
         run: |
+          set -euo pipefail
           VER="${{ steps.version.outputs.version }}"
           PKG_NAME="cdin-${VER}-linux-x86_64"
           PKG_DIR="dist/${PKG_NAME}"
+          BUILD_DIR="$(dirname "${BIN_PATH}")"
+          BUILD_DATA_DIR="${BUILD_DIR}/data"
 
-          mkdir -p "${PKG_DIR}/bin"
+          if [[ ! -d "${BUILD_DATA_DIR}" ]]; then
+            echo "::error::Assembled data directory is missing: ${BUILD_DATA_DIR}"
+            exit 1
+          fi
+
+          mkdir -p "${PKG_DIR}/bin/data"
           cp "${BIN_PATH}" "${PKG_DIR}/bin/cdin"
           chmod 755 "${PKG_DIR}/bin/cdin"
 
-          # The ASSEMBLED data/, next to the binary that was just built —
-          # not the source data/. The source holds only the runtime core; the
-          # mandatory set (vim plugin, default theme, fonts) is bundled from
-          # cdin-x into the build output at build time, and that is what a
-          # release has to ship.
-          BUILD_DIR="$(dirname "${BIN_PATH}")"
-          [[ -d "${BUILD_DIR}/data" ]] && cp -a "${BUILD_DIR}/data/." "${PKG_DIR}/bin/data/"
+          # assemble_data.py intentionally makes data/core a symlink to the
+          # source tree during development. A release must contain real files,
+          # never a link back into /home/runner/work or another build machine.
+          # -L dereferences symlinks recursively while copying the assembled data.
+          cp -RL "${BUILD_DATA_DIR}/." "${PKG_DIR}/bin/data/"
+
+          if [[ ! -f "${PKG_DIR}/bin/data/core/init.lua" ]]; then
+            echo "::error::Packaged Lua core is missing: bin/data/core/init.lua"
+            find "${PKG_DIR}/bin/data" -maxdepth 3 -print || true
+            exit 1
+          fi
+
+          if find "${PKG_DIR}/bin/data" -type l -print -quit | grep -q .; then
+            echo "::error::Unexpected symlink remains in packaged data/"
+            find "${PKG_DIR}/bin/data" -type l -ls
+            exit 1
+          fi
 
           mkdir -p "${PKG_DIR}/scripts"
           cp -r scripts/icons "${PKG_DIR}/scripts/"
@@ -220,7 +246,7 @@ jobs:
           done
 
           tar -C dist -czf "dist/${PKG_NAME}.tar.gz" "${PKG_NAME}"
-          echo "Tarball: $(du -sh dist/${PKG_NAME}.tar.gz | cut -f1)"
+          echo "Tarball: $(du -sh "dist/${PKG_NAME}.tar.gz" | cut -f1)"
 
       # ── Native package: .deb ─────────────────────────────────────────────
       - name: Install fpm & patchelf
@@ -231,14 +257,31 @@ jobs:
       - name: Stage install root (DESTDIR)
         env:
           PKG_CONFIG_PATH: /opt/sdl3/lib/pkgconfig
+          CDIN_RELEASE_VERSION: ${{ steps.version.outputs.build-version }}
         run: |
+          set -euo pipefail
           make install BUILD=release PLATFORM=linux SDL_VERSION=3 \
+            VERSION="${CDIN_RELEASE_VERSION}" \
             PREFIX=/usr DESTDIR="${PWD}/dist/deb-root"
 
+          # mk/install.mk uses cp -rL for data/, so the intentional build-time
+          # core symlink is dereferenced before the .deb is assembled. Verify
+          # that behavior here rather than relying on it silently.
+          STAGED_DATA_DIR="dist/deb-root/usr/lib/cdin/data"
+          if [[ ! -f "${STAGED_DATA_DIR}/core/init.lua" ]]; then
+            echo "::error::Staged .deb runtime core is missing: ${STAGED_DATA_DIR}/core/init.lua"
+            find dist/deb-root/usr/lib/cdin -maxdepth 4 -print 2>/dev/null || true
+            exit 1
+          fi
+          if find "${STAGED_DATA_DIR}" -type l -print -quit | grep -q .; then
+            echo "::error::Unexpected symlink remains in staged .deb data/"
+            find "${STAGED_DATA_DIR}" -type l -ls
+            exit 1
+          fi
+
           # Bundle the SDL3 shared lib we built, point the binary at it via
-          # RPATH ($ORIGIN — same directory, per `make install`'s layout:
-          # the real binary lives at PREFIX/lib/cdin/cdin), so no system
-          # libsdl3 is required.
+          # RPATH ($ORIGIN — same directory, per make install's layout: the real
+          # binary lives at PREFIX/lib/cdin/cdin), so no system libsdl3 is needed.
           cp -a /opt/sdl3/lib/libSDL3.so* "dist/deb-root/usr/lib/cdin/"
           patchelf --set-rpath '$ORIGIN' "dist/deb-root/usr/lib/cdin/cdin"
           echo "RPATH set:"
@@ -268,6 +311,7 @@ jobs:
 
       - name: Build .deb package
         run: |
+          set -euo pipefail
           DEB_VER="${{ steps.version.outputs.deb-version }}"
 
           fpm -s dir -t deb \
@@ -285,15 +329,23 @@ jobs:
             --deb-no-default-config-files \
             --package "dist/cdin_${DEB_VER}_amd64.deb"
 
-          echo "Package: $(du -sh dist/cdin_${DEB_VER}_amd64.deb | cut -f1)"
+          echo "Package: $(du -sh "dist/cdin_${DEB_VER}_amd64.deb" | cut -f1)"
           dpkg-deb --info "dist/cdin_${DEB_VER}_amd64.deb"
 
       - name: Verify .deb installs cleanly
         run: |
+          set -euo pipefail
           DEB_VER="${{ steps.version.outputs.deb-version }}"
-          sudo apt-get install -y "./dist/cdin_${DEB_VER}_amd64.deb"
+          DEB_PATH="dist/cdin_${DEB_VER}_amd64.deb"
+          sudo apt-get install -y "./${DEB_PATH}"
           command -v cdin
-          dpkg -L cdin | head -20
+          test -f /usr/lib/cdin/data/core/init.lua
+          if find /usr/lib/cdin/data -type l -print -quit | grep -q .; then
+            echo "::error::.deb installed symlinks under /usr/lib/cdin/data"
+            find /usr/lib/cdin/data -type l -ls
+            exit 1
+          fi
+          dpkg -L cdin | sed -n '1,20p'
           sudo apt-get remove -y cdin
 
       - name: Upload artifact
