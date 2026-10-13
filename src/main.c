@@ -12,9 +12,8 @@
 #include "core/window.h"
 #include "lua/api.h"
 #include "core/logger.h"
-#include "core/boot.h"
+#include "platform/platform.h"
 #include "ui/renderer.h"
-#include "core/utils.h"
 
 SDL_Window *window;
 
@@ -102,11 +101,12 @@ static FILE *setup_logging(const char *exefile) {
 
 int main(int argc, char **argv) {
   char exefile[2048] = {0};
-  utils_get_exe_filename(exefile, sizeof(exefile));
+  plat_exe_filename(exefile, sizeof(exefile));
   FILE *log_fp = setup_logging(exefile);
   log_info("cdin starting");
 
-  cdin_init_setup();
+  plat_early_init();
+
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     log_fatal("SDL_Init failed: %s", SDL_GetError());
     if (log_fp) fclose(log_fp);
@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
 
   ren_init(window);
 
-  double scale = utils_get_scale();
+  double scale = plat_display_scale();
 
   lua_State *L = luaL_newstate();
   if (!L) {
