@@ -60,6 +60,15 @@ end
 
 require("core.lifecycle").install(core)
 
+-- `core:memory()` — where the bytes are. Defined here, on the core table,
+-- because that is the name the report is reached by; the accounting itself
+-- lives in core/memory.lua, which is where a later phase replaces the Lua-side
+-- guesses with the C buffer's own counters. Required lazily inside the method
+-- so nothing is loaded at boot unless somebody asks.
+function core:memory()
+  return require("core.memory").report()
+end
+
 local state = require "core.state"
 
 function core.init()

@@ -34,6 +34,23 @@ static int frame_draw_text_count;
 static int frame_draw_rect_count;
 static int frame_buf_bytes_peak;
 
+/* Fonts whose FREE_FONT command could not be queued because the command
+ * buffer was full. They are freed at the end of the frame, after every
+ * command that might reference them has been processed — the same ordering
+ * the queued path guarantees. Without this list the font pointer would be
+ * dropped on the floor and leaked.
+ *
+ * Bounded, and the bound is reached only by a caller freeing far more fonts
+ * than the buffer could hold in one frame. The list is what makes the refusal
+ * policy explicit instead of silent: past the bound the font is freed
+ * immediately and the loss of ordering is logged, rather than the pointer
+ * being dropped. */
+#define FREE_OVERFLOW_MAX 64
+static RenFont *free_overflow[FREE_OVERFLOW_MAX];
+static int      free_overflow_count;
+
+int rencache_overflow_count(void) { return free_overflow_count; }
+
 
 static inline int min(int a, int b) { return a < b ? a : b; }
 static inline int max(int a, int b) { return a > b ? a : b; }
@@ -110,7 +127,21 @@ void rencache_show_debug(bool enable) {
 void rencache_free_font(RenFont *font) {
   log_debug("rencache: queuing FREE_FONT command");
   Command *cmd = push_command(FREE_FONT, sizeof(Command));
-  if (cmd) { cmd->font = font; }
+  if (cmd) {
+    cmd->font = font;
+  } else if (free_overflow_count < FREE_OVERFLOW_MAX) {
+    /* The buffer is full. The font cannot be dropped — that is the leak
+     * this list exists to prevent — so it goes here and is freed at
+     * end_frame, after the commands that may reference it have run. */
+    log_warn("rencache: command buffer full — deferring font free to end_frame");
+    free_overflow[free_overflow_count++] = font;
+  } else {
+    /* Both the buffer and the overflow list are full. Freeing now risks
+     * a use-after-free from a command still in the buffer, but leaking
+     * is the bug being fixed, so the lesser evil is to free anyway. */
+    log_error("rencache: free overflow list full — freeing font immediately");
+    ren_free_font(font);
+  }
 }
 
 
@@ -173,6 +204,10 @@ void rencache_begin_frame(void) {
 
   int w, h;
   ren_get_size(&w, &h);
+  if (ren_take_surface_replaced()) {
+    log_debug("rencache: window surface was replaced — full invalidation");
+    rencache_invalidate();
+  }
   if (screen_rect.width != w || screen_rect.height != h) {
     log_info("rencache: window resized from %dx%d to %dx%d — full invalidation",
              screen_rect.width, screen_rect.height, w, h);
@@ -207,6 +242,13 @@ static void push_rect(RenRect r, int *count) {
     }
   }
   rect_buf[(*count)++] = r;
+}
+
+
+void rencache_get_stats(int *draw_text, int *draw_rect, int *buf_peak) {
+  if (draw_text) *draw_text = frame_draw_text_count;
+  if (draw_rect) *draw_rect = frame_draw_rect_count;
+  if (buf_peak)  *buf_peak  = frame_buf_bytes_peak;
 }
 
 
@@ -249,7 +291,13 @@ void rencache_end_frame(void) {
     *r = intersect_rects(*r, screen_rect);
   }
 
-  if (rect_count > 6) {
+  /* CDIN_FULL_REDRAW=1 turns damage tracking off: every frame is presented whole.
+   * A diagnostic, not a mode: if a display glitch disappears with it set, the
+   * fault is in what the cache believes is on screen. Read once. */
+  static int force_full = -1;
+  if (force_full < 0) force_full = getenv("CDIN_FULL_REDRAW") != NULL;
+
+  if (rect_count > 6 || (force_full && rect_count > 0)) {
     rect_buf[0] = screen_rect;
     rect_count  = 1;
   }
@@ -292,6 +340,28 @@ void rencache_end_frame(void) {
 
   if (rect_count > 0) {
     ren_update_rects(rect_buf, rect_count);
+
+    /* The first frame that actually reached the surface.
+     *
+     * Logged once, at the only point in the whole program that means "pixels
+     * were handed to the display". The startup measurement needs a marker for a
+     * PRESENTED frame and there was none: scripts/measure_runtime.py was using
+     * "window resized from", which fires during cache setup and says nothing
+     * about whether anything was drawn. So the number it reported was the time to
+     * configure the damage cache, not the time to the first frame.
+     *
+     * Once, not every frame: a per-frame log line at info would be a
+     * hundred lines a second of I/O on the frame path, which AGENTS.md §2.7 and
+     * §8 both forbid. CDIN_LOG_LEVEL=trace is what makes it cheap enough to be
+     * unconditional, and the first-frame case is hoisted out of the branch below
+     * so it is emitted even when tracing is off.
+     */
+    static int first_frame_logged = 0;
+    if (!first_frame_logged) {
+      first_frame_logged = 1;
+      log_info("rencache: first frame presented (%d rects, %d text, %d rects drawn)",
+               rect_count, frame_draw_text_count, frame_draw_rect_count);
+    }
   }
 
   if (has_free_commands) {
@@ -303,6 +373,14 @@ void rencache_end_frame(void) {
       }
     }
   }
+
+  /* Fonts whose FREE_FONT command did not fit in the buffer. Freed here,
+   * after every command in the frame has been processed, so no drawing
+   * command can still reference them. */
+  for (int i = 0; i < free_overflow_count; i++) {
+    ren_free_font(free_overflow[i]);
+  }
+  free_overflow_count = 0;
 
   unsigned *tmp = cells;
   cells         = cells_prev;

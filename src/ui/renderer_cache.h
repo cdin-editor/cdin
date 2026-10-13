@@ -13,4 +13,9 @@ void rencache_invalidate(void);
 void rencache_begin_frame(void);
 void rencache_end_frame(void);
 
+/* Frame statistics for core:memory. All values describe the last completed
+ * frame; command_buf_peak is the high-water mark of the command buffer in
+ * bytes. */
+void rencache_get_stats(int *draw_text, int *draw_rect, int *buf_peak);
+
 #endif

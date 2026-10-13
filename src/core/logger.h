@@ -8,6 +8,10 @@
 
 #define LOG_VERSION "0.1.0"
 
+/* The file log rotates at this size. Rotating keeps one previous run as
+ * <path>.1, so a crash report stays one file rather than a directory. */
+#define LOG_FILE_MAX_BYTES (4L * 1024L * 1024L)
+
 typedef struct {
   va_list ap;
   const char *fmt;
@@ -42,6 +46,10 @@ int log_add_fp(FILE *fp, int level);
  * guess: it is next to the binary, which is not where anyone looks. */
 const char* log_get_path(void);
 void log_set_path(const char *path);
+
+/* Current size of the file log in bytes, or -1 when file logging is off.
+ * Published for core:memory. */
+long log_get_file_size(void);
 
 void log_log(int level, const char *file, int line, const char *fmt, ...);
 

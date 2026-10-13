@@ -88,6 +88,10 @@ static FILE *setup_logging(const char *exefile) {
              dir[0] ? "cdin-log.txt" : "./cdin-log.txt");
   }
 
+  /* The logger owns the stream from here (src/core/logger.c), which is what
+   * lets it reopen the file when it rotates mid-session. main.c's own
+   * startup rotation above is still wanted: it keeps the previous run even
+   * when this process never writes a line. */
   rotate_log(log_path);
 
   FILE *fp = fopen(log_path, "a");

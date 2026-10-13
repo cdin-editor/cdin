@@ -1,5 +1,6 @@
 #include "logger.h"
 #include <string.h>
+#include <stdio.h>
 
 #define MAX_CALLBACKS 32
 
@@ -9,6 +10,21 @@ typedef struct {
   int level;
 } Callback;
 
+/* The file log's state: the stream, the path it came from (so the callback can
+ * rotate it when it passes the cap mid-session, not only at startup), and its
+ * current size.
+ *
+ * Module-owned, not per-callback: exactly one file log exists, and the logger
+ * owns the handle. main.c used to open the file, hand the FILE* over and close
+ * it itself, which left rotation impossible (a rotated stream has to be
+ * closed, renamed and reopened by whoever holds it) and made the handle's
+ * lifetime the caller's problem. */
+static struct {
+  FILE *fp;
+  char  path[2048];
+  long  size;
+} file_log;
+
 static struct {
   void        *udata;
   log_LockFn   lock;
@@ -17,6 +33,13 @@ static struct {
   char         path[2048];
   Callback     callbacks[MAX_CALLBACKS];
 } L;
+
+/* Which callback slot holds file_callback, or -1. Not inside L, because L is
+ * zero-initialised and zero is a valid slot index — a sentinel that starts
+ * life looking like a real slot is how "is a file log installed?" gets the
+ * wrong answer on the first call. */
+#define FILE_SLOT_NONE (-1)
+static int file_slot = FILE_SLOT_NONE;
 
 
 static const char *level_strings[] = {
@@ -68,22 +91,76 @@ static void stderr_callback(log_Event *ev) {
 }
 
 
+/* A log that grows forever is not a log, it is a leak with a .log suffix.
+ * Past this size the previous run is kept as cdin-log.txt.1 and the new one
+ * starts empty, so a crash report is one file rather than a directory.
+ * Mirrors CDIN_LOG_MAX_BYTES in main.c, which owns the startup rotation. */
+#define LOG_MAX_BYTES (4L * 1024L * 1024L)
+
+
 static void file_callback(log_Event *ev) {
+  (void)ev;
+  FILE *fp = file_log.fp;
+  if (!fp) return;
+
+  /* Rotate during the session, not only at startup. __gc-driven font frees
+   * and a trace-level draw loop can push a long run past the cap while it
+   * is still the live log, and the whole point of the cap is that a crash
+   * report is one file a person can read. Rotation is silent by design: it
+   * runs inside a callback with the log lock held, so anything that
+   * re-enters the logger would recurse. */
+  if (file_log.size >= LOG_MAX_BYTES) {
+    /* Close before renaming. Windows refuses to rename an open file, so a
+     * rename-first rotation fails there and the log silently keeps growing —
+     * the exact behaviour this is meant to prevent, on the one platform where
+     * it is easiest to hit. */
+    fclose(fp);
+    file_log.fp = NULL;
+
+    char prev[2100];
+    int  n = snprintf(prev, sizeof(prev), "%s.1", file_log.path);
+    if (n > 0 && (size_t)n < sizeof(prev)) {
+      remove(prev);
+      rename(file_log.path, prev);
+    }
+
+    fp = fopen(file_log.path, "a");
+    if (fp) {
+      file_log.fp   = fp;
+      file_log.size = 0;
+    } else {
+      /* The log is gone and cannot be reopened. Stop trying rather than
+       * writing to a stream of unknown validity; stderr still works. */
+      file_log.size = 0;
+      return;
+    }
+  }
+
   char tbuf[32];
   tbuf[strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", ev->time)] = '\0';
 
   const char *file = strrchr(ev->file, '/');
   file = file ? file + 1 : ev->file;
 
-  fprintf(ev->udata,
+  int start = ftell(fp);
+  fprintf(fp,
     "%s %-5s %-22s:%3d  ",
     tbuf,
     level_strings[ev->level],
     file,
     ev->line);
-  vfprintf(ev->udata, ev->fmt, ev->ap);
-  fprintf(ev->udata, "\n");
-  fflush(ev->udata);
+  vfprintf(fp, ev->fmt, ev->ap);
+  fprintf(fp, "\n");
+  fflush(fp);
+
+  int end = ftell(fp);
+  if (start >= 0 && end >= start) {
+    file_log.size = (file_log.size - start) + end;
+  } else {
+    /* ftell is unavailable on some streams; fall back to counting bytes
+     * written from now on rather than losing the cap entirely. */
+    file_log.size += (long)(end >= 0 ? end : 0);
+  }
 }
 
 
@@ -122,7 +199,34 @@ int log_add_callback(log_LogFn fn, void *udata, int level) {
 }
 
 int log_add_fp(FILE *fp, int level) {
-  return log_add_callback(file_callback, fp, level);
+  /* One file log, and the logger owns the handle: a second call replaces the
+   * first, closing the previous stream. That is what makes the tests able to
+   * point the log at a fresh file per case, and it is also the only shape in
+   * which rotation works — a rotated stream has to be reopened by whoever
+   * holds it. */
+  if (file_slot != FILE_SLOT_NONE) {
+    if (file_log.fp) { fclose(file_log.fp); file_log.fp = NULL; }
+    L.callbacks[file_slot].fn = NULL;
+    file_slot = FILE_SLOT_NONE;
+  }
+
+  file_log.fp   = fp;
+  file_log.size = ftell(fp);
+  if (file_log.size < 0) file_log.size = 0;
+  /* L.path is set before this is called by main(); the size cap is checked
+   * per write, so the path is all that rotation needs. */
+  snprintf(file_log.path, sizeof(file_log.path), "%s", L.path);
+
+  if (log_add_callback(file_callback, NULL, level) != 0) return -1;
+  for (int i = 0; i < MAX_CALLBACKS; i++) {
+    if (L.callbacks[i].fn == file_callback) { file_slot = i; break; }
+  }
+  return 0;
+}
+
+
+long log_get_file_size(void) {
+  return file_log.fp ? file_log.size : -1;
 }
 
 

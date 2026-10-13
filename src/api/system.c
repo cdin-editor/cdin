@@ -16,6 +16,12 @@
 #include "../core/logger.h"
 #include "../search/find.h"
 
+/* The damage cache's command buffer, reported so a caller can see how close
+ * the frame came to the ceiling rather than only that it was hit. Mirrors
+ * COMMAND_BUF_SIZE in renderer_cache.c; the two cannot drift because
+ * rencache_get_stats returns the peak from the same buffer that bounds it. */
+#define COMMAND_BUF_SIZE (1024 * 512)
+
 #ifndef _WIN32
   #include <unistd.h>
 #else
@@ -536,6 +542,137 @@ static int f_popen(lua_State *L) {
 }
 
 
+/* C-side memory counters, for core:memory. Deliberately a table rather than
+ * several functions: one call, one consistent snapshot, and adding a counter
+ * later does not change the signature of anything a caller already uses.
+ * glyph_bytes and glyphsets come from the renderer, command_buf_peak from
+ * the damage cache, log_size from the logger. Anything unavailable is -1
+ * rather than nil, so a caller can divide or subtract without a guard.
+ *
+ * The per-subsystem figures come from the accounting allocator (src/base) and
+ * are the numbers a phase report is built on. They are all zeros on a build
+ * where nothing allocates through it yet, which is a true statement rather than
+ * a missing one: a subsystem that has not been converted still uses malloc and
+ * is genuinely invisible to the allocator. `tags` carries the CdinMemTag values
+ * themselves, so the Lua side reports the same names the C side would print and
+ * no name table has to be maintained in two languages. */
+
+/* Pushes `n` integers as one array field on the table below it, leaving the
+ * stack exactly as it found it apart from nothing.
+ *
+ * A helper rather than four hand-written blocks, because the stack discipline
+ * here is easy to get wrong in a way that does not corrupt memory — it just
+ * raises "attempt to index a number value" from inside this C function, a
+ * message that reads like a Lua-side bug and sends you looking in
+ * data/core/memory.lua instead of here.
+ *
+ * The two mistakes this shape exists to prevent, both of which were made here
+ * once:
+ *
+ *   - lua_setfield pops exactly one value, so pushing n elements and then
+ *     calling it leaves n-1 of them on the stack. After four arrays that is 40
+ *     strays, and the next `lua_setfield(L, -2, ...)` lands on an integer.
+ *   - with n elements pushed, the table below them is at -(n+1), not -2.
+ *
+ * lua_rawseti pops its value, so each element leaves the stack as it is stored,
+ * and when the loop ends only the table is left for the final setfield. */
+static void push_int_array(lua_State *L, const lua_Integer *vals, int n,
+                           const char *key) {
+  lua_createtable(L, n, 0);
+  for (int i = 0; i < n; i++) {
+    lua_pushinteger(L, vals[i]);
+    lua_rawseti(L, -2, i + 1);   /* 1-based: index 0 is not an array slot */
+  }
+  lua_setfield(L, -2, key);
+}
+
+/* The same for an array of borrowed C strings. The names come from the
+ * allocator rather than from a table maintained in Lua, so a subsystem cannot
+ * end up reported under a name the C side does not use — and one more name is
+ * added by editing one list, not two. */
+static void push_str_array(lua_State *L, const char *const *vals, int n,
+                           const char *key) {
+  lua_createtable(L, n, 0);
+  for (int i = 0; i < n; i++) {
+    lua_pushstring(L, vals[i] ? vals[i] : "");
+    lua_rawseti(L, -2, i + 1);
+  }
+  lua_setfield(L, -2, key);
+}
+
+static int f_memory_stats(lua_State *L) {
+  int draw_text = 0, draw_rect = 0, buf_peak = 0;
+  rencache_get_stats(&draw_text, &draw_rect, &buf_peak);
+
+  enum { TAGS = (int)CDIN_MEM_COUNT };
+
+  /* Collected into C arrays before anything is pushed, so the stack discipline
+   * above is checkable by eye: nothing is read from Lua while the stack is
+   * mid-construction. */
+  lua_Integer tags[TAGS], live[TAGS], peak[TAGS], blocks[TAGS];
+  const char *names[TAGS];
+  for (int i = 0; i < TAGS; i++) {
+    CdinMemTag tag = (CdinMemTag)i;
+    tags[i]   = (lua_Integer)i;
+    names[i]  = cdin_mem_tag_name(tag);
+    live[i]   = (lua_Integer)cdin_mem_live(tag);
+    peak[i]   = (lua_Integer)cdin_mem_peak(tag);
+    blocks[i] = (lua_Integer)cdin_mem_alloc_count(tag);
+  }
+
+  lua_newtable(L);
+
+  lua_pushinteger(L, (lua_Integer)ren_glyph_bytes());
+  lua_setfield(L, -2, "glyph_bytes");
+
+  lua_pushinteger(L, (lua_Integer)ren_glyphset_count());
+  lua_setfield(L, -2, "glyph_pages");
+
+  lua_pushinteger(L, (lua_Integer)log_get_file_size());
+  lua_setfield(L, -2, "log_bytes");
+
+  lua_pushinteger(L, (lua_Integer)buf_peak);
+  lua_setfield(L, -2, "command_buf_peak");
+
+  lua_pushinteger(L, (lua_Integer)COMMAND_BUF_SIZE);
+  lua_setfield(L, -2, "command_buf_capacity");
+
+  lua_pushinteger(L, (lua_Integer)draw_text);
+  lua_setfield(L, -2, "draw_text_count");
+
+  lua_pushinteger(L, (lua_Integer)draw_rect);
+  lua_setfield(L, -2, "draw_rect_count");
+
+  /* Five parallel arrays of the same length — names, tags, and three counters —
+   * rather than a table keyed by name: the Lua side only ever walks them in
+   * order, and this keeps the per-subsystem report free of any table
+   * allocation, which the reporting path must not do. `tags` carries the
+   * CdinMemTag values so a caller can zip an index back to the allocator. */
+  push_str_array(L, names,  TAGS, "names");
+  push_int_array(L, tags,   TAGS, "tags");
+  push_int_array(L, live,   TAGS, "alloc_by");
+  push_int_array(L, peak,   TAGS, "peak_by");
+  push_int_array(L, blocks, TAGS, "blocks_by");
+
+  lua_pushinteger(L, (lua_Integer)cdin_mem_total_live());
+  lua_setfield(L, -2, "alloc_total");
+
+  lua_pushinteger(L, (lua_Integer)cdin_mem_total_peak());
+  lua_setfield(L, -2, "peak_total");
+
+  /* The leak count, not the leak report: the report prints to the log, and a
+   * `core:memory` call must not write to the log. main() prints the full report
+   * once at exit, where it belongs. */
+  lua_pushinteger(L, (lua_Integer)cdin_mem_live_blocks());
+  lua_setfield(L, -2, "live_blocks");
+
+  lua_pushinteger(L, cdin_mem_debug_enabled() ? 1 : 0);
+  lua_setfield(L, -2, "accounted");
+
+  return 1;
+}
+
+
 /* ── fault injection, reachable from Lua ──────────────────────────────────
  *
  * The allocator can already be armed from C, and from CDIN_ALLOC_FAIL_AFTER in
@@ -626,6 +763,7 @@ static const luaL_Reg lib[] = {
   { "exec",                  f_exec                  },
   { "popen",                 f_popen                 },
   { "fuzzy_match",           f_fuzzy_match           },
+  { "memory_stats",          f_memory_stats          },
   { "alloc_fail_after",      f_alloc_fail_after      },
   { "alloc_failures",        f_alloc_failures        },
   { "alloc_fail_disable",    f_alloc_fail_disable    },
