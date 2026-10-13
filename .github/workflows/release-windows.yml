@@ -204,38 +204,15 @@ jobs:
           file "$EXE"
           echo "EXE_PATH=$EXE" >> "$GITHUB_ENV"
 
-      # Copy runtime DLLs beside cdin.exe so the packaged application can run
-      # without requiring the user to install MSYS2.
       - name: Collect runtime DLLs
         run: |
           OUT_DIR="$(dirname "$EXE_PATH")"
-
-          SDL_DLL="$(find /mingw64/bin -name 'SDL3.dll' -print -quit)"
-          LUA_DLL="$(find /mingw64/bin -name 'lua*.dll' -print | sort | head -1)"
-          UV_DLL="$(find /mingw64/bin -name 'libuv-1.dll' -print -quit)"
-
-          if [[ -n "$SDL_DLL" ]]; then
-            cp "$SDL_DLL" "$OUT_DIR/"
-            echo "SDL3 runtime DLL copied: $(basename "$SDL_DLL")"
-          else
-            echo "::warning::SDL3.dll not found"
-          fi
-
-          if [[ -n "$LUA_DLL" ]]; then
-            cp "$LUA_DLL" "$OUT_DIR/"
-            echo "Lua runtime DLL copied: $(basename "$LUA_DLL")"
-          else
-            echo "::warning::Lua DLL not found"
-          fi
-
-          if [[ -n "$UV_DLL" ]]; then
-            cp "$UV_DLL" "$OUT_DIR/"
-            echo "libuv runtime DLL copied: $(basename "$UV_DLL")"
-          else
-            echo "::warning::libuv-1.dll not found under /mingw64/bin"
-            echo "Checking whether libuv is statically linked or uses another DLL name."
-            find /mingw64/bin -maxdepth 1 -iname '*uv*.dll' -print || true
-          fi
+          SDL_DLL="$(find /mingw64/bin -name 'SDL3.dll' | head -1)"
+          LUA_DLL="$(find /mingw64/bin -name 'lua*.dll' | sort | head -1)"
+          [[ -n "$SDL_DLL" ]] && { cp "$SDL_DLL" "$OUT_DIR/"; echo "SDL3.dll: OK"; } \
+                              || echo "::warning::SDL3.dll not found"
+          [[ -n "$LUA_DLL" ]] && { cp "$LUA_DLL" "$OUT_DIR/"; echo "lua dll: OK"; } \
+                              || echo "::warning::Lua DLL not found"
 
       # ── Version for the package names ────────────────────────────────────
       # pre-release.yml passes the version it computed for this commit; a tag
@@ -366,8 +343,8 @@ jobs:
           # Placeholders are substituted with bash's ${var//search/replace}
           # rather than sed: OUT_DIR/SRC_DIR are Windows paths from cygpath
           # containing literal backslashes, which sed's replacement text
-          # would reinterpret as escapes; bash parameter expansion treats the
-          # replacement as a literal string, so backslashes pass through
+          # would reinterpret as escapes; bash parameter expansion treats
+          # the replacement as a literal string, so backslashes pass through
           # untouched. The template's own {#MyAppName}-style Inno Setup
           # syntax is left alone either way since it isn't a placeholder.
           content="$ISS_TEMPLATE"
