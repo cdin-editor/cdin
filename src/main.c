@@ -12,6 +12,8 @@
 #include "core/window.h"
 #include "lua/api.h"
 #include "core/logger.h"
+#include "base/alloc.h"
+#include "loop/loop.h"
 #include "platform/platform.h"
 #include "ui/renderer.h"
 
@@ -105,6 +107,36 @@ int main(int argc, char **argv) {
   FILE *log_fp = setup_logging(exefile);
   log_info("cdin starting");
 
+  /* CDIN_ALLOC_FAIL_AFTER=<n> arms the allocator to allow n allocations and
+   * refuse every one after.
+   *
+   * Arming here refuses allocations from the very first call, which is the
+   * "out of memory immediately" case and stays reachable only because disarming
+   * is a separate call rather than a magic n.
+   *
+   * The value is the count from the first allocation, so this is useful for the
+   * load path and for proving the injector works at all. It does NOT reach the
+   * draw path usefully: the bundled cdin-x panel raises a Lua error in the
+   * first frames, which ends the process before any glyph page is baked, so
+   * what gets refused is Lua's own allocation and the renderer is never asked.
+   * To exercise the draw path, arm it from a user init.lua instead — see
+   * system.alloc_fail_after(), which is what the OOM checks use. */
+  {
+    const char *fail_after = getenv("CDIN_ALLOC_FAIL_AFTER");
+    if (fail_after && *fail_after) {
+      char *end = NULL;
+      unsigned long n = strtoul(fail_after, &end, 10);
+      if (end && *end == '\0') {
+        cdin_alloc_fail_after(n);
+        log_warn("main: fault injection armed - %lu allocations allowed, every "
+                 "allocation after that refused", n);
+      } else {
+        log_warn("main: CDIN_ALLOC_FAIL_AFTER=\"%s\" is not a number, ignoring",
+                 fail_after);
+      }
+    }
+  }
+
   plat_early_init();
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
@@ -153,8 +185,29 @@ int main(int argc, char **argv) {
   api_load_libs(L);
 
   lua_setup_globals(L, argc, argv, scale, exefile);
+
+  /* The libuv loop, created before core.init() so that anything the Lua side
+   * does during boot can already queue a job.
+   *
+   * Created here rather than lazily because a lazily-created loop has no
+   * contract: the first caller would pay for uv_loop_init on whatever frame
+   * happened to need it, which is the frame that was already busy. Failing to
+   * create it is not fatal — SDL3 owns the window, input and rendering, and
+   * none of them need libuv — so a failure is logged and the editor continues
+   * with every synchronous path intact.
+   */
+  if (job_loop_init() != 0) {
+    log_warn("main: libuv loop unavailable — file I/O stays on the frame thread");
+  }
+
   lua_run_core(L);
   log_info("cdin shutting down cleanly");
+
+  /* Closed after Lua, because a completion callback marshals bytes for the Lua
+   * side and must not outlive it. Anything still in flight is abandoned by
+   * design — see job_loop_close — and at this point nothing is waiting for it. */
+  job_loop_close();
+
   lua_close(L);
   SDL_DestroyWindow(window);
   if (log_fp) fclose(log_fp);

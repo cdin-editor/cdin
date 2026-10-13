@@ -95,9 +95,31 @@ else
   LUA_FOUND_VERSION := unknown
 endif
 
+# libuv: asynchronous I/O, timers and thread-pool work off the main thread.
+#
+# Decision 1 approves libuv alongside SDL3, with SDL3 keeping the window, input
+# and rendering and libuv handling everything that must not run on the frame
+# thread. src/loop/ is its first consumer.
+#
+# The check below is a compile, not a guess from a variable: pkg-config knows
+# nothing about libuv on every platform this builds on, and a make variable set
+# to the wrong value would surface as a wall of undefined symbols in loop.c
+# rather than as a missing dependency. One failed compile names the problem and
+# the fix.
+UV_PROBE := $(shell printf '#include <uv.h>\nint main(void){uv_loop_t l;uv_loop_init(&l);uv_run(&l,UV_RUN_NOWAIT);return 0;}\n' \
+  | $(CC) -x c -fsyntax-only - >/dev/null 2>&1 && echo y)
+
+ifeq ($(UV_PROBE),y)
+  LIBUV_CFLAGS :=
+  LIBUV_LDFLAGS := -luv
+else
+  LIBUV_CFLAGS :=
+  LIBUV_LDFLAGS :=
+endif
+
 BASE_CFLAGS := -std=gnu11 -fno-strict-aliasing -Wall -Wextra -Wno-unused-parameter $(OPT) $(VERSION_CFLAGS) -Isrc
-CFLAGS := $(BASE_CFLAGS) $(SDL_CFLAGS) $(LUA_CFLAGS)
-LDFLAGS := $(SDL_LDFLAGS) $(LUA_LDFLAGS) -lm $(LDFLAGS_TINY) $(STRIP)
+CFLAGS := $(BASE_CFLAGS) $(SDL_CFLAGS) $(LUA_CFLAGS) $(LIBUV_CFLAGS)
+LDFLAGS := $(SDL_LDFLAGS) $(LUA_LDFLAGS) $(LIBUV_LDFLAGS) -lm $(LDFLAGS_TINY) $(STRIP)
 ifeq ($(PLATFORM),windows)
   LDFLAGS += -mwindows
 endif

@@ -48,6 +48,12 @@ _check_deps:
 		echo '  apt: sudo apt install liblua5.4-dev'; \
 		echo '  pacman: sudo pacman -S lua'; \
 		exit 1; }
+	@printf '#include <uv.h>\n' | $(CC) $(CFLAGS) -x c -fsyntax-only - >/dev/null 2>&1 || { \
+		echo '✗ uv.h not found — src/loop/ needs libuv (Decision 1)'; \
+		echo '  apt:  sudo apt install libuv1-dev'; \
+		echo '  pacman: sudo pacman -S mingw-w64-x86_64-libuv'; \
+		echo '  brew: brew install libuv'; \
+		exit 1; }
 
 run: build
 	@$(OUT)

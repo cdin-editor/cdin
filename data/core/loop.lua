@@ -38,6 +38,20 @@ local function install(core)
     local mouse_moved = false
     local mouse       = { x = 0, y = 0, dx = 0, dy = 0 }
 
+    -- Dispatch completed background jobs once per frame, before anything reads
+    -- the state they change.
+    --
+    -- Here rather than deeper in the loop, and once rather than at several
+    -- points, because a job's completion may re-enter Lua: doing it at one
+    -- predictable point in the frame is what keeps that from landing in the
+    -- middle of a half-built view. It is also the first thing, so a job that
+    -- finished during the last frame is acted on this one rather than a frame
+    -- later.
+    --
+    -- Never sleeps — system.jobs_run dispatches what is ready and returns, so
+    -- an editor with nothing outstanding costs one call per frame.
+    system.jobs_run()
+
     for type, a, b, c, d in system.poll_event do
       if type == "mousemoved" then
         mouse_moved = true

@@ -8,6 +8,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "api.h"
+#include "../base/alloc.h"
+#include "../lua/error.h"
+#include "../loop/loop.h"
 #include "../ui/renderer_cache.h"
 #include "../core/window.h"
 #include "../core/logger.h"
@@ -67,6 +70,11 @@ top:
       return 3;
 
     case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+    case SDL_EVENT_WINDOW_MAXIMIZED:
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_SHOWN:
+    case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
       rencache_invalidate();
       lua_pushstring(L, "exposed");
       return 1;
@@ -397,8 +405,17 @@ static int f_exec(lua_State *L) {
   const char *cmd = luaL_checklstring(L, 1, &len);
 #ifdef _WIN32
   int wlen = MultiByteToWideChar(CP_UTF8, 0, cmd, -1, NULL, 0);
-  wchar_t *wcmd = (wchar_t *)malloc(wlen * sizeof(wchar_t));
-  if (!wcmd) luaL_error(L, "buffer allocation failed");
+  if (wlen <= 0) {
+    /* Conversion reported a length of 0 or failed outright. Both mean there is no
+     * command to run, and passing an empty buffer to CreateProcess would spawn
+     * something with no name — while a zero-length malloc would hand back a valid
+     * pointer that looks like success. */
+    luaL_error(L, "exec: the command is empty or not convertible");
+    return 0;
+  }
+  size_t wbytes = (size_t)wlen * sizeof(wchar_t);
+  wchar_t *wcmd = (wchar_t *)cdin_alloc(CDIN_MEM_PLATFORM, wbytes);
+  if (!wcmd) luaL_error(L, "exec: out of memory for %zu bytes", wbytes);
   MultiByteToWideChar(CP_UTF8, 0, cmd, -1, wcmd, wlen);
 
   STARTUPINFOW si = { 0 };
@@ -409,13 +426,20 @@ static int f_exec(lua_State *L) {
                  NULL, NULL, &si, &pi);
   if (pi.hProcess) CloseHandle(pi.hProcess);
   if (pi.hThread)  CloseHandle(pi.hThread);
-  free(wcmd);
+  cdin_free(wcmd);
 #else
-  char *buf = malloc(len + 32);
-  if (!buf) luaL_error(L, "buffer allocation failed");
+  /* VIOLATES AGENTS.md §2.8 ("never spawn through a shell; argv arrays only").
+   * `system()` hands the string to /bin/sh, so quoting, globbing and `;` all
+   * behave the way the shell says rather than the way the caller wrote. It is
+   * pre-existing and deliberately left alone: replacing it needs an argv array,
+   * which means deciding how one command string becomes a vector — quoting rules
+   * included — and that is a user-visible behaviour change. Reported in the phase
+   * report under OPEN rather than silently rewritten. */
+  char *buf = (char *)cdin_alloc(CDIN_MEM_PLATFORM, len + 32);
+  if (!buf) luaL_error(L, "exec: out of memory");
   snprintf(buf, len + 32, "%s &", cmd);
   int r = system(buf); (void)r;
-  free(buf);
+  cdin_free(buf);
 #endif
   return 0;
 }
@@ -433,14 +457,19 @@ static int f_popen(lua_State *L) {
 
 #ifdef _WIN32
   int wlen = MultiByteToWideChar(CP_UTF8, 0, cmd, -1, NULL, 0);
-  wchar_t *wcmd = (wchar_t *)malloc(wlen * sizeof(wchar_t));
-  if (!wcmd) return luaL_error(L, "popen: out of memory");
+  if (wlen <= 0) {
+    lua_pushnil(L);
+    return 1;
+  }
+  size_t wbytes = (size_t)wlen * sizeof(wchar_t);
+  wchar_t *wcmd = (wchar_t *)cdin_alloc(CDIN_MEM_PLATFORM, wbytes);
+  if (!wcmd) return luaL_error(L, "popen: out of memory for %zu bytes", wbytes);
   MultiByteToWideChar(CP_UTF8, 0, cmd, -1, wcmd, wlen);
 
   SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
   HANDLE hRead, hWrite;
   if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
-    free(wcmd);
+    cdin_free(wcmd);
     lua_pushnil(L);
     return 1;
   }
@@ -464,7 +493,7 @@ static int f_popen(lua_State *L) {
     TRUE,
     CREATE_NO_WINDOW,
     NULL, NULL, &si, &pi);
-  free(wcmd);
+  cdin_free(wcmd);
   CloseHandle(hWrite);
   if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
 
@@ -507,6 +536,73 @@ static int f_popen(lua_State *L) {
 }
 
 
+/* ── fault injection, reachable from Lua ──────────────────────────────────
+ *
+ * The allocator can already be armed from C, and from CDIN_ALLOC_FAIL_AFTER in
+ * the environment, but neither can reach the code this exists for.
+ *
+ * Arming at startup spends the injector on Lua's own allocations: the bundled
+ * cdin-x panel raises a Lua error during the first frames, and the process ends
+ * before a single glyph page is baked, so the renderer is never asked for
+ * memory. Arming from a user init.lua instead lands it after the editor has
+ * booted, so what is refused is the per-frame glyph and image work — the only
+ * allocations where running out of memory used to end the process.
+ *
+ * This is test tooling with a real use: "what does the editor do when memory
+ * runs out while drawing" is a question a reviewer asks, and without a way to
+ * ask it in the running program the answer can only be argued. */
+
+static int f_alloc_fail_after(lua_State *L) {
+  lua_Integer n = (lua_Integer)luaL_checknumber(L, 1);
+  if (n < 0) {
+    /* Negative would arm a count that never decrements toward zero and so
+     * refuses everything from the first call — reachable by accident, and
+     * indistinguishable from passing 0. Refused rather than coerced. */
+    cdin_error_raise(L, CDIN_ERR(CDIN_ERR_INVALID), "n");
+    return 0;
+  }
+  cdin_alloc_fail_after((unsigned long)n);
+  log_warn("system.alloc_fail_after(%d): every allocation after the next %d is "
+           "refused", (int)n, (int)n);
+  return 0;
+}
+
+static int f_alloc_failures(lua_State *L) {
+  lua_pushinteger(L, (lua_Integer)cdin_alloc_failures());
+  return 1;
+}
+
+static int f_alloc_fail_disable(lua_State *L) {
+  cdin_alloc_fail_disable();
+  return 0;
+}
+
+/* ── the libuv job loop, as the frame sees it ──────────────────────────────
+ *
+ * The frame owns the pump. SDL3 keeps the window, input and rendering, and this
+ * is the only place the two asynchronous worlds meet: once per frame, dispatch
+ * whatever libuv has ready and return.
+ *
+ * It is a single C call rather than something Lua schedules, because a job's
+ * completion callback may fire while the Lua stack is mid-frame — a callback that
+ * ran at an arbitrary point in Lua's execution would re-enter it. Dispatching
+ * here means completions arrive at one predictable point in the frame instead.
+ */
+
+static int f_jobs_run(lua_State *L) {
+  (void)L;
+  /* Returns nothing: the interesting result is the callbacks this fires, and
+   * those are delivered to whatever asked for them. A number here would be a
+   * count of completions that the caller cannot act on. */
+  job_loop_run_once();
+  return 0;
+}
+
+static int f_jobs_pending(lua_State *L) {
+  lua_pushinteger(L, (lua_Integer)job_pending());
+  return 1;
+}
+
 static const luaL_Reg lib[] = {
   { "poll_event",            f_poll_event            },
   { "wait_event",            f_wait_event            },
@@ -530,6 +626,11 @@ static const luaL_Reg lib[] = {
   { "exec",                  f_exec                  },
   { "popen",                 f_popen                 },
   { "fuzzy_match",           f_fuzzy_match           },
+  { "alloc_fail_after",      f_alloc_fail_after      },
+  { "alloc_failures",        f_alloc_failures        },
+  { "alloc_fail_disable",    f_alloc_fail_disable    },
+  { "jobs_run",              f_jobs_run              },
+  { "jobs_pending",          f_jobs_pending          },
   { NULL, NULL }
 };
 
