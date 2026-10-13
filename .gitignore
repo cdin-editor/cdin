@@ -19,5 +19,5 @@ __pycache__
 # Node dependencies
 node_modules/
 soak_target.*
-corpus/
+corpus/*
 tests/*.json
