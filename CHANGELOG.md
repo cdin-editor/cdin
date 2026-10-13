@@ -9,7 +9,47 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ BREAKING CHANGES
+
+#### cdin is now GPL-3.0-or-later
+
+- The `LICENSE` file is the GNU General Public License v3. `README.md`'s badge and licence line say so, and `NOTICE` now lists the third-party components that keep their own licences. Code copied out of cdin, and a fork of it, are now under GPL-3.0-or-later terms rather than MIT.
+
 ### Added
+
+* **An accounting allocator every subsystem is tagged into.** `cdin_alloc` / `cdin_calloc` / `cdin_realloc` carry a `CDIN_MEM_*` tag and keep live, peak and block counts per tag; `cdin_free` reads the tag out of the header the allocator wrote, so one untagged free subtracts from the right subsystem, refuses a pointer that never came from here, and catches a double free in a debug build. A tag on `free` would mean the caller has to remember it, and a caller that remembers one wrong corrupts the one thing this exists to get right.
+
+  It also carries a fault injector, `cdin_alloc_fail_after(n)`, which refuses every allocation after the *n*th. That is how the out-of-memory paths get exercised on purpose instead of by really running out.
+
+  `arena_alloc` is the other half: one allocation handed out by bumping a pointer and thrown away in one step, for the paths that must not allocate at all. It is not a general allocator — nothing can free an individual allocation — so it carries a hard cap rather than growing until the process dies. Tag values are append-only and stable, because reports name them.
+
+* **An error convention, `CdinErr`, for every fallible C function.** A small classification enum plus one out-parameter for the part that is data rather than class (a path, a line number, a token). `CDIN_OK` is zero so that `err != CDIN_OK` and `if (err)` cannot be confused by muscle memory. It carries no allocation, which is why there is no `cdin_err_free`.
+
+* **A handle convention for every piece of C-owned state Lua can reach.** A userdata with a `__gc` and a `close()`, its type name in the metatable, and a destructor that runs exactly once. The type is `void *` at the Lua boundary on purpose: a caller cannot reach a field, cannot compute an offset into a neighbouring allocation, and cannot hand the pointer to `free()`. A closed handle is *detectably* closed — `cdin_handle_check` refuses it, so a use-after-close is a Lua error naming the type rather than a pointer into freed memory.
+
+* **A uniform error table for the boundary.** `cdin_error_push` returns `{ code, name, detail, line, os }` rather than raising, because raising discards everything except the message and "close the document, fall back to the next font" needs something to recover with. `detail` is never nil, because a missing detail and an empty one are different facts.
+
+* **Asynchronous file I/O off the frame thread (libuv).** `src/loop/` reads a whole file on a libuv worker and hands the bytes back to the frame thread, which splits them into lines when it is ready. This is the piece that satisfies two rules which pull against each other: the Lua state is single-threaded, and the frame must not block. So the split is by data, not by phase — a worker cannot build the line table, because that is Lua data, but it can do the part that is bytes and nothing else.
+
+  Buffers are capped at 1 GiB and a larger file is **refused, not truncated**: a silent short read would be a corrupted document.
+
+* **`core:memory()` — one call that says where the bytes are.** It reads the C counters the host publishes and adds what only the Lua side can know, the Lua heap and the documents. The C half is one table (`system.memory_stats`) rather than several functions, so one call is one consistent snapshot. Unavailable is `-1`, not `nil`, so a caller can subtract without a guard — and "not measurable" is never printed as "0 bytes of glyphs", which is how a regression hides.
+
+* **The renderer's allocations are tagged `CDIN_MEM_FONT`, and its glyph cache reports `glyph_bytes` and `glyph_pages`.** Before this the renderer used raw `malloc` and was invisible to the per-subsystem report, which is why "2.1 MiB of glyphs" was a number `core:memory` knew but could not attribute.
+
+* **Lua-visible additions.** `system.memory_stats`, `system.jobs_run`, `system.jobs_pending`, `system.alloc_fail_after`, `system.alloc_failures`, `system.alloc_fail_disable`.
+
+* **Environment variables for diagnosis.** `CDIN_ALLOC_FAIL_AFTER=<n>` arms the fault injector at startup; `CDIN_FULL_REDRAW=1` turns damage tracking off so every frame is presented whole, which answers "is the glitch in what the cache believes is on screen?"; `CDIN_LOG_FILE` and `CDIN_LOG_LEVEL` were already there.
+
+* **A C unit test runner.** `tests/c` covers the logger, the damage cache, the allocator, the arena and `CdinErr`, the job loop, glyph paging and the fallback chain, and the handle convention — linked against stubs so the damage cache can be driven without SDL, in its own output directory so a test run never touches the shipping binary, and built `-O0 -g3 -DDEBUG` because the allocator compiles its leak registry and free quarantine under `CDIN_ALLOC_DEBUG`, which is tied to `NDEBUG`.
+
+* **Three fuzz harnesses and their seed corpora.** `fuzz_eol`, `fuzz_path` and `fuzz_utf8` each assert the properties that make a parser trustworthy: no read outside the input, no write outside it, no nontermination, and bytes that come back out equal to bytes that went in. That last one is what AGENTS.md §2.6 depends on. Four seeds are named `regress-*` and are kept because each found something.
+
+* **Measurement harnesses that print numbers.** `measure_runtime.py` (startup and idle CPU), `measure_floor.py`, `measure_fonts.py`, `measure_redraw.py`, and `bench.py` — synthetic files of 4/16/64/256 MiB opened through the real `Doc` path, with the Lua heap and RSS read before load, after load, after highlighting and after close. `size.py` is now what `make size` runs; it was `bench.py`'s job, which meant asking for binary sizes started a memory benchmark.
+
+* **`make bare`** — the runtime with an empty site directory: core, fonts and themes, no plugins, no extension manager, no cdin-x at run time. It is the only tree whose behaviour depends on nothing outside this repository, which makes it the right tree for measuring startup and deciding whether a failure is cdin's or the bundle's. `core` is copied rather than linked, because a stale core is the worst possible outcome.
+
+* **`.luacheckrc`**, declaring the host globals. That is a contract (`docs/architecture/extension-contract.md`, "Globals and the host tables"), and a contract only written in prose is not checked.
 
 * **`pre-release.yml` — every push gets its own version.** A push to `main` that is not documentation-only now builds Windows and Linux, reads the next version off the tag history and publishes a GitHub **prerelease** for that exact commit: `v0.2.1-alpha` → `v0.2.1-beta.1` → `v0.2.1-beta.2`, with the stage promoted (`alpha → beta → rc`) when it runs out and a new patch cycle opened after that. It reuses `release-linux.yml` and `release-windows.yml` rather than duplicating a build, and it publishes neither macOS nor Docker.
 
@@ -19,9 +59,61 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 * **`docker.yml` runs on pull requests only.** It never pushed, but it built an image on every push to `main` — including every push that produces a pre-release. A published image still comes from `release.yml` on a stable `vX.Y.Z` tag.
 
+* **libuv is installed by CI.** Both release workflows gained the install step, because `src/loop/` needs it and a missing dependency would otherwise surface as a wall of undefined symbols rather than as a missing dependency.
+
+### Changed
+
+* **`src/core/utils.c` and `src/core/boot.c` are replaced by `src/platform/`.** The platform layer is the single place in the runtime that branches on the operating system for a reason SDL cannot paper over, and it is three questions: where this binary is, what has to be set before SDL starts, and what the display's content scale is. `utils.c` and `boot.c` each carried their own `#ifdef _WIN32`, and keeping OS guards contained in one file is what stops the next platform-specific bug from arriving.
+
+* **The file log rotates mid-session, and the logger owns the stream.** `log_add_fp` used to borrow a `FILE *` that `main.c` closed. It had to: a rotated stream has to be closed, renamed and reopened by whoever holds it, and `main.c` held it. The cap is 4 MiB, one previous run is kept as `cdin-log.txt.1`, and a crash report stays one file a person can read rather than a directory.
+
+* **The font is a handle, and `renderer.font` is a plain table.** `renderer.font` used to *be* the metatable with `__index` pointing at itself; it is now a table carrying `load` plus every method, with the handle's metatable carrying the same methods. `f:set_tab_width(n)`, `renderer.font.set_tab_width(f, n)` and `renderer.font.load(p, s)` all still work. `getmetatable(f).__name` changes from `"Font"` to `"cdin.handle/font"` — the metatable name is not in the extension contract, but code reading it would see the new value.
+
+* **The verification targets moved out of `mk/build.mk`** into `mk/test.mk` (the test build and the suites) and `mk/check.mk` (the state of the tree). `make help` now lists every target, grouped into what runs here and what needs a cdin-x checkout.
+
 ### Fixed
 
+* **The editor rendered at 1x into a HiDPI framebuffer on Linux and macOS.** `utils_get_scale` wrapped `SDL_GetDisplayContentScale` in `#ifdef _WIN32` and returned a hardcoded `1.0` for everything else, on the reasoning that "non-Windows means Unix means no scaling". That was wrong — the SDL call is cross-platform, so the guard was excluding two platforms from a value SDL was ready to give them. On a HiDPI display the window came up soft and the `SCALE` in the log lied. `plat_display_scale` now asks SDL on every platform, and treats anything below 0.5 as "could not tell" rather than scaling every coordinate to zero.
+
+* **The editor could panic on the first frame after a font handle change.** `renderer_compat.c` kept checking the old metatable name while `renderer.font` had moved to the handle convention, so the draw path raised immediately. A name two translation units can disagree about is the whole hazard: it now lives in one header, both include it, and `api_check_font` is the one place that turns a font userdata into a `RenFont *`.
+
+* **Using a font after `close()` dereferenced a null pointer.** The userdata held a `RenFont *` that `__gc` NULLed, so any call after collection reached `ren_get_font_size(NULL)`. This was reported by users as "the editor crashed when I closed a file", with nothing in the log to explain it. A closed handle is now refused by name.
+
+* **A font freed while the command buffer was full was leaked.** `rencache_free_font` dropped the pointer when the buffer could not take the command. An overflow list now defers those frees to the end of the frame — the same ordering the queued path guarantees — and past the bound of that list it frees immediately and logs, rather than leaking quietly.
+
+* **A window resize could present a stale frame.** SDL destroys and recreates the window surface on resize, restore, show and DPI change, so a replaced surface holds none of the pixels the damage cache believes are on screen. `ren_take_surface_replaced` reports the replacement and the next frame invalidates everything; `PIXEL_SIZE_CHANGED`, `MAXIMIZED`, `RESTORED`, `SHOWN` and `DISPLAY_SCALE_CHANGED` are now handled as invalidating events alongside `EXPOSED`.
+
+* **Running out of memory while drawing terminated the editor.** Glyph pages are baked lazily from a per-frame call, so an allocation failure there arrived mid-frame with a command queue to unwind, and `check_alloc` was fatal. It is now confined to the load path — the `RenFont` struct, the font's data block, image creation — which is the tiny documented set of unrecoverable startup failures, because there is no font to draw with. The draw path returns `NULL` instead and every caller checks, so an OOM now costs the glyphs it could not bake and nothing else. The visible price is a blank region; that is preferable to terminating the editor.
+
+* **A locked pane split out of another locked one doubled its size every frame.** `Node:get_locked_size` summed both axes. Along the split's own axis the two panes sit side by side and the sizes add; across it they share the same extent and the size is the larger of the two. Summing both meant the title bar plus a panel reported twice its height, and since each child is handed the parent's height, it doubled again.
+
+* **`RootView:get_edge_node` picked the title bar instead of the content.** It walked down a `vsplit` always taking child `a`, which is right when the content is in `a` and wrong when it is not — `split("up", …)` puts the new row in `a`, so the search landed on the locked title-bar leaf and the panel was split out of it. It now follows the child that still holds somewhere a document can live.
+
+* **`system.exec` could spawn a process with no name.** `MultiByteToWideChar` returning a length of 0 produced `malloc(0)`, which is a valid pointer that looks like success, and `CreateProcess` was handed an empty command line. A zero or negative length is now refused with a message naming the problem.
+
 * **A `.deb` built from a pre-release version was rejected by `dpkg-deb`.** Debian reads the last hyphen as the boundary between the upstream version and the Debian revision, so `0.2.1-beta.1` is `0.2.1` + revision `beta.1`. The version is now rewritten to `0.2.1~beta.1`, which is valid and — because `~` sorts before an absent segment — orders *before* `0.2.1`. Stable versions carry no hyphen and are unchanged.
+
+* **`keymap`'s reverse-mapping test failed intermittently.** `test:live` and `test:dead` are each bound to two strokes and `reverse_map` holds exactly one, so the survivor depended on table hash order, which Lua seeds from time and addresses — 7 of 10 runs gave one stroke and 3 gave another, from one unchanged table. The test now asserts the contract ("one of the strokes bound to it") plus the single-binding case a caller actually depends on.
+
+* **`test-workflows` stopped at the first failing site mode.** It runs `empty` and `full` and reports which failed, because `full` needs the extension half present and one missing checkout directory should not hide the result for the other.
+
+### Documentation
+
+* **`AGENTS.md` rewritten as an owner contract.** It described a build and a repo layout; it is now the rules a contributor is held to, in the order they matter, with the reason attached to each one — because a rule whose reason is unknown gets worked around the first time it is inconvenient, and the workaround is the bug. It adds the priority order for when rules conflict (correctness and data safety over memory safety over bounded memory over latency over simplicity over modularity over brevity), the split between what an agent writes (code and tests) and what the owner writes (documentation), and §9's requirement that a check which could not be run is listed as NOT RUN with its reason.
+
+* `NOTICE` clarifies that third-party components retain their own licences, and `README.md`'s licence line points at it.
+
+### Known issues
+
+* **`Doc:load` and `Doc:save` still block the frame.** They still use `io.open` plus a per-line loop on the thread that runs `core.step`; `src/loop/` exists and its completion pump runs once per frame, but no call site has been moved onto it yet. The infrastructure is what this release delivers; the `data/core/doc` conversion is the next piece of work. Until then a 256 MiB file still spends seconds in there.
+
+* **The handle convention and the error tables have exactly one consumer each.** The font is the only handle, and `cdin_error_push` is not yet called from a binding, so neither is visible to Lua beyond that one type. `CDIN_API_VERSION` and `cdin_api_version` are compiled but not yet registered, so a plugin still has no way to ask the host's contract version.
+
+* **`ren_font_add_fallback` still stores a raw `RenFont *`.** The font handle anchors its own chain with one registry reference per fallback, which is what makes the shipped runtime safe — but a future handle type will not get that for free.
+
+* **`system.exec` on POSIX still goes through `/bin/sh`.** It violates AGENTS.md §2.8 and is marked as such in the source. Replacing it means deciding how one command string becomes an `argv` vector, quoting rules included, and that is a user-visible behaviour change rather than a refactor.
+
+* **`-Wconversion` is still off in the test build.** It is in the project's required warning set and the existing sources are not clean under it; `make check` and its recorded baseline cover it in the meantime.
 
 ## [0.2.1-alpha] — 2026-10-04
 
