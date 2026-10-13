@@ -1,5 +1,5 @@
-.PHONY: build clean distclean info help run debug debug-san _check_deps
-.PHONY: test check bench size tiny install uninstall test-plugins test-workflows test-lua test-site-dir
+.PHONY: build clean distclean info help run debug _check_deps
+.PHONY: check bench size tiny install uninstall
 
 ICON_INL := src/icon.inl
 
@@ -61,9 +61,6 @@ run: build
 debug:
 	@$(MAKE) BUILD=debug
 
-debug-san:
-	@$(MAKE) BUILD=debug SANITIZE=1
-
 clean:
 	rm -rf $(OUT_DIR)
 
@@ -99,13 +96,28 @@ help:
 	@echo 'so there is nothing to fetch, clone or install first.'
 	@echo ''
 	@echo 'Options: SDL3_PREFIX=/path BUILD=release|debug PREFIX=/usr/local LUA_VERSION=auto|5.4'
-	@echo 'Quality: test, check, bench, size, tiny (BUILD=tiny, -Os + gc-sections)'
-	@echo '          test-plugins  — keymap + loader, runtime only (needs lua)'
-	@echo '          test-workflows — the cdin-x workflows and their strokes (needs lua + CDINX_DIR)'
-	@echo '          test-lua      — unit + integration suite in tests/lua (needs lua)'
+	@echo ''
+	@echo 'Verification (all of these run):'
+	@echo '  test            C unit suites + Lua data-layer suites'
+	@echo '  test-c          C unit suites only (tests/c)'
+	@echo '  test-lua        Lua data-layer suites only (needs lua)'
+	@echo '  check           warnings-to-fix, static analysis, luacheck'
+	@echo '  bench           memory / open / edit / frame numbers vs the baseline'
+	@echo '  debug-san       ASan + UBSan build, C suites run under it'
+	@echo '                   (exits non-zero if the runtimes are missing)'
+	@echo '  tsan            TSan build of the C suites, for the worker pool'
+	@echo '  test-san        C suites under ASan + UBSan'
+	@echo '  valgrind        C suites under valgrind (SKIPPED if not installed)'
+	@echo '  fuzz            report which fuzz harnesses exist'
+	@echo '  size            binary and data sizes'
+	@echo '  tiny            BUILD=tiny (-Os + gc-sections)'
+	@echo ''
+	@echo 'Cross-repo (need a cdin-x checkout, read-only):'
+	@echo '  test-plugins    loader + keymap integrity, runtime only (needs lua)'
+	@echo '  test-site-dir   site directory name agrees across both halves'
+	@echo '  test-workflows  the cdin-x workflows and their strokes (needs lua + CDINX_DIR)'
 
-check:
-	python scripts/check.py
+# check, bench and the cross-repo suites live in mk/test.mk and mk/check.mk.
 
 test-plugins:
 	@command -v $(LUA) >/dev/null 2>&1 || command -v lua >/dev/null 2>&1 || { \
@@ -129,12 +141,14 @@ test-plugins:
 test-workflows:
 	@command -v $(LUA) >/dev/null 2>&1 || command -v lua >/dev/null 2>&1 || { \
 		echo '✗ lua not found (apt: sudo apt install lua5.4)'; exit 1; }
-	@for site in full empty; do \
+	@status=0; \
+	for site in empty full; do \
 		echo ''; \
 		echo "── workflows: site=$$site ──"; \
 		CDIN_SRC="$(CURDIR)" CDINX_DIR="$(CDINX_DIR)" CDIN_SITE=$$site \
-			$(LUA_RUNNER) scripts/test_workflows.lua || exit 1; \
-	done
+			$(LUA_RUNNER) scripts/test_workflows.lua || status=1; \
+	done; \
+	exit $$status
 
 test-site-dir:
 	@command -v $(LUA) >/dev/null 2>&1 || command -v lua >/dev/null 2>&1 || { \
@@ -144,20 +158,15 @@ test-site-dir:
 	@echo '-- site directory name --'
 	@CDIN_SRC="$(CURDIR)" CDINX_DIR="$(CDINX_DIR)" $(LUA_RUNNER) scripts/test_site_dir.lua
 
-test-lua:
-	@command -v $(LUA) >/dev/null 2>&1 || command -v lua >/dev/null 2>&1 || { \
-		echo '✗ lua not found (apt: sudo apt install lua5.4)'; exit 1; }
-	@CDIN_SRC="$(CURDIR)" CDIN_DIR="$(TEST_CDIN_DIR)" CDIN_SITE=empty CDIN_PLUGINS=false \
-		$(LUA_RUNNER) scripts/test_lua.lua >/dev/null
-	@echo '── unit + integration ──'
-	@CDIN_THEME_TREE="$(THEME_TREE)" $(LUA_RUNNER) tests/lua/run.lua
+# test-lua, test-plugins, test-workflows, test-site-dir, valgrind and debug-san
+# are defined in mk/test.mk, alongside the C runner they belong with.
 
 size:
 	@echo '-- binary / data sizes --'
-	@python scripts/bench.py
+	@$(PYTHON) scripts/size.py
 	@echo ''
 	@echo '-- largest data dirs --'
-	@python -c "from pathlib import Path; r=Path('data'); ds=sorted(((sum(f.stat().st_size for f in d.rglob('*') if f.is_file()), d) for d in r.iterdir() if d.is_dir()), reverse=True); [print(f'  {d}: {s/1024:.1f} KiB') for s,d in ds]"
+	@$(PYTHON) -c "from pathlib import Path; r=Path('data'); ds=sorted(((sum(f.stat().st_size for f in d.rglob('*') if f.is_file()), d) for d in r.iterdir() if d.is_dir()), reverse=True); [print(f'  {d}: {s/1024:.1f} KiB') for s,d in ds]"
 
 tiny:
 	@$(MAKE) BUILD=tiny

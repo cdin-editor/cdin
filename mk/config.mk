@@ -3,6 +3,22 @@ BINDIR := $(PREFIX)/bin
 LIBDIR := $(PREFIX)/lib/cdin
 DATADIR := $(LIBDIR)/data
 
+# Where the compiler's own runtime libraries live: the directory the compiler is
+# in. On a MinGW cross or a Windows-native toolchain that is /mingw64/bin, which is
+# NOT $(BINDIR) — PREFIX is the *install* prefix and defaults to /usr/local
+# regardless of where the toolchain actually is.
+#
+# Needed because cdin links SDL3, Lua and libuv as shared libraries, so the built
+# binary is not self-contained. Anything that assembles a tree to RUN — `make
+# bare`, which is what scripts/measure_runtime.py measures — has to bring those
+# DLLs along or the tree dies at launch with STATUS_DLL_NOT_FOUND before main()
+# logs anything. Resolved from the compiler rather than configured, so it is
+# correct for every toolchain without being told.
+CC_BINDIR := $(patsubst %/,%,$(dir $(shell command -v $(CC) 2>/dev/null)))
+ifeq ($(CC_BINDIR),)
+  CC_BINDIR := $(BINDIR)
+endif
+
 BUILD ?= release
 SDL_VERSION ?= auto
 LUA_VERSION ?= auto
