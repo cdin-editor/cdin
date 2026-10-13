@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Regenerate tests/check_baseline.json — the numbers `make check` gates on.
+
+Run this when a check's result is expected to change, and commit the result
+with the change that caused it. The point of a baseline is that a reviewer can
+see what moved: a diff of this file is a diff of the warning profile.
+
+    python tests/record_baseline.py            # rewrite the baseline
+    python tests/record_baseline.py --show     # print it without writing
+
+Only warnings that exist today are recorded. Nothing here decides whether a
+warning is acceptable; that is what the review of the diff is for. What this
+file does is make "no new warnings" a mechanical check instead of a promise.
+
+The scan itself is imported from scripts/check.py rather than reimplemented. It
+was duplicated here, and the two copies disagreed the moment either changed: the
+recorder counted a comment and a log message that mentioned calloc as two bare
+calloc calls, so the baseline it wrote was higher than the one `make check`
+measures — and a gate compared against a number nothing computes is a gate that
+either always passes or always fails.
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "tests" / "check_baseline.json"
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import check  # noqa: E402  -- the same code `make check` runs, on purpose
+
+PRODUCT_WARNINGS = list(check.PRODUCT_WARNINGS)
+
+
+def c_sources():
+    return sorted(
+        str(p.relative_to(ROOT)).replace("\\", "/")
+        for p in (ROOT / "src").rglob("*.c")
+    )
+
+
+def include_flags():
+    flags = ["-Isrc"]
+    if shutil.which("pkg-config"):
+        for pkg in ("sdl3", "sdl2", "lua", "lua5.4"):
+            if subprocess.run(["pkg-config", "--exists", pkg],
+                              capture_output=True).returncode == 0:
+                out = subprocess.run(["pkg-config", "--cflags", pkg],
+                                     capture_output=True, text=True)
+                flags.extend(out.stdout.split())
+                break
+    return flags
+
+
+def record_compiler():
+    cc = os.environ.get("CC") or "cc"
+    if not shutil.which(cc):
+        print(f"!! {cc} not found — recording an empty compiler section")
+        return {}
+
+    cmd = [cc, "-std=gnu11", "-fsyntax-only", "-Wno-unused-parameter",
+           "-Wno-conversion"] + PRODUCT_WARNINGS + include_flags() + c_sources()
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+
+    diag_re = re.compile(r"^(.+?):(\d+):(\d+):\s+(warning|error):\s+(.*)$")
+    counts = {}
+    for line in proc.stderr.splitlines():
+        m = diag_re.match(line.strip())
+        if not m:
+            continue
+        path, _ln, _col, kind, text = m.groups()
+        tag = re.search(r"\[(-W[a-z0-9-]+)\]", text)
+        key = "%s|%s" % (path.replace("\\", "/"), tag.group(1) if tag else kind)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def record_banned():
+    """The same scan `make check` runs: comments and strings stripped, and the
+    allocator's own malloc/calloc/realloc exempted. Recording anything else would
+    mean recording a number the gate never compares against."""
+    patterns = check.BANNED_PATTERNS
+    counts = {}
+    for path in c_sources():
+        text = check.strip_c_noise(
+            (ROOT / path).read_text(encoding="utf-8", errors="replace"))
+        for name, pat in patterns.items():
+            if path in check.BANNED_EXEMPT.get(name, set()):
+                continue
+            n = sum(1 for line in text.splitlines() if pat.search(line))
+            if n:
+                counts[name] = counts.get(name, 0) + n
+    return counts
+
+
+def record_cppcheck():
+    cppcheck = shutil.which("cppcheck")
+    if not cppcheck:
+        return {}
+    proc = subprocess.run(
+        [cppcheck, "--enable=warning,performance,portability",
+         "--std=c11", "--quiet", "-Isrc", "src"],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+    by_file = {}
+    for line in (proc.stdout + proc.stderr).splitlines():
+        if ": (error" in line or ": (warning" in line or ": (style" in line:
+            path = line.strip().split(":", 1)[0].replace("\\", "/")
+            by_file[path] = by_file.get(path, 0) + 1
+    return by_file
+
+
+def record_luacheck():
+    luacheck = shutil.which("luacheck")
+    if not luacheck or not (ROOT / ".luacheckrc").exists():
+        return {"total": 0, "_note": "luacheck not installed when recorded"}
+    targets = [str(p.relative_to(ROOT)).replace("\\", "/")
+               for p in (ROOT / "data").rglob("*.lua")]
+    proc = subprocess.run([luacheck, "--codes", *targets],
+                          capture_output=True, text=True, cwd=ROOT)
+    m = re.search(r"total:\s*(\d+)\s+warning", proc.stdout)
+    return {"total": int(m.group(1)) if m else 0}
+
+
+def main():
+    show = "--show" in sys.argv
+
+    data = {
+        "_comment": (
+            "Generated by tests/record_baseline.py. `make check` fails when a "
+            "count here is exceeded; it never fails for being lower. Commit a "
+            "regenerated file with the change that caused it, so the warning "
+            "profile is reviewable as a diff."
+        ),
+        "_generated_on": subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=ROOT).stdout.strip() or "unknown",
+        "sources": c_sources(),
+        "compiler": record_compiler(),
+        "banned": record_banned(),
+        "cppcheck": record_cppcheck(),
+        "luacheck": record_luacheck(),
+    }
+
+    text = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    if show:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        print(text)
+        return 0
+
+    OUT.write_text(text, encoding="utf-8")
+    print(f"wrote {OUT.relative_to(ROOT)}")
+    print(f"  sources     {len(data['sources'])}")
+    print(f"  compiler    {len(data['compiler'])} warning group(s)")
+    print(f"  banned      {sum(data['banned'].values())} occurrence(s)")
+    print(f"  cppcheck    {len(data['cppcheck'])} file(s)")
+    print(f"  luacheck    {data['luacheck'].get('total')} warning(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
