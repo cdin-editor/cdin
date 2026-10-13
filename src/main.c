@@ -143,11 +143,26 @@ int main(int argc, char **argv) {
 
   plat_early_init();
 
+  /* Two startup markers that the measurement reads, splitting the application
+   * cost into SDL and Lua.
+   *
+   * Added because "startup is over budget" is not actionable on its own. The
+   * phase table showed a single lump between "cdin starting" and "window
+   * created", which spans SDL_Init and SDL_GetPrimaryDisplay — both of which
+   * create or query a graphics device, and either of which can be tens of
+   * milliseconds on a machine that has to initialise a display driver. Without
+   * this split there is no way to tell whether the budget is missed by the loader
+   * or by cdin's own work, and the two have completely different fixes.
+   *
+   * Two log_info lines at boot, not per-frame ones: this is a one-time cost and
+   * AGENTS.md §8 forbids a steady-state allocation or log on the frame path. */
+  log_info("main: SDL_Init begin");
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
     log_fatal("SDL_Init failed: %s", SDL_GetError());
     if (log_fp) fclose(log_fp);
     return EXIT_FAILURE;
   }
+  log_info("main: SDL_Init done");
   SDL_SetHint("SDL_MOUSE_FOCUS_CLICKTHROUGH", "1");
   atexit(SDL_Quit);
   SDL_DisplayID display = SDL_GetPrimaryDisplay();
@@ -185,6 +200,12 @@ int main(int argc, char **argv) {
     if (log_fp) fclose(log_fp);
     return EXIT_FAILURE;
   }
+  /* The Lua half of the split. See the SDL_Init markers above for why these
+   * exist: "startup is over budget" needs to say WHICH half, and the Lua boot —
+   * creating a state, opening the standard libraries, registering native
+   * modules, then running core.init() — is the part that is cdin's own doing
+   * rather than the platform's. */
+  log_info("main: lua_state created");
   luaL_openlibs(L);
   api_load_libs(L);
 
