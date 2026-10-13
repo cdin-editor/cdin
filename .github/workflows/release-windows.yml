@@ -1,4 +1,3 @@
-```yaml
 name: Release – Windows
 
 on:
@@ -408,4 +407,3 @@ jobs:
             dist/*setup*.exe
           if-no-files-found: error
           retention-days: 14
-```
