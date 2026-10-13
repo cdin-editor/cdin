@@ -45,12 +45,25 @@ end
 -- `a` — the content pane, with the rows beneath it. Any number of nested splits
 -- in either direction; it always ends on a leaf in the content region.
 function RootView:get_edge_node(side)
+  -- A subtree that still holds somewhere a document can live. The title bar is
+  -- a locked leaf, and so are the command line and the status bar.
+  local function has_free_leaf(n)
+    if n.type == "leaf" then return not n.locked end
+    return has_free_leaf(n.a) or has_free_leaf(n.b)
+  end
+
   local node = self.root_node
   while node.type ~= "leaf" do
     if node.type == "hsplit" then
       node = (side == "left") and node.a or node.b
     else
-      node = node.a
+      -- Which child is "the content" depends on how the row was split off:
+      -- `split("up", ...)` (the title bar) puts the new row in `a`, while
+      -- `split("down", ...)` (command line, status bar) leaves the content in
+      -- `a`. So `a` is not always the content — taking it blindly landed on
+      -- the title bar, and the panel was split out of it. Follow the child that
+      -- still has a free leaf in it.
+      node = has_free_leaf(node.a) and node.a or node.b
     end
   end
   return node
