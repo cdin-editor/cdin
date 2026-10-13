@@ -4,8 +4,7 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      # Pre-release tags (v0.2.1-beta.1) belong to pre-release.yml: they are
-      # published as GitHub prereleases, never through the stable path.
+      # Pre-release tags (v0.2.1-beta.1) belong to pre-release.yml.
       - '!v*-*'
   workflow_dispatch: {}
   workflow_call:
@@ -29,13 +28,13 @@ concurrency:
 
 env:
   SDL_VERSION: "3.2.14"
-  MSYSTEM: MINGW64
+  MSYSTEM: UCRT64
   PYTHONIOENCODING: utf-8
   PYTHONUTF8: "1"
 
 jobs:
   build-windows:
-    name: Build (Windows x86_64 / MinGW)
+    name: Build (Windows x86_64 / MinGW UCRT64)
     runs-on: windows-latest
     outputs:
       artifact-name: cdin-windows-x86_64
@@ -49,72 +48,111 @@ jobs:
         with:
           fetch-depth: 0
 
-      # cdin-x is where the mandatory set lives: the vim plugin, the default
-      # theme and the fonts. A cdin build bundles it into build/…/data via
-      # scripts/assemble_data.py -> scripts/bundle.py. actions/checkout refuses
-      # any `path` outside GITHUB_WORKSPACE, so it cannot be checked out as a
-      # sibling (`../cdin-x`); it goes inside the workspace and CDINX_DIR points
-      # the build at it. The build itself never fetches anything.
+      # cdin-x supplies the mandatory vim plugin, default theme and fonts.
+      # It is bundled into build/.../data by assemble_data.py / bundle.py.
       - name: Checkout cdin-x (mandatory bundle source)
         uses: actions/checkout@v4
         with:
           repository: m-mdy-m/cdin-x
           path: cdin-x
 
-      # mk/bundle.mk uses `CDINX_DIR ?=`, so the environment value is picked up
-      # by every later `make` step without changing the make command lines.
+      # This step runs before MSYS2 is initialized, so use the runner's Bash.
       - name: Point the build at cdin-x
         shell: bash
         run: echo "CDINX_DIR=${GITHUB_WORKSPACE//\\//}/cdin-x" >> "$GITHUB_ENV"
 
-      # msys2/setup-msys2 has built-in cache support via cache: true
-      - name: Set up MSYS2
+      - name: Set up MSYS2 UCRT64
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
           cache: true
           install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-python
-            mingw-w64-x86_64-python-pillow
-            mingw-w64-x86_64-librsvg
-            mingw-w64-x86_64-lua
-            mingw-w64-x86_64-libuv
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-pkg-config
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pillow
+            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-lua
+            mingw-w64-ucrt-x86_64-libuv
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
             make
             unzip
             zip
             curl
+            git
+            file
+            ca-certificates
 
-      # ── Cache: SDL3 zip download + extracted headers/libs ────────────────
-      - name: Cache SDL3 (MinGW)
+      - name: Verify UCRT64 toolchain
+        run: |
+          echo "MSYSTEM=${MSYSTEM}"
+          test "${MSYSTEM}" = "UCRT64"
+          command -v gcc
+          command -v pkg-config
+          command -v cmake
+          command -v ninja
+          gcc --version | head -1
+          pkg-config --version
+          if [[ "$(command -v gcc)" != /ucrt64/bin/* ]]; then
+            echo "::error::Expected UCRT64 gcc from /ucrt64/bin, got: $(command -v gcc)"
+            exit 1
+          fi
+
+      # Build the pinned SDL version with the same UCRT64 toolchain as cdin.
+      # This avoids mixing an SDL binary built against the deprecated MINGW64
+      # (MSVCRT) environment with the UCRT64 application.
+      - name: Cache SDL3 (UCRT64)
         uses: actions/cache@v4
         id: cache-sdl3
         with:
-          path: /tmp/sdl3
-          key: sdl3-mingw-${{ env.SDL_VERSION }}
+          path: .github-cache/sdl3-ucrt/install
+          key: sdl3-ucrt-${{ env.SDL_VERSION }}-windows-x86_64
 
-      - name: Install SDL3 (MinGW pre-built)
+      - name: Build and install SDL3 (UCRT64)
         run: |
-          if [[ ! -d "/tmp/sdl3/SDL3-${SDL_VERSION}" ]]; then
-            SDL_ZIP="SDL3-devel-${SDL_VERSION}-mingw.zip"
-            SDL_URL="https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/${SDL_ZIP}"
-            curl -fsSL -o "${SDL_ZIP}" "${SDL_URL}"
-            unzip -q "${SDL_ZIP}" -d /tmp/sdl3
+          SDL_PREFIX="${PWD}/.github-cache/sdl3-ucrt/install"
+          SDL_SOURCE="/tmp/sdl3-ucrt/source"
+          SDL_BUILD="/tmp/sdl3-ucrt/build"
+
+          if [[ ! -f "${SDL_PREFIX}/bin/SDL3.dll" || \
+                ! -f "${SDL_PREFIX}/lib/libSDL3.dll.a" || \
+                ! -f "${SDL_PREFIX}/include/SDL3/SDL.h" ]]; then
+            mkdir -p "$(dirname "${SDL_PREFIX}")" /tmp/sdl3-ucrt
+            curl -fsSL \
+              "https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL3-${SDL_VERSION}.tar.gz" \
+              -o "/tmp/SDL3-${SDL_VERSION}.tar.gz"
+
+            rm -rf "${SDL_SOURCE}" "${SDL_BUILD}"
+            mkdir -p "${SDL_SOURCE}"
+            tar -xzf "/tmp/SDL3-${SDL_VERSION}.tar.gz" \
+              --strip-components=1 -C "${SDL_SOURCE}"
+
+            cmake -S "${SDL_SOURCE}" -B "${SDL_BUILD}" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX="${SDL_PREFIX}" \
+              -DSDL_SHARED=ON \
+              -DSDL_STATIC=OFF \
+              -DSDL_TEST=OFF \
+              -DSDL_TESTS=OFF \
+              -DSDL_EXAMPLES=OFF
+
+            cmake --build "${SDL_BUILD}" --parallel "$(nproc)"
+            cmake --install "${SDL_BUILD}"
           else
-            echo "SDL3 ${SDL_VERSION} restored from cache"
+            echo "SDL3 ${SDL_VERSION} restored from UCRT64 cache"
           fi
 
-          SDL_ROOT="/tmp/sdl3/SDL3-${SDL_VERSION}/x86_64-w64-mingw32"
-          cp -r "${SDL_ROOT}/include/"* /mingw64/include/
-          cp -r "${SDL_ROOT}/lib/"*     /mingw64/lib/
-          cp -r "${SDL_ROOT}/bin/"*     /mingw64/bin/
+          # Install the cached/source-built SDL into this job's UCRT64 prefix.
+          cp -a "${SDL_PREFIX}/include/." /ucrt64/include/
+          cp -a "${SDL_PREFIX}/lib/."     /ucrt64/lib/
+          cp -a "${SDL_PREFIX}/bin/."     /ucrt64/bin/
 
-          mkdir -p /mingw64/lib/pkgconfig
-          cat > /mingw64/lib/pkgconfig/sdl3.pc << 'PC'
-          prefix=/mingw64
+          mkdir -p /ucrt64/lib/pkgconfig
+          cat > /ucrt64/lib/pkgconfig/sdl3.pc << 'PC'
+          prefix=/ucrt64
           exec_prefix=${prefix}
           libdir=${prefix}/lib
           includedir=${prefix}/include
@@ -125,8 +163,11 @@ jobs:
           Libs: -L${libdir} -lSDL3
           Cflags: -I${includedir}
           PC
-          sed -i "s/SDL_VER_PLACEHOLDER/${SDL_VERSION}/" /mingw64/lib/pkgconfig/sdl3.pc
-          pkg-config --modversion sdl3 && echo "SDL3 pkg-config OK"
+          sed -i "s/SDL_VER_PLACEHOLDER/${SDL_VERSION}/" /ucrt64/lib/pkgconfig/sdl3.pc
+
+          PKG_CONFIG_PATH=/ucrt64/lib/pkgconfig pkg-config --modversion sdl3
+          test -f /ucrt64/bin/SDL3.dll
+          test -f /ucrt64/lib/libSDL3.dll.a
 
       - name: Generate icon assets
         run: |
@@ -149,97 +190,101 @@ jobs:
       - name: Build cdin.ico
         run: |
           python3 - << 'PYEOF'
-          import struct, io, os
+          import io
+          import os
+          import struct
           from PIL import Image
 
-          sizes    = [256, 64, 48, 32, 16]
-          ico_dir  = "scripts/icons"
+          sizes = [256, 64, 48, 32, 16]
+          ico_dir = "scripts/icons"
           out_path = "scripts/cdin.ico"
 
-          imgs = []
-          for sz in sizes:
-              png_path = os.path.join(ico_dir, f"cdin-{sz}.png")
+          images = []
+          for size in sizes:
+              png_path = os.path.join(ico_dir, f"cdin-{size}.png")
               with open(png_path, "rb") as f:
                   img = Image.open(f)
                   img.load()
-                  imgs.append((sz, img.convert("RGBA")))
+                  images.append((size, img.convert("RGBA")))
 
-          n      = len(imgs)
-          header = struct.pack("<HHH", 0, 1, n)
-          dirs   = b""
-          data   = b""
-          offset = 6 + 16 * n
+          count = len(images)
+          header = struct.pack("<HHH", 0, 1, count)
+          directories = b""
+          data = b""
+          offset = 6 + 16 * count
 
-          for sz, img in imgs:
-              buf = io.BytesIO()
-              img.save(buf, "PNG")
-              png = buf.getvalue()
-              bw  = sz if sz < 256 else 0
-              dirs += struct.pack("<BBBBHHII", bw, bw, 0, 0, 1, 32, len(png), offset)
+          for size, img in images:
+              buffer = io.BytesIO()
+              img.save(buffer, "PNG")
+              png = buffer.getvalue()
+              dimension = size if size < 256 else 0
+              directories += struct.pack(
+                  "<BBBBHHII", dimension, dimension, 0, 0, 1, 32, len(png), offset
+              )
               data += png
               offset += len(png)
 
           with open(out_path, "wb") as f:
-              f.write(header + dirs + data)
+              f.write(header + directories + data)
 
           print(f"cdin.ico written ({os.path.getsize(out_path):,} bytes)")
           PYEOF
 
       - name: Build release binary
+        env:
+          PKG_CONFIG_PATH: /ucrt64/lib/pkgconfig
         run: |
-          mingw32-make -j$(nproc) \
+          mingw32-make -j"$(nproc)" \
             BUILD=release \
             PLATFORM=windows \
             SDL_VERSION=3 \
-            CC=x86_64-w64-mingw32-gcc
+            CC=gcc
 
       - name: Verify binary
         run: |
-          EXE="$(find build/windows-release -maxdepth 1 -name 'cdin.exe' | head -1)"
-          if [[ -z "$EXE" ]]; then
+          EXE="$(find build/windows-release -maxdepth 1 -name 'cdin.exe' -print -quit)"
+          if [[ -z "${EXE}" ]]; then
             echo "::error::cdin.exe not found under build/windows-release/"
             find build/ -type f 2>/dev/null || echo "(build/ empty)"
             exit 1
           fi
-          file "$EXE"
-          echo "EXE_PATH=$EXE" >> "$GITHUB_ENV"
+          file "${EXE}"
+          echo "EXE_PATH=${EXE}" >> "$GITHUB_ENV"
 
-      # Copy runtime DLLs beside cdin.exe so the packaged application can run
-      # without requiring the user to install MSYS2.
+      # Copy required runtime DLLs beside cdin.exe so the packaged application
+      # does not require the user to install MSYS2.
       - name: Collect runtime DLLs
         run: |
-          OUT_DIR="$(dirname "$EXE_PATH")"
+          OUT_DIR="$(dirname "${EXE_PATH}")"
 
-          SDL_DLL="$(find /mingw64/bin -name 'SDL3.dll' -print -quit)"
-          LUA_DLL="$(find /mingw64/bin -name 'lua*.dll' -print | sort | head -1)"
-          UV_DLL="$(find /mingw64/bin -name 'libuv-1.dll' -print -quit)"
+          SDL_DLL="$(find /ucrt64/bin -maxdepth 1 -name 'SDL3.dll' -print -quit)"
+          LUA_DLL="$(find /ucrt64/bin -maxdepth 1 -name 'lua*.dll' -print | sort | head -1)"
+          UV_DLL="$(find /ucrt64/bin -maxdepth 1 -name 'libuv-1.dll' -print -quit)"
 
-          if [[ -n "$SDL_DLL" ]]; then
-            cp "$SDL_DLL" "$OUT_DIR/"
-            echo "SDL3 runtime DLL copied: $(basename "$SDL_DLL")"
-          else
-            echo "::warning::SDL3.dll not found"
-          fi
+          for entry in "SDL3:${SDL_DLL}" "Lua:${LUA_DLL}" "libuv:${UV_DLL}"; do
+            label="${entry%%:*}"
+            path="${entry#*:}"
+            if [[ -z "${path}" ]]; then
+              echo "::error::Required ${label} runtime DLL was not found under /ucrt64/bin"
+              find /ucrt64/bin -maxdepth 1 -iname '*lua*.dll' -o -iname '*uv*.dll' -o -iname 'SDL3.dll' || true
+              exit 1
+            fi
+            cp "${path}" "${OUT_DIR}/"
+            echo "${label} runtime DLL copied: $(basename "${path}")"
+          done
 
-          if [[ -n "$LUA_DLL" ]]; then
-            cp "$LUA_DLL" "$OUT_DIR/"
-            echo "Lua runtime DLL copied: $(basename "$LUA_DLL")"
-          else
-            echo "::warning::Lua DLL not found"
-          fi
+          # Include GCC runtime DLLs used by dynamically linked MinGW binaries.
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [[ -f "/ucrt64/bin/${dll}" ]]; then
+              cp -n "/ucrt64/bin/${dll}" "${OUT_DIR}/" || true
+            fi
+          done
 
-          if [[ -n "$UV_DLL" ]]; then
-            cp "$UV_DLL" "$OUT_DIR/"
-            echo "libuv runtime DLL copied: $(basename "$UV_DLL")"
-          else
-            echo "::warning::libuv-1.dll not found under /mingw64/bin"
-            echo "Checking whether libuv is statically linked or uses another DLL name."
-            find /mingw64/bin -maxdepth 1 -iname '*uv*.dll' -print || true
-          fi
+          echo "Runtime DLL inventory:"
+          find "${OUT_DIR}" -maxdepth 1 -type f -iname '*.dll' -printf '%f\n' | sort
 
-      # ── Version for the package names ────────────────────────────────────
-      # pre-release.yml passes the version it computed for this commit; a tag
-      # push takes it from the tag; anything else is a local dev build.
+      # pre-release.yml passes the version for its commit; stable tags take it
+      # from the tag; manual runs use a local development version.
       - name: Determine version
         id: version
         env:
@@ -265,16 +310,26 @@ jobs:
           cp "${EXE_PATH}" "${PKG_DIR}/cdin.exe"
           cp "$(dirname "${EXE_PATH}")"/*.dll "${PKG_DIR}/" 2>/dev/null || true
 
-          # The ASSEMBLED data/, next to the binary that was just built — not
-          # the source data/. The source holds only the runtime core; the
-          # mandatory set (vim plugin, default theme, fonts) is bundled from
-          # cdin-x into the build output at build time, and that is what a
-          # release has to ship.
-          BUILD_DIR="$(dirname "$EXE_PATH")"
-          [[ -d "${BUILD_DIR}/data" ]] && cp -r "${BUILD_DIR}/data" "${PKG_DIR}/"
+          # Ship the assembled build output, not the source data/ directory.
+          BUILD_DIR="$(dirname "${EXE_PATH}")"
+          if [[ ! -d "${BUILD_DIR}/data" ]]; then
+            echo "::error::Assembled runtime data directory missing: ${BUILD_DIR}/data"
+            exit 1
+          fi
+          mkdir -p "${PKG_DIR}/data"
+          cp -RL "${BUILD_DIR}/data/." "${PKG_DIR}/data/"
+          if [[ ! -f "${PKG_DIR}/data/core/init.lua" ]]; then
+            echo "::error::Packaged Lua core is missing: data/core/init.lua"
+            find "${PKG_DIR}/data" -maxdepth 3 -print
+            exit 1
+          fi
+          if find "${PKG_DIR}/data" -type l -print -quit | grep -q .; then
+            echo "::error::Unexpected symlink in packaged data/"
+            find "${PKG_DIR}/data" -type l -ls
+            exit 1
+          fi
 
           [[ -f scripts/cdin.ico ]] && cp scripts/cdin.ico "${PKG_DIR}/"
-
           cp scripts/cdin.py "${PKG_DIR}/"
           cp -r scripts/_cdin "${PKG_DIR}/"
 
@@ -284,7 +339,7 @@ jobs:
 
           cd dist
           zip -r "${PKG_NAME}.zip" "${PKG_NAME}/" > /dev/null
-          echo "Zip: $(du -sh ${PKG_NAME}.zip | cut -f1)"
+          echo "Zip: $(du -sh "${PKG_NAME}.zip" | cut -f1)"
 
       - name: Write Inno Setup script
         env:
@@ -356,20 +411,10 @@ jobs:
           VER="${{ steps.version.outputs.version }}"
           ISS_VER="${VER#v}"
           PKG_NAME="cdin-${VER}-windows-x86_64"
-          # Paths inside the .iss are consumed by ISCC.exe (native Windows),
-          # so use Windows-style backslashes even though we're in a bash step.
-          SRC_DIR=$(cygpath -w "${PWD}/dist/${PKG_NAME}")
-          OUT_DIR=$(cygpath -w "${PWD}/dist")
+          SRC_DIR="$(cygpath -w "${PWD}/dist/${PKG_NAME}")"
+          OUT_DIR="$(cygpath -w "${PWD}/dist")"
 
-          # ISS_TEMPLATE comes in as a YAML block scalar (env:), which keeps
-          # a clean, unindented literal value — no heredoc indentation issue.
-          # Placeholders are substituted with bash's ${var//search/replace}
-          # rather than sed: OUT_DIR/SRC_DIR are Windows paths from cygpath
-          # containing literal backslashes, which sed's replacement text
-          # would reinterpret as escapes; bash parameter expansion treats the
-          # replacement as a literal string, so backslashes pass through
-          # untouched. The template's own {#MyAppName}-style Inno Setup
-          # syntax is left alone either way since it isn't a placeholder.
+          # Bash parameter expansion preserves backslashes in Windows paths.
           content="$ISS_TEMPLATE"
           content="${content//__ISS_VER__/$ISS_VER}"
           content="${content//__OUT_DIR__/$OUT_DIR}"
@@ -377,7 +422,6 @@ jobs:
           content="${content//__MyAppName__/\{#MyAppName\}}"
 
           printf '%s\n' "$content" > dist/cdin-installer.iss
-
           echo "Wrote dist/cdin-installer.iss"
           cat dist/cdin-installer.iss
 
