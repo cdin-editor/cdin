@@ -1,113 +1,108 @@
-# AGENTS.md
+# AGENTS.md — rules for working on cdin (the runtime)
 
-Guidance for agents working on cdin — a C + Lua text editor (fork of lite). The C binary is just a host; the actual editor is Lua loaded from `data/`. Detailed docs: `docs/architecture/overview.md` and `CONTRIBUTING.md`.
+## 1. What this repository is
 
-## Outside website direcotry
-- NEVER and EVER change or touch anything outside the website directory.
+cdin: a C11 + Lua 5.4 editor runtime. C is the mechanism (buffer, events, jobs, syntax tokens, fonts, graphics, filesystem); Lua (`data/core/`) is the policy. cdin-x (separate repository) holds the package manager and every optional feature. cdin knows nothing about cdin-x and runs with an empty site directory.
 
-## Repo layout
+Master prompt: `PROMPT_CDIN_MASTER.md`. Architecture, budgets, phases and open decisions are there.
 
-- Root of this repo = the editor **runtime**, and it is self-contained: its `data/` holds only `core/`. `website/` is a separate Vite/React site with its own `AGENTS.md` and pnpm toolchain.
-- `src/` — C11 layer: window, renderer, SDL bindings, Lua binding (`src/api/` is the Lua-facing API). It knows nothing about documents or keybindings.
-- `data/core/` — the whole of the editor. Runtime: config, state, views, syntax, commands, keymaps, plugin loader. Loaded from `data/core/init.lua`.
-- There is no `data/plugins/`, `data/themes/` or `data/fonts/` in this repo. Those are **build output**, assembled into `build/<platform>-<build>/data/` from [cdin-x](https://github.com/m-mdy-m/cdin-x) at build time. See `mk/bundle.mk`.
-- Rule of thumb: optional behavior belongs in an extension, not core. Renderer/window changes belong in `src/`.
+## 2. Hard rules
 
-## cdin-x and CDINX_DIR
+1. **Never edit cdin-x or `website/`.** Report what cdin-x must do under `CDIN-X SIDE`.
+2. **Never break the extension contract** (`docs/architecture/extension-contract.md`) unless an owner-approved decision says so. A removed or changed API stays as a shim that logs one deprecation per process.
+3. **Lua state is single-threaded. Workers never touch Lua.** They work on immutable, ref-counted snapshots.
+4. **No unbounded growth.** Every cache, queue, buffer and history has a byte cap and an eviction or refusal policy. No fixed ceiling that silently drops data (`push_command` returning NULL and losing a font is the bug to never repeat).
+5. **Every handle has one owner and a defined lifetime.** Userdata with `__gc` and an explicit `close()`. A C object that Lua can reach cannot be freed while Lua can still use it.
+6. **Bytes round-trip.** The buffer stores bytes. Never "sanitize" or rewrite file content (NUL, invalid UTF-8, BOM, EOL) on load; a decoder substitutes only for display.
+7. **Never block the frame.** No `fread`/`popen`/`waitpid`/`sleep` loops on the main thread for anything unbounded.
+8. **Never spawn through a shell.** `argv` arrays only.
+9. **Do not run destructive commands. Do not commit unless asked.**
+10. The editor must **build and start after every step**.
 
-The one coupling between this repo and cdin-x is a build input: the variable `CDINX_DIR`, read only in `mk/bundle.mk`, `scripts/assemble_data.py` and `scripts/_cdin/*.py`. Nothing under `src/` or `data/` refers to cdin-x, and a build never fetches anything.
+## 3. Priorities when they conflict
 
-A **build** is not self-sufficient on its own: `make` compiles the binary *and* bundles the mandatory set (the vim plugin, the extension manager, the default theme, the fonts) from a cdin-x checkout, because an editor without them cannot start. `make bin` compiles the binary only and needs no cdin-x.
+correctness and data safety > memory safety (no UB, no leaks) > bounded memory > latency > simplicity > modularity > brevity. Say so in the report when you chose between two.
 
-The contract cdin provides and cdin-x may rely on is written down in `docs/architecture/extension-contract.md`. Read it before changing anything about `config.site_dir`, the plugin loader or the theme registry.
+## 4. What you write and what the owner writes
 
-## Plugins
+You write: C and Lua code, tests (unit, model-based, fuzz, soak, bench), harnesses, build/CI changes, LuaLS annotations, comments in code. The owner writes: documentation, README, changelog, guides. Where a doc is now wrong, list the passage under `OPEN`; do not edit it.
 
-A plugin is a directory with an `init.lua`, or a single `.lua` file. There are two roots and they have different rules:
+## 5. When to ask
 
-- `EXEDIR/data/plugins` — **bundled**, i.e. the mandatory set. Every entry loads, always, whatever `config.plugins` or `--no-plugins` say. This is what a build produced from cdin-x.
-- `config.site_dir/plugins` — **site**, i.e. what a user installed. Selected by `config.plugins`.
+Ask for: the open decisions in the master prompt (section 7); anything that would break a contract promise; a new external dependency not on the master prompt's list; any deletion of user-visible behaviour; any ambiguity where a wrong guess is expensive to undo. Otherwise decide from the code and say what you decided.
 
-`data/core/plugins.lua` `dofile`s each entry point and calls `init(core, config)`. Failures are caught and logged — a failing *bundled* plugin is reported at error level and the rest still load; a failing site plugin is logged and skipped. The editor always starts.
+Format (always this shape, one question at a time):
 
-**Nothing in `data/core/` may depend on a site plugin.** With no cdin-x installed the editor must start, render, edit and respond to `ctrl+n`. That is why the user-facing workflows — command palette, find file, open file, open folder, the module pickers — are not runtime commands, and why `ctrl+p`, `ctrl+shift+p`, `ctrl+o` and `ctrl+shift+o` are not bound here. `ctrl+n` is: a new document needs no extension.
-
-Only three extensions carry `essential = true` in cdin-x — `vim`, `manager`, and the `default` theme — and only those three plus the fonts reach a build. So a fresh build has exactly two cdin-x keystrokes: `ctrl+shift+m` for the manager, `ctrl+shift+l` for the log. Everything else in `docs/guides/commands.md` is the runtime's, and everything in `docs/guides/extensions.md` is an extension's.
-
-`config.plugins` is read from `~/.config/cdin/user/init.lua`, which therefore runs *before* the plugins. Two consequences: a plugin's commands and keymaps are registered after user config, so a plugin can overwrite a keymap set in `init.lua` but not the reverse; and `init.lua` **cannot** `require` a site plugin's module, because the loader extends `package.path` as the first statement of `load_all()` — which is step 11 of the boot order, and `init.lua` is step 9. The `--no-plugins` flag sets `config.plugins = false`, which means "no **site** plugins" — the mandatory bundle still loads, because a cdin without vim is not an editor. What the *manager* installed is in neither root: it keeps its own store under `<data_home>/cdin/extensions/X`, loads it itself, and never reads `config.plugins`, so `--no-plugins` does not switch it off.
-
-`core:load-plugin` / `core:unload-plugin` / `core:list-plugins` (`data/core/commands/plugin.lua`) change the site set at runtime. Nothing about that persists.
-
-## Keys
-
-The runtime owns its own bindings and nothing else does. `ctrl+p`, `ctrl+shift+p`, `ctrl+o` and `ctrl+shift+o` are unbound here on purpose: `palette` owns the first, and cdin-x's `finder` — which is `essential = false` and in no build — owns the other three.
-
-Expect collisions with cdin-x, and do not resolve one by moving a runtime key. The current set is tabulated in `docs/guides/extensions.md`: `alt+j/k/l` (`window`), `ctrl+d` (`search`), `ctrl+r` (`treeview`), `ctrl+shift+d` (`session`), `f2` (`treeview`). `keymap.add` prepends, so where both bindings are unconditional cdin-x wins — a fact to document, not a bug to fix by renaming a core stroke. Strokes gated on a predicate (`escape`, `tab`, `return`, `ctrl+c`, `ctrl+a`) are the design working: each falls through when its own view is not active.
-
-A new binding has to pass the line in `data/core/commands/core.lua`: *could this work without any input from the user?* `ctrl+n` can; anything that prompts for a path cannot and belongs in a plugin. `make test-workflows` is the suite that catches a genuine duplicate.
-
-## Build & run
-
-Requires: gcc/clang, GNU make, SDL3 dev headers (SDL2 auto-detected fallback), Lua 5.4 dev headers, python3. Plus a cdin-x checkout, for anything other than `make bin`.
-
-### Quick start
-
-```sh
-make                          # binary + bundled data/ → build/<platform>-release/
-make CDINX_DIR=/path/to/cdin-x   # …using that checkout instead of ../cdin-x
-make bin                      # compile the binary only; no cdin-x needed
-make bundle                   # assemble build/…/data only
-make run                      # build then launch
-make debug                    # -O0 -g3 build → build/<platform>-debug/
-make info                     # prints detected SDL/Lua/compiler/output paths
+```text
+CONTEXT   what you are doing and what you found
+DECISION  the one question
+OPTIONS   A) ... (cost/benefit)  B) ...  C) ...
+RECOMMEND the option and why
+DEFAULT   what you will do if the owner does not answer
 ```
 
-A fresh clone does **not** build with `make` alone: it needs a cdin-x checkout
-next to it, because the mandatory set lives there. That is deliberate — the
-split is the point, and the failure message says what to do.
+## 6. C style
 
-### CI/CD
+- C11. Warnings: `-Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Wformat=2`, new code warning-free. `-Werror` on CI for `src/` files you touched.
+- `snake_case`; module prefix on every public symbol (`buf_`, `rope_`, `evt_`, `job_`, `font_`, `gfx_`, `fs_`); types `CamelCase` typedefs (`Rope`, `Snapshot`, `Mark`); macros `UPPER_CASE`; no leading-underscore identifiers.
+- One header per module with only what callers need; opaque types (`typedef struct Rope Rope;`) and constructor/destructor pairs: `x_new`/`x_free`, `x_open`/`x_close`. No struct fields poked from outside the module.
+- Return values: a `CdinErr` or a negative errno-style code for fallible functions, out-parameters for results; never `abort()`/`exit()` outside `main` and a tiny, documented set of unrecoverable startup failures.
+- Sizes are `size_t`, offsets are `int64_t` (files can exceed 2 GB), counts that cross the Lua boundary are `lua_Integer`. Check every arithmetic that can overflow before allocating or indexing. No `int` for a byte offset.
+- Banned: `strcpy`, `strcat`, `sprintf`, `gets`, `atoi`, VLAs, `alloca`, bare `malloc/calloc/realloc/free` (use `cdin_*`), `static` mutable state without a comment saying who owns it and which thread touches it, `volatile` as synchronisation, `goto` other than the single-exit cleanup pattern.
+- Cleanup: one exit label per function that frees in reverse order; no leak on any error path (verify with ASan leak checks and the fault-injection allocator, which fails the Nth allocation).
+- Concurrency: a data structure is either owned by one thread or immutable and ref-counted. Atomics only in `loop/queue.c` and the ref counts, with comments naming the memory order. Locks are leaf locks; never call back into Lua or user callbacks while holding one.
+- Lua bindings: validate every argument with `luaL_check*`/`luaL_opt*`; push exactly the documented results; no `lua_error`/`luaL_error` between a resource's allocation and its attachment to a userdata (a longjmp leaks it); use `lua_newuserdatauv` + metatable + `__gc` first, then fill; callbacks into Lua through one helper that does `pcall` + traceback + logging.
+- Comments: one block comment at the top of each file saying what the file does and who owns what; inside, a comment only for a non-obvious invariant, a unit, an ownership rule, a memory order, or a reason a "wrong-looking" line is right. No narrating comments, no commented-out code, no TODOs without an owner decision.
+- Formatting: `clang-format` with a checked-in config (4-space indent, 100 columns, braces on the same line); do not reformat code you are not changing.
 
-Release workflows check out this repository **and cdin-x as a sibling**, generate
-icons, and run `make build`. The Dockerfile does the same. They package the
-**assembled** `build/…/data`, never the source `data/`.
+## 7. Lua style
 
-### The data assembly
+Same as the repository today (snake_case, modules return tables, classes through `core.utils.object`, strict globals, `core.add_thread` for background work, command/keymap registration paired with removal) plus: annotate public functions and types with LuaLS; `luacheck` clean with a checked-in `.luacheckrc` declaring the host globals; no per-line or per-token tables for text; no unbounded caches (weak tables or explicit caps); modules' top level is declarations, registration happens in `init`.
 
-`scripts/assemble_data.py` owns it:
+## 8. Memory and performance discipline
 
-- `build/…/data/core` is a symlink to the source `data/core`, falling back to a
-  copy. It is **recreated on every build**, not created-if-missing: a link that
-  is made once and then assumed correct is exactly how a stale copy becomes
-  the editor you are running.
-- Everything else comes from `<CDINX_DIR>/scripts/bundle.py`.
-- An old `build/…/data` that is a symlink is unlinked, never followed.
+- Allocate through `cdin_alloc` with the subsystem tag. Report per-subsystem peak bytes in every phase report.
+- No allocation in the steady-state draw path or in the per-keystroke path; verify with the accounting allocator (counter must not move across 1000 frames of typing).
+- Prefer snapshots and views over copies. Copy only at an ownership boundary and say why.
+- Streams over slurps: read in chunks, write in chunks, bound every intermediate.
+- Choose the data structure by the 1 GB case, not the 1 KB case.
+- Benchmarks live in `tests/bench/` and print numbers; a regression of more than 10% against the recorded baseline fails the phase.
 
-Lua changes under `data/core/` need no recompile — edit and restart. Only C
-changes require rebuilding.
+## 9. Verification (run all of these yourself before every report)
 
-### Verification
+```text
+make                       # release build, no new warnings
+make debug                 # -O0 -g3 build
+make debug-san             # ASan + UBSan; run the suites under it
+make test                  # C unit + model + Lua suites
+make check                 # static analysis + luacheck
+make bench                 # numbers vs baseline
+# cross-repo (need a cdin-x checkout, read-only for you):
+make test-plugins          # test_commands.lua + test_lua.lua
+make test-site-dir
+make test-workflows        # only the known cdin-x name failures may remain; list them
+```
 
-1. `make && make debug` — both must build cleanly; flags are `-Wall -Wextra`, do not introduce warnings.
-2. `make test-plugins` — the Lua data-layer tests. Needs only `lua`; no build, no editor, and **no cdin-x**. `scripts/test_commands.lua` covers keymap integrity with zero plugins (every command a binding names must exist, the palette must get a working submit and suggest, and the runtime must own exactly the bindings it is supposed to). `scripts/test_lua.lua` covers the loader and the theme registry over `scripts/fixtures/`, across site-present/site-absent × `config.plugins` = nil / false / whitelist. Both build their tree from the fixtures, so a test can never be satisfied by what happens to be on disk. Run it after touching anything under `data/core/plugins.lua`, `data/core/themes.lua`, `data/core/commands/`, `data/core/keymaps/`, `data/core/rootview/empty_view.lua` or `scripts/`.
-3. `make test-lua` — the unit + integration suite in `tests/lua/` (text pipeline, `Doc`, theme registry). Plain `lua`, no build, no editor, no cdin-x. The theme tests need a tree holding `data/themes/<name>/theme.lua`, so the target asks `scripts/test_lua.lua` to build the fixture tree it already builds and points at that. Run it after touching anything under `data/core/text/`, `data/core/doc/`, `data/core/themes.lua` or `data/core/style.lua`.
-4. `make test-workflows` — the other half of the split, and the only test that reads cdin-x. Needs `lua` and `CDINX_DIR`; no build, no editor. `scripts/test_workflows.lua` uses the cdin-x checkout as the site directory and asserts that the workflow plugins register their commands, that `ctrl+p` / `ctrl+shift+p` / `ctrl+o` / `ctrl+shift+o` each have exactly one command bound, that `data/core/keymaps/default.lua` names none of them, and that unloading `palette`, `finder` and `modules` through the manager detaches both. Run it whenever a keybinding, the loader, or anything under `data/core/keymaps/` changes — a stale runtime binding and a duplicated plugin binding are the two failures it exists to catch, and neither is visible from one repository alone.
-5. `make test-site-dir` — the smallest suite and the one people skip. `lua` plus `CDINX_DIR`; no build, no editor, no data tree. `scripts/test_site_dir.lua` asserts that `config.site_path()` is lazy (your `init.lua` runs after `core.config` was required), that `config.site_dir` beats `site_dirname`, that cdin-x's `install.py` declares the same `SITE_DIRNAME` this repository uses, and that `cdinx/config.lua` calls `config.site_path()` instead of hardcoding the name. One duplicated string, two repositories, nothing keeping them equal but this.
-6. Run the editor and manually exercise what you changed; note what you tested in the PR.
+Additionally per phase: TSan for anything with threads; Valgrind for the code ASan cannot cover; fuzz runs for every external-input parser you wrote or changed (state duration and corpus size); the soak script when memory-related code changed. A check you could not run is listed as NOT RUN with the reason. Never claim a check passed that you did not run.
 
-`make check` and `make size` do not work — they call `scripts/check.py` and `scripts/bench.py`, which do not exist. `make test` and `make bench` are `.PHONY` entries with no rule, and `make debug-san` sets a variable nothing reads. `make help` still claims plugins and themes ship inside `data/`. Do not document any of them as working.
+## 10. Git conventions
 
-## Lua conventions
+Conventional commits (`feat(buffer): ...`, `fix(loop): ...`), imperative, under 72 characters, one topic each. Pure moves are separate commits from edits. Commit only when asked. End commit messages with the attribution lines the session provides.
 
-- `snake_case` everything; modules return tables; classes extend `core.utils.object`.
-- Globals are forbidden at runtime — `data/core/init.lua` loads `core.runtime.strict` which errors on undeclared globals.
-- There is no event/hook system. Extend core by wrapping functions (save original, replace, call original).
-- Background work uses `core.add_thread` coroutines (`coroutine.yield(seconds)` to sleep). Never block the frame loop with I/O.
-- Commands are registered by name with predicates: `command.add("core.views.docview", { ["plugin:action"] = fn })`; keymaps map keystrokes to command names via `keymap.add`. Both have matching `remove`, and a plugin that registers is expected to unregister.
+## 11. Final report format (after every phase)
 
-## PR expectations
-
-- One topic per PR. Branches named `fix/*` or `feature/*`.
-- Update docs when behavior changes: keybindings/commands → `docs/guides/commands.md`, config → `docs/guides/configuration.md`, the loader and writing a plugin → `docs/guides/plugins.md`, what a build contains and the manager → `docs/guides/extensions.md`, the highlighter and tokenizer → `docs/architecture/internals.md`, architecture → `docs/architecture/overview.md`. Vim mode, themes and syntax definitions are cdin-x's: document them there, not here.
-- Add user-visible changes under `[Unreleased]` in `CHANGELOG.md`.
-- Commits follow conventional style: `feat(scope): ...`, `fix(scope): ...`, imperative, <72 chars.
+```text
+DONE        what changed, by subsystem, in plain words
+DECISIONS   choices you made and why (and the owner's decisions you consumed)
+MEASURED    numbers vs the baseline: memory per MB of text, open time, edit latency,
+            frame time, idle CPU, startup, per-subsystem peak bytes
+SANITIZERS  ASan / UBSan / TSan / Valgrind: what ran, result
+FUZZ/SOAK   targets, duration, corpus size, findings fixed
+COMPAT      contract rows touched; which suites ran; known cdin-x name failures
+API ADDED   new functions/events/options (names)
+DEPRECATED  shims kept, replacement named, planned removal
+EDGE CASES  from the master prompt list that applied: handled or not, and how
+CDIN-X SIDE what cdin-x must do or can now simplify
+OPEN        stale docs, unresolved questions, risks
+NEXT        the next phase and anything it depends on
+```
