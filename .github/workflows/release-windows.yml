@@ -82,6 +82,7 @@ jobs:
             mingw-w64-x86_64-python-pillow
             mingw-w64-x86_64-librsvg
             mingw-w64-x86_64-lua
+            mingw-w64-x86_64-libuv
             make
             unzip
             zip

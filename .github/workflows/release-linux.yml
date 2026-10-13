@@ -75,6 +75,7 @@ jobs:
             gcc make pkg-config python3 python3-pip \
             librsvg2-bin \
             liblua5.4-dev \
+            libuv1-dev \
             cmake ninja-build \
             libwayland-dev libxkbcommon-dev \
             libgl1-mesa-dev libegl1-mesa-dev \
