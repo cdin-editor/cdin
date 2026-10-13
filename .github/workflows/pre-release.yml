@@ -175,13 +175,13 @@ jobs:
           fetch-tags: true
 
       - name: Download Linux packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-linux.outputs.artifact-name }}
           path: dist/linux
 
       - name: Download Windows packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-windows.outputs.artifact-name }}
           path: dist/windows
