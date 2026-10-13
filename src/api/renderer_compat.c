@@ -1,4 +1,5 @@
 #include "api.h"
+#include "renderer_font.h"
 #include "../ui/renderer.h"
 #include "../ui/renderer_cache.h"
 #include "../core/logger.h"
@@ -78,12 +79,12 @@ static int f_draw_rect(lua_State *L) {
 
 
 static int f_draw_text(lua_State *L) {
-  RenFont **font = luaL_checkudata(L, 1, API_TYPE_FONT);
+  RenFont *font = api_check_font(L, 1);
   const char *text = luaL_checkstring(L, 2);
   int x = (int)luaL_checknumber(L, 3);
   int y = (int)luaL_checknumber(L, 4);
   RenColor color = checkcolor(L, 5, 255);
-  x = rencache_draw_text(*font, text, x, y, color);
+  x = rencache_draw_text(font, text, x, y, color);
   lua_pushnumber(L, x);
   return 1;
 }
@@ -100,8 +101,6 @@ static const luaL_Reg lib[] = {
   { NULL,            NULL            }
 };
 
-
-int luaopen_renderer_font(lua_State *L);
 
 int luaopen_renderer(lua_State *L) {
   log_trace("api: opening renderer library");
