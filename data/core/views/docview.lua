@@ -8,6 +8,15 @@ local View      = require "core.views.view"
 
 local DocView = View:extend()
 
+local _text_direction
+local function text_direction_module()
+  if _text_direction == nil then
+    local ok, m = pcall(require, "core.text")
+    _text_direction = (ok and m) or false
+  end
+  return _text_direction or nil
+end
+
 local BLINK_PERIOD = 0.8
 
 DocView.translate = {
@@ -237,31 +246,53 @@ function DocView:draw_line_text(idx, x, y)
   local tx, ty = x, y + self:get_line_text_y_offset()
   local font   = self:get_font()
   local dir = config.direction or "auto"
-  local shaping = config.shaping_enabled ~= false
   if dir == "ltr" then
     for _, type, text in self.doc.highlighter:each_token(idx) do
       tx = renderer.draw_text(font, text, tx, ty, style.syntax[type])
     end
     return
   end
+  local line = self.doc.lines[idx]
+  if type(line) ~= "string" then return end
+
+  -- Pure-ASCII lines cannot contain RTL codepoints: every RTL script starts
+  -- above U+0590. One find() over the line replaces a per-codepoint decode
+  -- loop, and source code is ASCII for the overwhelming majority of lines, so
+  -- this is the case that has to be cheap. A single non-ASCII byte falls
+  -- through to the exact check below.
+  if not line:find("[^\0-\127]") then
+    for _, type, text in self.doc.highlighter:each_token(idx) do
+      tx = renderer.draw_text(font, text, tx, ty, style.syntax[type])
+    end
+    return
+  end
+
+  -- Does this line contain any RTL codepoint at all? Asked of the line that
+  -- already exists, so the common case (an ordinary LTR source line) never
+  -- builds the token table, the second string array and the concatenated
+  -- copy that this function used to allocate on every drawn line, every frame.
+  --
+  -- Checking the line rather than each token is equivalent for a covering token
+  -- set and is *more* correct when it is not: bidi.has_rtl scans for any
+  -- codepoint of class "R", and a character no token claims would otherwise be
+  -- invisible to the check.
+  local textmod = text_direction_module()
+  if not textmod or not textmod.bidi.has_rtl(line) then
+    for _, type, text in self.doc.highlighter:each_token(idx) do
+      tx = renderer.draw_text(font, text, tx, ty, style.syntax[type])
+    end
+    return
+  end
+
   local toks = {}
   for _, type, text in self.doc.highlighter:each_token(idx) do
     toks[#toks + 1] = { type = type, text = text }
   end
   if #toks == 0 then return end
-  local ok, textmod = pcall(require, "core.text")
-  if not ok or not textmod then
-    for _, t in ipairs(toks) do tx = renderer.draw_text(font, t.text, tx, ty, style.syntax[t.type]) end
-    return
-  end
+  local shaping = config.shaping_enabled ~= false
   local full = {}
   for _, t in ipairs(toks) do full[#full + 1] = t.text end
   full = table.concat(full)
-  local has_rtl = textmod.bidi.has_rtl(full)
-  if not has_rtl then
-    for _, t in ipairs(toks) do tx = renderer.draw_text(font, t.text, tx, ty, style.syntax[t.type]) end
-    return
-  end
   local shaped = shaping and textmod.shaper.shape(full) or full
   local visual = textmod.bidi.visual(shaped, dir)
   tx = renderer.draw_text(font, visual, tx, ty, style.syntax[toks[1].type] or style.syntax["normal"])
