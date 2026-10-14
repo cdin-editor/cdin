@@ -15,6 +15,7 @@
 #include "../core/window.h"
 #include "../core/logger.h"
 #include "../search/find.h"
+#include "../fs/path.h"
 
 /* The damage cache's command buffer, reported so a caller can see how close
  * the frame came to the ceiling rather than only that it was hit. Mirrors
@@ -349,10 +350,10 @@ static int f_list_dir(lua_State *L) {
 
 static int f_absolute_path(lua_State *L) {
   const char *path = luaL_checkstring(L, 1);
-  char *res = realpath(path, NULL);
+  char *res = path_absolute_alloc(path);
   if (!res) return 0;
   lua_pushstring(L, res);
-  free(res);
+  cdin_free(res);
   return 1;
 }
 

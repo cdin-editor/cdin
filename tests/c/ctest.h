@@ -42,6 +42,7 @@ extern const CtestSuite alloc_suite;
 extern const CtestSuite arena_suite;
 extern const CtestSuite error_suite;
 extern const CtestSuite job_suite;
+extern const CtestSuite path_suite;
 
 /* Suites that need to know where to write scratch files. Each has its own entry
  * point rather than a field on CtestSuite, because that struct is shared and a

@@ -19,11 +19,13 @@ TEST_SRCS := $(TEST_SRC_DIR)/test_main.c \
              $(TEST_SRC_DIR)/test_alloc.c \
              $(TEST_SRC_DIR)/test_base.c \
              $(TEST_SRC_DIR)/test_job.c \
+              $(TEST_SRC_DIR)/test_path.c \
              $(TEST_SRC_DIR)/stub_renderer.c
 
 TEST_PRODUCT_SRCS := src/core/logger.c src/ui/renderer_cache.c \
                      src/loop/loop.c \
-                     src/base/alloc.c src/base/arena.c src/base/error.c
+                     src/base/alloc.c src/base/arena.c src/base/error.c \
+                     src/fs/path.c
 
 TEST_OBJS := $(TEST_SRCS:%.c=$(TEST_OUT_DIR)/%.o) \
              $(TEST_PRODUCT_SRCS:%.c=$(TEST_OUT_DIR)/%.o)
@@ -48,7 +50,7 @@ TEST_OBJS := $(TEST_SRCS:%.c=$(TEST_OUT_DIR)/%.o) \
 TEST_CFLAGS := -std=gnu11 -fno-strict-aliasing -O0 -g3 -DDEBUG \
                -Wall -Wextra -Wshadow -Wstrict-prototypes -Wformat=2 \
                -Wno-unused-parameter -Wno-conversion -Isrc \
-               -DCDIN_JOB_TEST_HOOKS
+               -DCDIN_JOB_TEST_HOOKS $(LUA_CFLAGS)
 
 # Where the suites write their scratch files, relative to $(CURDIR). Passed to
 # the runner as an argument rather than compiled in, for two reasons: a path in
@@ -87,7 +89,7 @@ $(TEST_OUT_DIR)/%.o: %.c
 
 $(TEST_BIN): $(TEST_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(TEST_OBJS) -o $@ $(TEST_LDFLAGS) $(LIBUV_LDFLAGS)
+	$(CC) $(TEST_OBJS) -o $@ $(TEST_LDFLAGS) $(LIBUV_LDFLAGS) $(LUA_LDFLAGS)
 
 test-c: $(TEST_BIN)
 	@mkdir -p "$(TEST_SCRATCH)"

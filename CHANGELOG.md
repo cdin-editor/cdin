@@ -73,6 +73,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 * **The verification targets moved out of `mk/build.mk`** into `mk/test.mk` (the test build and the suites) and `mk/check.mk` (the state of the tree). `make help` now lists every target, grouped into what runs here and what needs a cdin-x checkout.
 
+* **Path resolution has one implementation, and `path_absolute_alloc()` is it.** `system.absolute_path` and `path.absolute` each carried their own copy of the platform branch — `_fullpath` on Windows, `realpath` on POSIX — which is the kind of duplication that stays correct for exactly as long as nobody fixes one of them and forgets the other. The new `path_absolute_alloc()` owns the `#ifdef`, copies the CRT's result into a `cdin_alloc(CDIN_MEM_PLATFORM, …)` buffer, and frees the intermediate with `free()` on both the success and the allocation-failure path. `path_absolute()` is now a fixed-buffer wrapper that rejects insufficient capacity with the same `len >= out_size` check as before.
+
+  Both existing contracts are unchanged: `system.absolute_path` still allocates dynamically and never imposed a length ceiling, `path.absolute` still refuses anything past `FS_PATH_MAX`, Windows still does not check existence, and POSIX still resolves symlinks. Neither API performs any encoding conversion — both still call the narrow-character CRT.
+
+  The one behaviour that *is* new is deliberate: `system.absolute_path` can now return `nil` when the allocation is refused, where before its `malloc` buffer was unfailable in practice. That is the cost of routing the result through the accounting allocator, and it buys a path allocation that `core:memory` can attribute and a fault injector that can interrupt. The cost falls on open-file and project-scan paths, not on drawing or keystrokes.
+
+  Windows keeps a positive `MAX_PATH` argument to `_fullpath(NULL, path, MAX_PATH)`. The CRT documents `maxLength` as *ignored* when the output buffer is NULL, but also invokes the invalid-parameter handler when it is not positive — so the constant is carried as a valid-but-inert argument rather than replaced with `0`.
+
 ### Fixed
 
 * **The editor rendered at 1x into a HiDPI framebuffer on Linux and macOS.** `utils_get_scale` wrapped `SDL_GetDisplayContentScale` in `#ifdef _WIN32` and returned a hardcoded `1.0` for everything else, on the reasoning that "non-Windows means Unix means no scaling". That was wrong — the SDL call is cross-platform, so the guard was excluding two platforms from a value SDL was ready to give them. On a HiDPI display the window came up soft and the `SCALE` in the log lied. `plat_display_scale` now asks SDL on every platform, and treats anything below 0.5 as "could not tell" rather than scaling every coordinate to zero.
@@ -110,6 +118,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 * **`Doc:load` and `Doc:save` still block the frame.** They still use `io.open` plus a per-line loop on the thread that runs `core.step`; `src/loop/` exists and its completion pump runs once per frame, but no call site has been moved onto it yet. The infrastructure is what this release delivers; the `data/core/doc` conversion is the next piece of work. Until then a 256 MiB file still spends seconds in there.
 
 * **The handle convention and the error tables have exactly one consumer each.** The font is the only handle, and `cdin_error_push` is not yet called from a binding, so neither is visible to Lua beyond that one type. `CDIN_API_VERSION` and `cdin_api_version` are compiled but not yet registered, so a plugin still has no way to ask the host's contract version.
+
+* **The POSIX branch of `path_absolute_alloc()` has never been compiled.** This change was developed and verified on Windows/MinGW-w64 only. The `realpath(path, NULL)` branch, the two `#ifdef _WIN32` return-0 cases in the new suite, and the fixed-buffer overflow check on POSIX are all unexercised here, and ASan/UBSan, TSan and Valgrind were unavailable on this toolchain. The branch is three lines and mirrors code that already ran, but it is untested code and should be covered by a Linux or macOS CI run before anyone relies on it.
 
 * **`ren_font_add_fallback` still stores a raw `RenFont *`.** The font handle anchors its own chain with one registry reference per fallback, which is what makes the shipped runtime safe — but a future handle type will not get that for free.
 

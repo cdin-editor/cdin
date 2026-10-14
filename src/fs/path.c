@@ -1,5 +1,6 @@
 #include "path.h"
 #include "ops.h"
+#include "../base/alloc.h"
 
 #include <errno.h>
 #include <string.h>
@@ -15,17 +16,30 @@
 #endif
 
 
-int path_absolute(const char *p, char *out, int out_size) {
+char *path_absolute_alloc(const char *path) {
 #ifdef _WIN32
-  if (!_fullpath(out, p, (size_t)out_size)) return -1;
+  char *crt_res = _fullpath(NULL, path, MAX_PATH);
+  if (!crt_res) return NULL;
 #else
-  char tmp[FS_PATH_MAX];
-  char *res = realpath(p, tmp);
+  char *crt_res = realpath(path, NULL);
+  if (!crt_res) return NULL;
+#endif
+
+  size_t len = strlen(crt_res);
+  char *cdin_res = cdin_alloc(CDIN_MEM_PLATFORM, len + 1);
+  if (!cdin_res) { free(crt_res); return NULL; }
+  memcpy(cdin_res, crt_res, len + 1);
+  free(crt_res);
+  return cdin_res;
+}
+
+int path_absolute(const char *p, char *out, int out_size) {
+  char *res = path_absolute_alloc(p);
   if (!res) return -1;
   size_t len = strlen(res);
-  if ((int)len >= out_size) return -1;
+  if ((int)len >= out_size) { cdin_free(res); return -1; }
   memcpy(out, res, len + 1);
-#endif
+  cdin_free(res);
   return 0;
 }
 

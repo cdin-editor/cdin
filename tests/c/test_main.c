@@ -49,7 +49,7 @@ const char *ctest_strerror(int rc) {
 int main(int argc, char **argv) {
   const CtestSuite *suites[] = {
     &logger_suite, &rencache_suite, &alloc_suite, &arena_suite, &error_suite,
-    &job_suite
+    &job_suite, &path_suite
   };
   int failed = 0, total = 0;
 
