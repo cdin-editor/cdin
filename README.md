@@ -4,7 +4,9 @@ A small, fast, keyboard-driven text editor. Vim-style modal editing is on by
 default. The core is C; everything else is Lua you can read and change.
 ![cdin](assets/CDIN-HOME.png)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.2.0--alpha-orange.svg)](CHANGELOG.md)
+[![Pre-release](https://img.shields.io/github/v/tag/cdin-editor/cdin?label=Pre-release&color=orange)](https://github.com/cdin-editor/cdin/releases)
+
+[![Stable](https://img.shields.io/github/v/release/cdin-editor/cdin?label=Stable&color=blue)](https://github.com/cdin-editor/cdin/releases/latest)
 
 ---
 
