@@ -17,6 +17,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* **Automated pre-release versioning and publishing.** Every qualifying push to `main` or `master` now computes the next pre-release version from Git tag history, builds Linux and Windows packages, and publishes a GitHub pre-release for the exact commit. Versions progress through `alpha → beta → rc`, increment numbered stages numerically, and start a new patch cycle after the release-candidate stage. Documentation-only changes are ignored. Pre-releases never publish macOS packages or Docker images; stable releases remain restricted to version tags without a hyphen (`vX.Y.Z`).
+
 * **An accounting allocator every subsystem is tagged into.** `cdin_alloc` / `cdin_calloc` / `cdin_realloc` carry a `CDIN_MEM_*` tag and keep live, peak and block counts per tag; `cdin_free` reads the tag out of the header the allocator wrote, so one untagged free subtracts from the right subsystem, refuses a pointer that never came from here, and catches a double free in a debug build. A tag on `free` would mean the caller has to remember it, and a caller that remembers one wrong corrupts the one thing this exists to get right.
 
   It also carries a fault injector, `cdin_alloc_fail_after(n)`, which refuses every allocation after the *n*th. That is how the out-of-memory paths get exercised on purpose instead of by really running out.
