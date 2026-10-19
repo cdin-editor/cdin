@@ -16,7 +16,7 @@
     "clsx": "^2.1.1",
     "cn": "^0.2.4",
     "lucide-react": "^1.33.0",
-    "radix-ui": "^1.6.7",
+    "radix-ui": "^1.8.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
