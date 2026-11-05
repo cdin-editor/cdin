@@ -649,7 +649,8 @@ static void cdin_tui_signal_handler(int signal_number)
     int descriptor = (int)cdin_tui_signal_write_fd;
     uint8_t code = signal_number == SIGWINCH ? (uint8_t)'R' : (uint8_t)'T';
     if (descriptor >= 0) {
-        (void)write(descriptor, &code, 1u);
+        ssize_t written = write(descriptor, &code, 1u);
+        (void)written;
     }
 }
 
@@ -870,14 +871,14 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     int was_escape_timeout;
     int buffer_only;
     if (context == NULL || out_processed == NULL || max_items == 0u) {
-        return CDIN_FRONTEND_TUI_IO_ERROR;
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     *out_processed = 0u;
     was_escape_timeout = context->flush_escape;
     buffer_only = context->terminal_buffer_only;
     context->terminal_buffer_only = 0;
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
-        return CDIN_FRONTEND_TUI_IO_ERROR;
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     if (processed != 0u) {
         if (processed == max_items && context->parser.length != 0u) {
@@ -892,7 +893,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
     if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
-    if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_ERROR;
+    if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_FAILURE;
     if (cdin_frontend_input_parser_feed(&context->parser, bytes, (size_t)amount) ==
         CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
         cdin_frontend_input_parser_init(&context->parser);
@@ -900,7 +901,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
-        return CDIN_FRONTEND_TUI_IO_ERROR;
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
     if (processed == max_items && context->parser.length != 0u) {
@@ -918,14 +919,14 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
     size_t pumped = 0u;
     size_t processed = 0u;
     if (context == NULL || out_processed == NULL || max_items == 0u) {
-        return CDIN_FRONTEND_TUI_IO_ERROR;
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     *out_processed = 0u;
     backend_status = cdin_backend_pump(context->backend, max_items, &pumped);
     if (backend_status != CDIN_BACKEND_OK) {
         MMLLOG_ERROR(context->log->logger, "Backend pump failed in TUI loop: %s",
                      cdin_backend_status_name(backend_status));
-        return CDIN_FRONTEND_TUI_IO_ERROR;
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     while (processed < max_items &&
            cdin_backend_frontend_pending(context->transport.frontend) != 0u) {
@@ -937,14 +938,14 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
         if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
             MMLLOG_ERROR(context->log->logger, "Frontend receive failed in TUI loop: %s",
                          cdin_frontend_protocol_status_name(protocol_status));
-            return CDIN_FRONTEND_TUI_IO_ERROR;
+            return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
         model_status = cdin_frontend_tui_receive(
             &context->session, context->model, &message, &committed);
         if (model_status != CDIN_FRONTEND_TUI_MODEL_OK) {
             MMLLOG_ERROR(context->log->logger, "TUI model rejected Backend message: %d",
                          (int)model_status);
-            return CDIN_FRONTEND_TUI_IO_ERROR;
+            return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
         (void)committed;
         processed++;
@@ -1051,7 +1052,7 @@ static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
         size_t processed = 0u;
         cdin_frontend_tui_io_result result =
             cdin_tui_drain_backend(context, 256u, &processed);
-        if (result == CDIN_FRONTEND_TUI_IO_ERROR ||
+        if (result == CDIN_FRONTEND_TUI_IO_FAILURE ||
             result == CDIN_FRONTEND_TUI_IO_EOF) return -1;
         if (result == CDIN_FRONTEND_TUI_IO_AGAIN) {
             return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
