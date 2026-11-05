@@ -73,7 +73,7 @@ def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
     if result.returncode != 0:
         raise subprocess.CalledProcessError(result.returncode, [str(executable), "--check"])
     output = result.stdout + result.stderr
-    marker = re.compile(r"runtime started[^\\r\\n]*\\bversion=" + re.escape(expected) + r"(?:\\s|$)")
+    marker = re.compile(r"runtime started[^\r\n]*\bversion=" + re.escape(expected) + r"(?:\s|$)")
     if marker.search(output) is None:
         raise RuntimeError(
             f"Backend did not report the pinned Runtime version {expected!r} "
