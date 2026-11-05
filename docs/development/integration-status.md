@@ -8,7 +8,7 @@ This document reports what the current CDIN branch actually connects. A componen
 | --- | --- | --- |
 | Composition Root CLI | IMPLEMENTED | `--help`, `--version`, `--check`, Runtime root/entry and frontend options are parsed. |
 | Component pinning | IMPLEMENTED | `deps.lock` records immutable source revisions. |
-| Stack orchestration | IMPLEMENTED; current fixes NOT VERIFIED | `scripts/build_stack.py` builds and tests each pinned component before CDIN. |
+| Stack orchestration | IMPLEMENTED; Linux/macOS PASS, Windows PARTIAL | `scripts/build_stack.py` builds and tests the pinned stack. Windows reaches Backend CTest but one Backend-owned path test fails. |
 | Runtime module installation | IMPLEMENTED | CMake installs the pinned Lua module tree under `share/cdin/lua`. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
 | Backend/Frontend Protocol compatibility | PARTIAL | Major/minor header constants are compared at compile time. No transport connection is made. |
@@ -30,20 +30,22 @@ This document reports what the current CDIN branch actually connects. A componen
 | Installers and release archives | NOT IMPLEMENTED | Only a developer source archive exists. |
 | Docker image | NOT IMPLEMENTED | No Docker build definition is present. |
 
-## 3. CI evidence
+## 3. CI evidence for the current HEAD
 
-Workflow run [41985097875](https://github.com/cdin-editor/cdin/actions/runs/41985097875) failed before compilation because source checkouts were empty, Windows Python lacked pip, and Gix had no configured local mainline.
+Run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690), HEAD `c7b50b87034968a083c6fa2d52bee05babdea337`:
 
-Workflow run [41987494172](https://github.com/cdin-editor/cdin/actions/runs/41987494172) moved further:
+- **Linux:** pinned stack, component tests, CDIN CLI/lifecycle smoke and boundary checks passed.
+- **macOS:** pinned stack, component tests, CDIN CLI/lifecycle smoke and boundary checks passed.
+- **Linux ASan + UBSan + leak detection:** passed.
+- **Windows:** Backend built; 8/9 Backend CTest cases passed. `backend_e2e_platform_file_workflow` failed at `tests/e2e/scenarios/platform_file_workflow.c:56` while comparing normalized path output with the scenario helper's path string. This is a Backend-owned test failure and must be fixed in Backend.
+- **CodeQL Python:** passed.
+- **CodeQL JavaScript/TypeScript:** configuration failure because no JavaScript/TypeScript source was found for that language database.
 
-- PSX and Gix checks completed successfully on macOS.
-- Kernel P1/P3 regression/concurrency checks and the logger adapter test completed successfully on Linux and macOS.
-- Linux sanitizer and Linux/macOS stack builds then stopped at Backend configuration. The Kernel install generated `cdin-kernel.pc` with the ABI value `1.1.0`, while Backend checks for package release `>=1.2.1`.
-- Windows installed Pipeline but failed to find `go` inside the MSYS2 shell.
+The successful stack jobs do not create a live Frontend connection. They prove the component builds/tests plus CDIN's CLI and Backend/Runtime startup/shutdown smoke test only. They do not prove document editing, save/reopen, input dispatch or plugin behavior.
 
-The current stack builder supplies Kernel's pinned release version from `deps.lock` as `PACKAGE_VERSION` during installation, matching Kernel's own release packaging script while keeping ABI 1.1.0 unchanged. Windows CI installs Go in UCRT64 instead of relying on the host Go path. Backend has a component-owned Draft fix at [Backend PR #1](https://github.com/cdin-editor/backend/pull/1) for GCC 15 CBOR integer promotion, macOS POSIX test feature macros, a cross-platform `size_t`/`uint64_t` prototype mismatch and GCC 16's Windows `type-limits` diagnostic in path allocation. Frontend has a component-owned Draft fix at [Frontend PR #1](https://github.com/cdin-editor/frontend/pull/1) for GCC 15's bounded semantic-ID comparison warning. CDIN pins both immutable commits. These changes remain **NOT VERIFIED** until a new full stack run completes.
+The CI log reports Runtime Host API `1.0.0` and Kernel ABI `1.1.0`, but Runtime self-reports `0.2.1-beta.10.next.17+gc7b50b8`; the Spec and Runtime status documents claim package candidate `1.0.0-rc.1`. This release-identity discrepancy remains unresolved.
 
-The failed workflow did not compile Backend or CDIN. It therefore provides no CDIN E2E, sanitizer or platform build result.
+Historical runs `41985097875` and `41987494172` describe earlier failures and are superseded for the current HEAD.
 
 ## 4. Release gates
 
