@@ -2,6 +2,7 @@
 """Build and verify the pinned CDIN component stack in dependency order."""
 from __future__ import annotations
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -71,8 +72,9 @@ def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
     sys.stderr.write(result.stderr)
     if result.returncode != 0:
         raise subprocess.CalledProcessError(result.returncode, [str(executable), "--check"])
-    marker = f"runtime started version={expected} "
-    if marker not in result.stdout + result.stderr:
+    output = result.stdout + result.stderr
+    marker = re.compile(r"runtime started[^\\r\\n]*\\bversion=" + re.escape(expected) + r"(?:\\s|$)")
+    if marker.search(output) is None:
         raise RuntimeError(
             f"Backend did not report the pinned Runtime version {expected!r} "
             "during the lifecycle smoke test"
