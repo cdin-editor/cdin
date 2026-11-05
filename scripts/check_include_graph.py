@@ -103,9 +103,6 @@ def dependency_probe_command(arguments: list[str]) -> list[str]:
         if argument in no_compile:
             index += 1
             continue
-        if argument.startswith("-o") and len(argument) > 2:
-            index += 1
-            continue
         result.append(argument)
         index += 1
 
