@@ -83,17 +83,58 @@ class IncludeGraphTests(unittest.TestCase):
                 private_build_roots=(root / "build" / "stack" / "backend",),
             ))
 
-    def test_probe_removes_compile_outputs_and_keeps_include_flags(self) -> None:
-        result = dependency_probe_command([
-            "cc", "-Iinclude", "-DCDIN_TEST=1", "-openmp", "-Wall", "-Wextra",
-            "-Werror", "-Werror=conversion", "-c", "src/main.c",
-            "-o", "main.o", "-MF", "main.d", "-MMD",
-        ])
-        self.assertEqual(
-            result,
-            ["cc", "-Iinclude", "-DCDIN_TEST=1", "-openmp", "src/main.c",
-             "-E", "-H", "-o", __import__("os").devnull],
-        )
+    def test_probe_keeps_only_allowlisted_preprocessor_options(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+            root = Path(temporary).resolve()
+            include = root / "include"
+            source = root / "src" / "main.c"
+            include.mkdir()
+            source.parent.mkdir()
+            source.touch()
+            result = dependency_probe_command(
+                [
+                    "cc", "-Iinclude", "-DCDIN_TEST=1", "-std=gnu11",
+                    "-Wall", "-Wextra", "-Werror", "-fplugin=untrusted.so",
+                    "-c", "src/main.c", "-o", "main.o", "-MF", "main.d", "-MMD",
+                ],
+                translation_unit=source,
+                working_directory=root,
+            )
+            self.assertTrue(Path(result[0]).is_absolute())
+            self.assertIn("-I" + str(include), result)
+            self.assertIn("-DCDIN_TEST=1", result)
+            self.assertIn("-std=gnu11", result)
+            self.assertNotIn("-Werror", result)
+            self.assertFalse(any("fplugin" in argument for argument in result))
+            self.assertEqual(result[-5:], [
+                str(source), "-E", "-H", "-o", __import__("os").devnull,
+            ])
+
+    def test_probe_rejects_untrusted_include_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            include = Path(temporary) / "include"
+            include.mkdir()
+            source = root / "main.c"
+            source.touch()
+            with self.assertRaises(ValueError):
+                dependency_probe_command(
+                    ["cc", "-I", str(include)],
+                    translation_unit=source,
+                    working_directory=root,
+                )
+
+    def test_probe_rejects_unallowlisted_compiler(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+            root = Path(temporary).resolve()
+            source = root / "main.c"
+            source.touch()
+            with self.assertRaises(ValueError):
+                dependency_probe_command(
+                    ["/tmp/untrusted-compiler"],
+                    translation_unit=source,
+                    working_directory=root,
+                )
 
     def test_compiler_trace_parser_resolves_relative_headers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
