@@ -128,6 +128,38 @@ def run_live_edit(executable: str) -> None:
             os.close(master)
 
 
+def run_signal_shutdown(executable: str) -> None:
+    master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    before_termios = termios.tcgetattr(slave)
+    before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
+    output = bytearray()
+    process = None
+    with tempfile.TemporaryDirectory(prefix="cdin-tui-sigterm-") as working:
+        try:
+            os.set_blocking(master, False)
+            env = os.environ.copy()
+            env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
+            process = subprocess.Popen(
+                [executable, "--frontend", "tui"],
+                stdin=slave, stdout=slave, stderr=slave,
+                cwd=working, env=env, close_fds=True,
+            )
+            wait_for_title(master, process, output)
+            os.kill(process.pid, signal.SIGTERM)
+            code = wait_exit(master, process, output, 10.0)
+            if code != 0:
+                raise RuntimeError(f"SIGTERM shutdown exited with {code}; output={bytes(output)!r}")
+            assert_restored(slave, before_termios, before_flags, output)
+            print("CDIN TUI SIGTERM smoke passed: wake-pipe latch, orderly shutdown and terminal restoration")
+        finally:
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+            os.close(slave)
+            os.close(master)
+
+
 def run_startup_failure(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
@@ -177,6 +209,7 @@ def main() -> int:
         print("CDIN_RUNTIME_ROOT must point at the pinned Runtime Lua tree", file=sys.stderr)
         return 2
     run_live_edit(executable)
+    run_signal_shutdown(executable)
     run_startup_failure(executable)
     return 0
 
