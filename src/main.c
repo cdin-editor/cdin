@@ -8,6 +8,7 @@
 #include "cdin/log.h"
 #include "cdin/options.h"
 #include "cdin/frontend/core/protocol/wire.h"
+#include "integration/frontend_smoke.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +72,10 @@ static int run_check(const cdin_options *options, cdin_log *log)
     status = cdin_backend_pump(backend, 64u, &processed);
     if (status != CDIN_BACKEND_OK) {
         MMLLOG_ERROR(log->logger, "Backend pump failed: %s", cdin_backend_status_name(status));
+        goto cleanup;
+    }
+    if (cdin_frontend_backend_smoke(backend, log) != 0) {
+        MMLLOG_ERROR(log->logger, "Headless Frontend/Backend protocol smoke failed");
         goto cleanup;
     }
     result = EXIT_SUCCESS;
