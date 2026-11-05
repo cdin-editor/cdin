@@ -69,10 +69,10 @@ The provenance-attestation job is intentionally skipped on pull requests. PR bui
 ## 4. Compatibility findings
 
 - Backend 1.0.2 package discovery is versioned; CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. CDIN pins post-merge test-fix commit `f816b9cdbd6b97f7c70a4772a0d8f1e63c47eb9e`; Backend CI including ASan/UBSan/TSan passed after that fix. The optional `host.fs.read_file` keeps file I/O Backend-owned and returns exact bytes with structured error identities.
-- Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
+- Runtime's version identity is verified for the pinned package; the startup smoke requires the version in `deps.lock`. Runtime PR #2 merge commit is `dddebe07e7a773c7d8f3cb83321c2cbb5d259c52` (same tree as the green tested PR head). The next CDIN native run verifies the merged commit pin.
 - The initial ATTACH failure had three Backend integration causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) runtime version reporting remained hard-coded at 1.0.0 after the package bump, fixed in merged PR #8; (3) Backend required Runtime UI Model v1's optional `options` member and advertised the driver role too late for Frontend Core, fixed in merged PR #9 by encoding an empty CBOR map and reserving the first negotiated driver before HELLO_ACK. CDIN pins PR #9's immutable revision and the full ATTACH/snapshot/flush/ACK/resize smoke passes on Linux/macOS/Windows.
 - Frontend PR #2 is merged at `94643adada76cb3d056baf0b6ad475451d56ab0f`; `cdinFrontend` now installs/exports `cdin::frontend_ui_tui` when enabled and exposes a typed `request.command` session API. CDIN consumes the package; FE-019 remains the interactive launch gate.
-- Runtime PR #2 is Ready for review at tested head `84379cb7f837d1df95edd296e7ccec838f664fba`; it starts from the exact prior CDIN Runtime pin and adds lifecycle commands/keymaps plus FakeHost persistence tests. It is not merged yet. CDIN pins this tested commit while the PR awaits maintainer merge.
+- Runtime PR #2 is merged at `dddebe07e7a773c7d8f3cb83321c2cbb5d259c52`; its final main-branch CI run `42077125147` passed Linux/macOS/Windows, Pipeline quality and docs/workflow checks. The merge commit has the same tree as the tested PR head `84379cb7f837d1df95edd296e7ccec838f664fba`. CDIN now pins the immutable merge commit.
 
 ## 5. Release gates
 
