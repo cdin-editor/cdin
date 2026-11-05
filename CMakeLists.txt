@@ -30,8 +30,7 @@ target_link_libraries(cdin PRIVATE
     cdin_options
     cdin::backend
     m-mdy-m::log
-    cdin::frontend_core
-    cdin::frontend_ui_tui)
+    cdin::frontend_core)
 
 # Resolve installed shared component libraries relative to the executable so
 # the packaged tree runs without a developer-specific loader environment.
