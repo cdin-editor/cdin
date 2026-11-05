@@ -98,4 +98,12 @@ if(BUILD_TESTING)
     add_test(NAME cdin_headless_frontend_protocol_smoke COMMAND cdin --check)
     set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
+    if(UNIX)
+        add_test(NAME cdin_tui_live_pty_smoke
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_pty_smoke.py"
+                    "$<TARGET_FILE:cdin>")
+        set_tests_properties(cdin_tui_live_pty_smoke PROPERTIES
+            ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
+            TIMEOUT 30)
+    endif()
 endif()
