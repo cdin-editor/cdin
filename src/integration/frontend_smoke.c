@@ -1116,17 +1116,17 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
             context->parser_ready_pending = 1;
         }
         *out_processed = processed;
-        return CDIN_FRONTEND_TUI_DRAIN_PROGRESS;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
     }
     /* Parser-buffer and ESC-timeout notifications do not authorize a read
      * from the blocking terminal adapter. Only poll readiness does. */
-    if (was_escape_timeout || buffer_only) return CDIN_FRONTEND_TUI_DRAIN_AGAIN;
+    if (was_escape_timeout || buffer_only) return CDIN_FRONTEND_TUI_IO_AGAIN;
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
-    if (amount == 0) return CDIN_FRONTEND_TUI_DRAIN_EOF;
+    if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
 #ifndef _WIN32
     if (amount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        return CDIN_FRONTEND_TUI_DRAIN_AGAIN;
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
 #endif
     if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_FAILURE;
@@ -1134,17 +1134,17 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
         cdin_frontend_input_parser_init(&context->parser);
         MMLLOG_WARN(context->log->logger, "TUI discarded terminal input after parser capacity was exceeded");
-        return CDIN_FRONTEND_TUI_DRAIN_AGAIN;
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
-    if (processed == 0u) return CDIN_FRONTEND_TUI_DRAIN_AGAIN;
+    if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
     if (processed == max_items && context->parser.length != 0u) {
         context->parser_ready_pending = 1;
     }
     *out_processed = processed;
-    return CDIN_FRONTEND_TUI_DRAIN_PROGRESS;
+    return CDIN_FRONTEND_TUI_IO_PROGRESS;
 }
 
 static cdin_frontend_tui_io_result cdin_tui_drain_backend(
@@ -1191,13 +1191,13 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
     }
     if (processed != 0u) {
         *out_processed = processed;
-        return CDIN_FRONTEND_TUI_DRAIN_PROGRESS;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
     }
     if (pumped != 0u) {
         *out_processed = 1u;
-        return CDIN_FRONTEND_TUI_DRAIN_PROGRESS;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
     }
-    return CDIN_FRONTEND_TUI_DRAIN_AGAIN;
+    return CDIN_FRONTEND_TUI_IO_AGAIN;
 }
 
 static int cdin_tui_on_resize(void *opaque)
@@ -1289,8 +1289,8 @@ static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
         cdin_frontend_tui_io_result result =
             cdin_tui_drain_backend(context, 256u, &processed);
         if (result == CDIN_FRONTEND_TUI_IO_FAILURE ||
-            result == CDIN_FRONTEND_TUI_DRAIN_EOF) return -1;
-        if (result == CDIN_FRONTEND_TUI_DRAIN_AGAIN) {
+            result == CDIN_FRONTEND_TUI_IO_EOF) return -1;
+        if (result == CDIN_FRONTEND_TUI_IO_AGAIN) {
             return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
         }
     }
