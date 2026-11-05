@@ -1024,8 +1024,12 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
     } while (polled < 0 && errno == EINTR);
     if (polled < 0) return -1;
     if (polled == 0) {
-        context->flush_escape = 1;
-        *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+            context->flush_escape = 1;
+            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+        } else {
+            *out_ready_events = 0u;
+        }
         return 0;
     }
     if ((descriptors[0].revents & (POLLIN | POLLHUP)) != 0) {
@@ -1043,7 +1047,10 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
                     switch (bytes[index]) {
                         case 'B': ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE; break;
                         case 'R': ready |= CDIN_FRONTEND_TUI_EVENT_RESIZE; break;
-                        case 'T': ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE; break;
+                        case 'T':
+                            context->terminate_pending = 1;
+                            ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+                            break;
                         default: break;
                     }
                 }
@@ -1301,20 +1308,57 @@ static int cdin_tui_make_scratch_path(cdin_tui_context *context)
 
 static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
 {
-    unsigned int attempts;
-    for (attempts = 0u; attempts < 8u; attempts++) {
+    unsigned int idle_waits = 0u;
+    if (context == NULL || context->model == NULL) return -1;
+    for (;;) {
         size_t processed = 0u;
+        size_t pending;
         cdin_frontend_tui_io_result result =
             cdin_tui_drain_backend(context, 256u, &processed);
         if (result == CDIN_FRONTEND_TUI_IO_FAILURE ||
             result == CDIN_FRONTEND_TUI_IO_EOF) return -1;
-        if (result == CDIN_FRONTEND_TUI_IO_AGAIN) {
-            return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
+        pending = cdin_backend_frontend_pending(context->transport.frontend);
+        if (pending == 0u &&
+            cdin_frontend_tui_model_last_flush(context->model) != 0u &&
+            !cdin_frontend_tui_model_needs_lines(context->model)) {
+            return 0;
+        }
+        if (result == CDIN_FRONTEND_TUI_IO_AGAIN || processed == 0u) {
+            uint32_t ready = 0u;
+            if (++idle_waits > 40u) {
+                MMLLOG_ERROR(context->log->logger,
+                             "Timed out waiting for Backend's initial attached UI snapshot");
+                return -1;
+            }
+            /* The attach projection may complete on a Runtime/Backend worker.
+             * Use the same FE-019 wait source as the owner loop rather than
+             * synchronously pumping a fixed number of times and guessing that
+             * the queue is ready. A 250ms timeout bounds bootstrap failure
+             * while still allowing a real wake pipe notification to win. */
+            if (cdin_tui_wait(context, CDIN_FRONTEND_TUI_EVENT_ALL,
+                              250, &ready) != 0) {
+                MMLLOG_ERROR(context->log->logger,
+                             "Readiness wait failed during initial Backend snapshot");
+                return -1;
+            }
+            if ((ready & CDIN_FRONTEND_TUI_EVENT_TERMINATE) != 0u ||
+                context->terminate_pending) {
+                MMLLOG_WARN(context->log->logger,
+                            "TUI shutdown requested while waiting for initial UI snapshot");
+                return -1;
+            }
+            if ((ready & CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE) != 0u) {
+                /* Preserve terminal bytes for the normal owner loop; do not
+                 * dispatch editing input before the scratch document exists. */
+                context->parser_ready_pending = 1;
+            }
+            if ((ready & CDIN_FRONTEND_TUI_EVENT_RESIZE) != 0u &&
+                cdin_tui_on_resize(context) != 0) {
+                return -1;
+            }
         }
     }
-    return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
 }
-
 int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
 {
     const char *experimental_tui = getenv("CDIN_ENABLE_EXPERIMENTAL_TUI");
