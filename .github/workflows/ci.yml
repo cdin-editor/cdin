@@ -32,6 +32,7 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
+        if: runner.os != 'Windows'
         with:
           go-version: "1.25.x"
       - name: Set up MSYS2 toolchain (Windows)
@@ -49,6 +50,7 @@ jobs:
             mingw-w64-ucrt-x86_64-lua
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-go
       - name: Install native build dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -78,11 +80,7 @@ jobs:
           python -m pip install "git+https://github.com/m-mdy-m/pipeline.git@79169afc4f9f74ee46c52be2bf6974f8544c7db1"
           go install github.com/m-mdy-m/psx/cmd/psx@e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df
           go install github.com/m-mdy-m/gix/cmd/gix@9f0867923177cef3cd36d980cc2b356a35bee507
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            echo "$(cygpath -w "$(go env GOPATH)/bin")" >> "$GITHUB_PATH"
-          else
-            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          fi
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Verify repository shape and Git flow
         run: |
           psx check

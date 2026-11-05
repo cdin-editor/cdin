@@ -12,8 +12,9 @@
 
 ### Fixed
 - Always materialize dependency worktrees after cloning, even when the cloned HEAD already equals the locked SHA.
-- Install Python pip in the Windows MSYS2 UCRT64 CI environment.
+- Install the MSYS2 Python pip and Go toolchain packages needed by Windows CI.
 - Prepare a local main branch and Git identity before running Gix diagnostics.
+- Install Kernel's pkg-config metadata with the pinned package release version while preserving its separate ABI version.
 - Avoid running the same architecture-boundary check twice in the Pipeline task graph.
 
 ### Not yet complete

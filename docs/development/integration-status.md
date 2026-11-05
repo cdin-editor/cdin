@@ -8,7 +8,7 @@ This document reports what the current CDIN branch actually connects. A componen
 | --- | --- | --- |
 | Composition Root CLI | IMPLEMENTED | `--help`, `--version`, `--check`, Runtime root/entry and frontend options are parsed. |
 | Component pinning | IMPLEMENTED | `deps.lock` records immutable source revisions. |
-| Stack orchestration | IMPLEMENTED; current CI fix NOT VERIFIED | `scripts/build_stack.py` builds and tests each pinned component before CDIN. |
+| Stack orchestration | IMPLEMENTED; current fixes NOT VERIFIED | `scripts/build_stack.py` builds and tests each pinned component before CDIN. |
 | Runtime module installation | IMPLEMENTED | CMake installs the pinned Lua module tree under `share/cdin/lua`. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
 | Backend/Frontend Protocol compatibility | PARTIAL | Major/minor header constants are compared at compile time. No transport connection is made. |
@@ -32,15 +32,18 @@ This document reports what the current CDIN branch actually connects. A componen
 
 ## 3. CI evidence
 
-Workflow run [41985097875](https://github.com/cdin-editor/cdin/actions/runs/41985097875) failed before compilation:
+Workflow run [41985097875](https://github.com/cdin-editor/cdin/actions/runs/41985097875) failed before compilation because source checkouts were empty, Windows Python lacked pip, and Gix had no configured local mainline.
 
-- Linux and macOS found empty source worktrees because the previous dependency script used `git clone --no-checkout` without always materializing the pinned revision.
-- Windows could not install Pipeline because MSYS2 Python did not include pip.
-- Gix reported a detached checkout and missing local branch identity/base-branch setup.
+Workflow run [41987494172](https://github.com/cdin-editor/cdin/actions/runs/41987494172) moved further:
 
-The current branch changes the dependency checkout behavior, installs the MSYS2 pip package, prepares the Git identity/main branch and removes the unused `develop` base from the Gix configuration. **These fixes are not verified until a new CI run completes.**
+- PSX and Gix checks completed successfully on macOS.
+- Kernel P1/P3 regression/concurrency checks and the logger adapter test completed successfully on Linux and macOS.
+- Linux sanitizer and Linux/macOS stack builds then stopped at Backend configuration. The Kernel install generated `cdin-kernel.pc` with the ABI value `1.1.0`, while Backend checks for package release `>=1.2.1`.
+- Windows installed Pipeline but failed to find `go` inside the MSYS2 shell.
 
-The inspected run did not compile CDIN. Therefore it provides no build, E2E, sanitizer or platform verification result.
+The current stack builder now supplies Kernel's pinned release version from `deps.lock` as `PACKAGE_VERSION` during installation, matching Kernel's own release packaging script while keeping ABI 1.1.0 unchanged. Windows CI now installs Go in UCRT64 instead of relying on the host Go path. These fixes remain **NOT VERIFIED** until a new run completes.
+
+The failed workflow did not compile Backend or CDIN. It therefore provides no CDIN E2E, sanitizer or platform build result.
 
 ## 4. Release gates
 

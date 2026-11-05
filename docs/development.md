@@ -56,9 +56,16 @@ export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 ### Windows
 
-Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, Git, pkgconf, Lua 5.4, Python and Python pip packages from the UCRT64 repository. Run the build commands from that environment so compiler, Python and pkg-config resolve to the same toolchain.
+Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, Git, pkgconf, Lua 5.4, Python, Python pip and Go packages from the UCRT64 repository:
 
-MSVC is not currently a verified build target.
+```sh
+pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
+  mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf \
+  mingw-w64-ucrt-x86_64-lua mingw-w64-ucrt-x86_64-python \
+  mingw-w64-ucrt-x86_64-python-pip mingw-w64-ucrt-x86_64-go
+```
+
+Run the build commands from that environment so compiler, Python, Go and pkg-config resolve to the same toolchain. MSVC is not currently a verified build target.
 
 ## 3. Build and test the pinned stack
 

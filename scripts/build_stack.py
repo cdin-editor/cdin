@@ -5,12 +5,14 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
 PREFIX = ROOT / ".deps" / "install"
 BUILD = ROOT / "build" / "stack"
+LOCK = ROOT / "deps.lock"
 
 
 def run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
@@ -40,14 +42,22 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--install", str(build)], env=env)
 
 
+def pinned_package_version(name: str) -> str:
+    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
+    value = lock["dependencies"][name].get("version")
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"deps.lock is missing a package version for {name}")
+    return value
+
+
 def main() -> int:
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
             return 2
 
-    # Pipeline and make both materialize dependencies before entering this
-    # script. Verify every tracked file is present before invoking a compiler.
+    # Pipeline and make materialize dependencies before entering this script.
+    # Verify every tracked file before invoking a compiler.
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -64,11 +74,17 @@ def main() -> int:
     run(["cmake", "--install", str(logger_build)], env=env)
 
     kernel = DEPS / "kernel"
+    kernel_package_version = pinned_package_version("kernel")
     logger_args = [f"DEPS_PREFIX={PREFIX}", f"LOG_SOURCE_DIR={logger}",
                    f"LOG_BUILD_DIR={logger_build}"]
     run(["make", "all", "shared", *logger_args], cwd=kernel, env=env)
     run(["make", "check", *logger_args], cwd=kernel, env=env)
-    run(["make", "install", f"PREFIX={PREFIX}", *logger_args], cwd=kernel, env=env)
+    # Kernel distinguishes the published package version from its C ABI version.
+    # Its release workflow supplies PACKAGE_VERSION when installing the .pc file;
+    # use the same rule so Backend's pkg-config >=1.2.1 check validates the
+    # package release, while ABI 1.1.0 remains recorded in kernel.h.
+    run(["make", "install", f"PREFIX={PREFIX}",
+         f"PACKAGE_VERSION={kernel_package_version}", *logger_args], cwd=kernel, env=env)
 
     backend = DEPS / "backend"
     cmake_component("backend", backend, options=["-DCDIN_WITH_LUA=ON",
