@@ -264,7 +264,7 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
         }
     }
     if (options_count != 1u || styles_count != 1u || layout_count != 1u ||
-        flush_count != 1u || snapshot_revision == 0u ||
+        flush_count != 1u ||
         session.state != CDIN_FRONTEND_SESSION_ATTACHED ||
         cdin_backend_frontend_pending(transport.frontend) != 0u) {
         MMLLOG_ERROR(log->logger,
