@@ -26,11 +26,15 @@ target_compile_features(cdin PRIVATE c_std_11)
 target_compile_definitions(cdin PRIVATE
     CDIN_VERSION="${PROJECT_VERSION}"
     CDIN_DEFAULT_RUNTIME_ROOT="${CMAKE_INSTALL_FULL_DATADIR}/cdin/lua")
+if(NOT TARGET cdin::frontend_ui_tui)
+    message(FATAL_ERROR "The pinned Frontend package must export cdin::frontend_ui_tui")
+endif()
 target_link_libraries(cdin PRIVATE
     cdin_options
     cdin::backend
     m-mdy-m::log
-    cdin::frontend_core)
+    cdin::frontend_core
+    cdin::frontend_ui_tui)
 
 # Resolve installed shared component libraries relative to the executable so
 # the packaged tree runs without a developer-specific loader environment.
