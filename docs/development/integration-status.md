@@ -54,12 +54,12 @@ Before describing CDIN as an interactive editor, all of the following must be im
 1. Resolve Backend initial Runtime UI snapshot publication (`CDIN_BACKEND_LIMIT_EXCEEDED`) and test ATTACH, UI flush/ACK and resize end-to-end.
 2. Publish an installable Frontend TUI adapter package/target or select another supported adapter.
 3. Connect Backend worker-completion wakeup to the Frontend event loop and implement the FE-019 readiness multiplexer.
-3. Product E2E for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings.
-4. Runtime command/keymap execution through real input.
-5. Plugin loading, capability isolation, failure handling and unload.
-6. Frontend detach/reconnect, multi-frontend sessions and failure recovery.
-7. Native Linux/macOS/Windows CI and sanitizer evidence.
-8. Process RSS, allocator peak where available, leak checks, soak workloads and latency measurements.
-9. Platform packages, installers and release workflow.
+4. Product E2E for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings.
+5. Runtime command/keymap execution through real input.
+6. Plugin loading, capability isolation, failure handling and unload.
+7. Frontend detach/reconnect, multi-frontend sessions and failure recovery.
+8. Native Linux/macOS/Windows CI and sanitizer evidence.
+9. Process RSS, allocator peak where available, leak checks, soak workloads and latency measurements.
+10. Platform packages, installers and release workflow.
 
 Unrun checks must be reported as NOT RUN, not PASS.
