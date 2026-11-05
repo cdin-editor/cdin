@@ -141,18 +141,20 @@ def run_live_edit(executable: str) -> None:
             if SCRATCH_RE.search(output) is None:
                 raise AssertionError("TUI title did not contain the expected scratch document name")
 
-            # Locate the scratch file only inside the private temporary
-            # directory. Never turn process-controlled terminal output into a
-            # filesystem path.
+            # Runtime assigns a constrained scratch name before the first
+            # save; the file itself is created only by Ctrl+S. Accept exactly
+            # one unique name matching the title grammar, then anchor it to
+            # the private temporary directory without following output paths.
             working_root = Path(working).resolve(strict=True)
-            scratch_candidates = list(working_root.glob("cdin-untitled-*.cdin"))
-            if len(scratch_candidates) != 1:
+            scratch_names = set(SCRATCH_RE.findall(output))
+            if len(scratch_names) != 1:
                 raise AssertionError(
-                    f"expected one scratch document in the temporary directory, found {len(scratch_candidates)}"
+                    f"expected one unique scratch title in PTY output, found {len(scratch_names)}"
                 )
-            scratch_path = scratch_candidates[0].resolve(strict=True)
-            if scratch_path.parent != working_root or not scratch_path.is_file():
-                raise AssertionError("scratch document escaped the temporary directory")
+            scratch_name = next(iter(scratch_names)).decode("ascii")
+            scratch_path = (working_root / scratch_name).resolve(strict=False)
+            if scratch_path.parent != working_root:
+                raise AssertionError("scratch document path escaped the temporary directory")
 
             # Force a signal to interrupt the platform wait while the loop is
             # live; the self-pipe must turn it into a resize notification.
@@ -183,12 +185,12 @@ def run_signal_shutdown(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     before_termios = termios.tcgetattr(slave)
-    before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
     output = bytearray()
     process = None
     with tempfile.TemporaryDirectory(prefix="cdin-tui-sigterm-") as working:
         try:
             os.set_blocking(master, False)
+            before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
             env = os.environ.copy()
             env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             process = subprocess.Popen(
@@ -215,12 +217,12 @@ def run_startup_failure(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     before_termios = termios.tcgetattr(slave)
-    before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
     output = bytearray()
     process = None
     with tempfile.TemporaryDirectory(prefix="cdin-tui-startup-failure-") as working:
         try:
             os.set_blocking(master, False)
+            before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
             env = os.environ.copy()
             env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             env["CDIN_RUNTIME_ROOT"] = str(Path(working) / "missing-runtime-root")
