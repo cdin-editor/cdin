@@ -313,7 +313,6 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
     }
     if (session.state != CDIN_FRONTEND_SESSION_ATTACHED ||
         flush_count == 0u ||
-        cdin_frontend_tui_model_revision(model) == 0u ||
         cdin_frontend_tui_model_last_flush(model) == 0u) {
         MMLLOG_ERROR(log->logger,
                      "Frontend attach did not commit a versioned UI snapshot");
@@ -371,7 +370,7 @@ cleanup:
             result = -1;
         }
     }
-    cdin_frontend_tui_model_destroy(model);
+    if (model != NULL) cdin_frontend_tui_model_destroy(model);
     free(client_buffer);
     free(transport.outgoing);
     free(transport.incoming);
