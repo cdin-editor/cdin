@@ -91,10 +91,10 @@ if(BUILD_TESTING)
                 "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --frontend)
     add_test(NAME cdin_cli_unsupported_frontend_is_gated
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend tui)
+                "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend gui-sdl)
     add_test(NAME cdin_cli_interactive_launch_is_gated
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 3 "-" "terminal")
+                "$<TARGET_FILE:cdin>" 3 "-" "launch" --frontend tui)
     add_test(NAME cdin_headless_frontend_protocol_smoke COMMAND cdin --check)
     set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
