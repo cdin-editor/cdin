@@ -32,7 +32,7 @@ This document reports what the current CDIN branch actually connects. A componen
 
 ## 3. CI evidence for the current HEAD
 
-Run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690), HEAD `c7b50b87034968a083c6fa2d52bee05babdea337`:
+Run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690), tested implementation baseline `c7b50b87034968a083c6fa2d52bee05babdea337` (the subsequent branch commits update audit documentation only):
 
 - **Linux:** pinned stack, component tests, CDIN CLI/lifecycle smoke and boundary checks passed.
 - **macOS:** pinned stack, component tests, CDIN CLI/lifecycle smoke and boundary checks passed.
