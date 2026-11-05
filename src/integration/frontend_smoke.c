@@ -175,10 +175,11 @@ static int drain_frontend_batch(
         if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) return -1;
 
         if (message.type == CDIN_FRONTEND_PROTOCOL_VIEW_INVALIDATE) {
+            size_t view_id_length = 0u;
             if (out_view_id != NULL && out_view_id_capacity != 0u &&
                 cdin_frontend_protocol_payload_get_text(
                     message.payload, message.payload_length, "view_id",
-                    out_view_id, out_view_id_capacity, NULL) != CDIN_FRONTEND_PROTOCOL_OK) {
+                    out_view_id, out_view_id_capacity, &view_id_length) != CDIN_FRONTEND_PROTOCOL_OK) {
                 return -1;
             }
             if (out_version != NULL &&
@@ -222,10 +223,11 @@ static int drain_frontend_batch(
             saw_lines = 1;
         } else if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
             char scope[16];
+            size_t scope_length = 0u;
             uint64_t flush_sequence = 0u;
             if (cdin_frontend_protocol_payload_get_text(
                     message.payload, message.payload_length, "scope",
-                    scope, sizeof(scope), NULL) != CDIN_FRONTEND_PROTOCOL_OK ||
+                    scope, sizeof(scope), &scope_length) != CDIN_FRONTEND_PROTOCOL_OK ||
                 strcmp(scope, expected_scope) != 0 ||
                 cdin_frontend_protocol_payload_get_uint(
                     message.payload, message.payload_length, "sequence",
