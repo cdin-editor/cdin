@@ -14,7 +14,7 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "2f7bcc973ded9f2202ac96de40e4ea413a64af34"
+revision = "3110616e2531b8c68c930380fc4e2be40dfb78a8"
 version = "1.0.0"
 protocol = "1.0.0"
 role = "Backend lifecycle and protocol server"
