@@ -39,7 +39,7 @@ This page maps Composition Root requirements to current source and records what 
 - Windows: all 9 CDIN CTest tests, 6 architecture tests and compiler-resolved include graph for 4 CDIN translation units passed. Logs include document edit/save/reopen, BOM/LF/mixed-EOL preservation and filesystem failure recovery.
 - Linux/macOS: the headless CDIN test and Frontend component suite passed, but the live PTY test failed; therefore their later include-graph task was not reached.
 - Linux sanitizer job failed on the same PTY acceptance test; no independent sanitizer defect was reported.
-- Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-state lifecycle fix and regression tests. At the latest inspection, Ubuntu, Windows and Pipeline/quality were green; macOS was still queued.
+- Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) is merged as `e29df5118e7b822912724b15c0c963b0b99f2f8a`, and CDIN pins that immutable SHA. Its Ubuntu, Windows and Pipeline/quality checks passed; the first macOS job was cancelled, not failed. The current CDIN Linux/macOS PTY and sanitizer results on the merged pin are pending in run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431).
 
 A result is valid only for the SHA and workflow run that produced it. Later CLI/docs changes and an eventual Frontend pin update need fresh matching CDIN CI.
 
