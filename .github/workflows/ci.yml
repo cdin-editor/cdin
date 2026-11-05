@@ -109,6 +109,27 @@ jobs:
           gix doctor
       - name: Build all pinned components and run E2E
         run: pipeline run check
+      - name: Measure headless integration latency and sampled RSS
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            CDIN_EXECUTABLE=".deps/install/bin/cdin.exe"
+          else
+            CDIN_EXECUTABLE=".deps/install/bin/cdin"
+          fi
+          python3 scripts/benchmark.py \
+            --executable "$CDIN_EXECUTABLE" \
+            --warmup 2 \
+            --iterations 10 \
+            --sample-interval-ms 10 \
+            --timeout-seconds 60 \
+            --output dist/cdin-headless-benchmark.json
+      - name: Upload headless benchmark report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdin-headless-benchmark-${{ runner.os }}
+          path: dist/cdin-headless-benchmark.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Create and validate reproducible source snapshot
         run: |
           pipeline run package
