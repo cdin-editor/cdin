@@ -35,6 +35,15 @@ unit_tests = subprocess.run(
 if unit_tests.returncode != 0:
     raise SystemExit(unit_tests.returncode)
 
+benchmark_tests = subprocess.run(
+    [sys.executable, "-m", "unittest", "discover",
+     "-s", str(ROOT / "tests" / "bench"), "-p", "test_*.py"],
+    cwd=ROOT,
+    check=False,
+)
+if benchmark_tests.returncode != 0:
+    raise SystemExit(benchmark_tests.returncode)
+
 include_graph = subprocess.run(
     [sys.executable, str(ROOT / "scripts" / "check_include_graph.py")],
     cwd=ROOT,
