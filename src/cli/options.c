@@ -1,6 +1,6 @@
 /*
- * ROOT-006 is PROPOSED: this module parses launcher options only. It does not
- * yet select a live Frontend endpoint or attach a Frontend client.
+ * ROOT-006: parse the Composition Root launch request. The selected adapter
+ * owns its protocol/session setup; this module does not duplicate that logic.
  * https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L27-L27
  */
 #include "cdin/options.h"
@@ -46,7 +46,8 @@ cdin_options_status cdin_options_parse(int argc, char **argv, cdin_options *out)
 const char *cdin_options_usage(void)
 {
     return "Usage: cdin [--check] [--runtime-root PATH] [--runtime-entry MODULE] "
-           "[--frontend headless] [--help] [--version]\n"
-           "\nThe Composition Root validates and launches pinned components. "
-           "Interactive adapters remain gated until Backend readiness is available.\n";
+           "[--frontend headless|tui] [--help] [--version]\n"
+           "\nThe headless frontend is selected by --check. The POSIX TUI is experimental "
+           "and requires CDIN_ENABLE_EXPERIMENTAL_TUI=1. Windows TUI launch remains "
+           "unavailable until the Console readiness bridge is implemented.\n";
 }
