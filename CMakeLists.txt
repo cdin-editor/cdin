@@ -47,6 +47,16 @@ target_link_libraries(cdin PRIVATE
     ${LUA_LIBRARIES}
     Threads::Threads)
 
+# Resolve installed shared component libraries relative to the executable so
+# the packaged tree runs without a developer-specific loader environment.
+if(APPLE)
+    set_property(TARGET cdin PROPERTY INSTALL_RPATH
+        "@loader_path/../${CMAKE_INSTALL_LIBDIR}")
+elseif(UNIX)
+    set_property(TARGET cdin PROPERTY INSTALL_RPATH
+        "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
+
 function(cdin_enable_strict target)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE
