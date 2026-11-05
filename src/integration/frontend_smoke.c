@@ -7,6 +7,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <process.h>
+#define CDIN_SMOKE_PROCESS_ID() ((unsigned long)_getpid())
+#else
+#include <unistd.h>
+#define CDIN_SMOKE_PROCESS_ID() ((unsigned long)getpid())
+#endif
 
 #define CDIN_SMOKE_FRAME_BYTES CDIN_FRONTEND_PROTOCOL_DEFAULT_MAX_FRAME_BYTES
 #define CDIN_SMOKE_FRAME_CAPACITY (CDIN_SMOKE_FRAME_BYTES + CDIN_FRONTEND_PROTOCOL_FRAME_PREFIX_BYTES)
@@ -133,6 +140,273 @@ static ptrdiff_t cdin_inproc_read(void *context, uint8_t *buffer, size_t length)
         transport->outgoing_length = 0u;
     }
     return (ptrdiff_t)amount;
+}
+
+
+/* Drain exactly one atomic Backend-to-Frontend flush group. Every group is
+ * acknowledged through the public Frontend session API before the next event
+ * is sent, so the smoke test exercises the real queue/ACK backpressure path. */
+static int drain_frontend_batch(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    const char *expected_scope,
+    char *out_view_id,
+    size_t out_view_id_capacity,
+    uint64_t *out_version,
+    uint8_t *out_line_bytes,
+    size_t out_line_capacity,
+    size_t *out_line_length)
+{
+    size_t attempt;
+    int saw_flush = 0;
+    int saw_lines = 0;
+    if (transport == NULL || session == NULL || expected_scope == NULL ||
+        cdin_backend_frontend_pending(transport->frontend) == 0u) return -1;
+    if (out_view_id != NULL && out_view_id_capacity != 0u) out_view_id[0] = '\0';
+    if (out_version != NULL) *out_version = 0u;
+    if (out_line_length != NULL) *out_line_length = 0u;
+
+    for (attempt = 0u; attempt < 256u; attempt++) {
+        cdin_frontend_protocol_message_view message;
+        cdin_frontend_protocol_status protocol_status =
+            cdin_frontend_session_receive(session, &message);
+        if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) return -1;
+
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) return -1;
+
+        if (message.type == CDIN_FRONTEND_PROTOCOL_VIEW_INVALIDATE) {
+            if (out_view_id != NULL && out_view_id_capacity != 0u &&
+                cdin_frontend_protocol_payload_get_text(
+                    message.payload, message.payload_length, "view_id",
+                    out_view_id, out_view_id_capacity, NULL) != CDIN_FRONTEND_PROTOCOL_OK) {
+                return -1;
+            }
+            if (out_version != NULL &&
+                cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "version",
+                    out_version) != CDIN_FRONTEND_PROTOCOL_OK) {
+                return -1;
+            }
+        } else if (message.type == CDIN_FRONTEND_PROTOCOL_VIEW_LINES) {
+            const uint8_t *array = NULL;
+            size_t array_length = 0u;
+            size_t line_count = 0u;
+            size_t line_index;
+            if (out_line_bytes == NULL || out_line_length == NULL ||
+                cdin_frontend_protocol_payload_get_raw(
+                    message.payload, message.payload_length, "lines",
+                    &array, &array_length) != CDIN_FRONTEND_PROTOCOL_OK ||
+                cdin_frontend_protocol_array_count(array, array_length, &line_count) !=
+                    CDIN_FRONTEND_PROTOCOL_OK) {
+                return -1;
+            }
+            for (line_index = 0u; line_index < line_count; line_index++) {
+                const uint8_t *line_map = NULL;
+                size_t line_map_length = 0u;
+                const uint8_t *bytes = NULL;
+                size_t bytes_length = 0u;
+                if (cdin_frontend_protocol_array_get_raw(
+                        array, array_length, line_index,
+                        &line_map, &line_map_length) != CDIN_FRONTEND_PROTOCOL_OK ||
+                    cdin_frontend_protocol_payload_get_bytes(
+                        line_map, line_map_length, "bytes", &bytes,
+                        &bytes_length) != CDIN_FRONTEND_PROTOCOL_OK ||
+                    bytes_length > out_line_capacity - *out_line_length) {
+                    return -1;
+                }
+                if (bytes_length != 0u) {
+                    memcpy(out_line_bytes + *out_line_length, bytes, bytes_length);
+                    *out_line_length += bytes_length;
+                }
+            }
+            saw_lines = 1;
+        } else if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            char scope[16];
+            uint64_t flush_sequence = 0u;
+            if (cdin_frontend_protocol_payload_get_text(
+                    message.payload, message.payload_length, "scope",
+                    scope, sizeof(scope), NULL) != CDIN_FRONTEND_PROTOCOL_OK ||
+                strcmp(scope, expected_scope) != 0 ||
+                cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "sequence",
+                    &flush_sequence) != CDIN_FRONTEND_PROTOCOL_OK ||
+                flush_sequence == 0u ||
+                cdin_frontend_session_ack(session, flush_sequence) !=
+                    CDIN_FRONTEND_PROTOCOL_OK) {
+                return -1;
+            }
+            saw_flush = 1;
+            if (cdin_backend_frontend_pending(transport->frontend) == 0u) {
+                if (out_line_bytes != NULL && !saw_lines) return -1;
+                return 0;
+            }
+        }
+    }
+    (void)saw_flush;
+    return -1;
+}
+
+static int send_command_and_drain(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    const char *name,
+    const char *path,
+    char *view_id,
+    size_t view_id_capacity,
+    uint64_t *version)
+{
+    if (cdin_frontend_session_request_command(session, name, path) !=
+        CDIN_FRONTEND_PROTOCOL_OK) return -1;
+    return drain_frontend_batch(transport, session, "snapshot",
+                                view_id, view_id_capacity, version,
+                                NULL, 0u, NULL);
+}
+
+static int send_key_and_drain(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    const char *key,
+    uint32_t modifiers)
+{
+    if (cdin_frontend_session_send_key(session, key, modifiers, "press") !=
+        CDIN_FRONTEND_PROTOCOL_OK) return -1;
+    return drain_frontend_batch(transport, session, "snapshot",
+                                NULL, 0u, NULL, NULL, 0u, NULL);
+}
+
+static int verify_saved_bytes(const char *path, const uint8_t *expected,
+                              size_t expected_length)
+{
+    FILE *file = fopen(path, "rb");
+    uint8_t bytes[64];
+    size_t count;
+    int equal;
+    if (file == NULL) return 0;
+    count = fread(bytes, 1u, sizeof(bytes), file);
+    equal = count == expected_length &&
+        (count == 0u || memcmp(bytes, expected, count) == 0) &&
+        fgetc(file) == EOF && !ferror(file);
+    if (fclose(file) != 0) equal = 0;
+    return equal;
+}
+
+/*
+ * Exercise the product path across Frontend Protocol -> Backend owner-thread
+ * queue -> Runtime command/keymap dispatch -> Kernel document -> Backend
+ * filesystem. The final bytes are independently read from the saved file and
+ * then fetched again through the public version-pinned view.request_lines API.
+ */
+static int cdin_frontend_document_smoke(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    cdin_log *log)
+{
+    static const uint8_t paste_bytes[] = { 0x00u, 0xffu, '\r', '\n', 'B' };
+    static const uint8_t expected_bytes[] = { 'A', 0x00u, 0xffu, '\r', '\n', 'B' };
+    uint8_t returned_bytes[64];
+    char path[128];
+    char view_id[64];
+    uint64_t version = 0u;
+    size_t returned_length = 0u;
+    unsigned long process_id = CDIN_SMOKE_PROCESS_ID();
+    int result = -1;
+
+    (void)snprintf(path, sizeof(path), "cdin-smoke-document-%lu.bin", process_id);
+    (void)remove(path);
+    view_id[0] = '\0';
+
+    if (send_command_and_drain(transport, session, "document.new",
+                               path, view_id, sizeof(view_id), &version) != 0 ||
+        view_id[0] == '\0') {
+        MMLLOG_ERROR(log->logger, "Runtime document.new did not publish a focused view");
+        goto cleanup;
+    }
+
+    if (cdin_frontend_session_send_text(session, (const uint8_t *)"A", 1u) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "snapshot",
+                             NULL, 0u, NULL, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend input.text did not reach Runtime");
+        goto cleanup;
+    }
+    if (cdin_frontend_session_send_paste(session, paste_bytes, sizeof(paste_bytes)) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "snapshot",
+                             NULL, 0u, NULL, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend input.paste did not reach Runtime");
+        goto cleanup;
+    }
+
+    if (send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL) != 0 ||
+        send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL) != 0 ||
+        send_key_and_drain(transport, session, "z",
+            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT) != 0 ||
+        send_key_and_drain(transport, session, "z",
+            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT) != 0) {
+        MMLLOG_ERROR(log->logger, "Runtime undo/redo keymap dispatch failed");
+        goto cleanup;
+    }
+
+    if (cdin_frontend_session_request_lines(session, view_id, 0u, 2u, version) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "response",
+                             NULL, 0u, NULL, returned_bytes, sizeof(returned_bytes),
+                             &returned_length) != 0 ||
+        returned_length != sizeof(expected_bytes) ||
+        memcmp(returned_bytes, expected_bytes, sizeof(expected_bytes)) != 0) {
+        MMLLOG_ERROR(log->logger,
+                     "Kernel line-window bytes differ after text/paste/undo/redo (returned=%llu)",
+                     (unsigned long long)returned_length);
+        goto cleanup;
+    }
+
+    if (send_key_and_drain(transport, session, "s", CDIN_FRONTEND_MOD_CTRL) != 0 ||
+        !verify_saved_bytes(path, expected_bytes, sizeof(expected_bytes))) {
+        MMLLOG_ERROR(log->logger, "Runtime Ctrl+S did not atomically save exact document bytes");
+        goto cleanup;
+    }
+
+    if (send_command_and_drain(transport, session, "document.close",
+                               NULL, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Runtime document.close failed");
+        goto cleanup;
+    }
+    view_id[0] = '\0';
+    version = 0u;
+    if (send_command_and_drain(transport, session, "document.open",
+                               path, view_id, sizeof(view_id), &version) != 0 ||
+        view_id[0] == '\0') {
+        MMLLOG_ERROR(log->logger, "Runtime document.open did not recreate a view");
+        goto cleanup;
+    }
+
+    returned_length = 0u;
+    memset(returned_bytes, 0, sizeof(returned_bytes));
+    if (cdin_frontend_session_request_lines(session, view_id, 0u, 2u, version) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "response",
+                             NULL, 0u, NULL, returned_bytes, sizeof(returned_bytes),
+                             &returned_length) != 0 ||
+        returned_length != sizeof(expected_bytes) ||
+        memcmp(returned_bytes, expected_bytes, sizeof(expected_bytes)) != 0) {
+        MMLLOG_ERROR(log->logger,
+                     "Reopened document bytes differ from the saved Kernel snapshot");
+        goto cleanup;
+    }
+
+    if (send_command_and_drain(transport, session, "document.close",
+                               NULL, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Runtime final document.close failed");
+        goto cleanup;
+    }
+    MMLLOG_INFO(log->logger,
+                "Frontend document smoke passed: text/paste, undo/redo, atomic save, close/open and %llu exact bytes",
+                (unsigned long long)sizeof(expected_bytes));
+    result = 0;
+
+cleanup:
+    (void)remove(path);
+    return result;
 }
 
 int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
@@ -279,6 +553,11 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
     if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
         MMLLOG_ERROR(log->logger, "Frontend resize propagation failed: %s",
                      cdin_frontend_protocol_status_name(protocol_status));
+        goto cleanup;
+    }
+
+    if (cdin_frontend_document_smoke(&transport, &session, log) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend/Runtime/Kernel document workflow smoke failed");
         goto cleanup;
     }
 
