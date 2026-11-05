@@ -78,9 +78,19 @@ jobs:
       - name: Install pinned Pipeline, psx and gix
         run: |
           python -m pip install "git+https://github.com/m-mdy-m/pipeline.git@79169afc4f9f74ee46c52be2bf6974f8544c7db1"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Keep Go tools in the active UCRT64 PATH instead of the host
+            # Windows GOPATH, which MSYS2 shells do not resolve consistently.
+            export GOBIN=/ucrt64/bin
+          fi
           go install github.com/m-mdy-m/psx/cmd/psx@e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df
           go install github.com/m-mdy-m/gix/cmd/gix@9f0867923177cef3cd36d980cc2b356a35bee507
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            command -v psx
+            command -v gix
+          else
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          fi
       - name: Verify repository shape and Git flow
         run: |
           psx check

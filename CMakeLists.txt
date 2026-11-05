@@ -8,7 +8,7 @@ option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
 
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
-# package. The Composition Root never compiles copied component sources.
+# The Composition Root never compiles copied component sources.
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
 find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -44,7 +44,7 @@ target_link_libraries(cdin PRIVATE
     PkgConfig::CDIN_KERNEL
     m-mdy-m::log
     cdin::frontend_core
-    Lua::Lua
+    ${LUA_LIBRARIES}
     Threads::Threads)
 
 function(cdin_enable_strict target)
