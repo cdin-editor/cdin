@@ -1240,10 +1240,27 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
         } else {
             model_status = cdin_frontend_tui_receive(
                 &context->session, context->model, &message, &committed);
+            if (model_status == CDIN_FRONTEND_TUI_MODEL_STALE &&
+                message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+                /* Runtime may publish a later UI revision before an older
+                 * queued snapshot reaches this owner loop. The model keeps
+                 * its newer committed state; ACK the stale flush so Backend
+                 * can release that queue entry and continue publishing. */
+                if (context->session.last_flush_sequence == 0u ||
+                    cdin_frontend_session_ack(
+                        &context->session, context->session.last_flush_sequence) !=
+                        CDIN_FRONTEND_PROTOCOL_OK) {
+                    MMLLOG_ERROR(context->log->logger,
+                                 "Could not ACK stale TUI snapshot flush");
+                    return CDIN_FRONTEND_TUI_IO_FAILURE;
+                }
+                model_status = CDIN_FRONTEND_TUI_MODEL_OK;
+            }
         }
         if (model_status != CDIN_FRONTEND_TUI_MODEL_OK) {
-            MMLLOG_ERROR(context->log->logger, "TUI model rejected Backend message: %d",
-                         (int)model_status);
+            MMLLOG_ERROR(context->log->logger,
+                         "TUI model rejected Backend message: type=%d status=%d",
+                         (int)message.type, (int)model_status);
             return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
         processed++;
