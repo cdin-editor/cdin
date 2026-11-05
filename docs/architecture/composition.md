@@ -34,19 +34,20 @@ The Backend log callback is kept valid until Backend destruction. Backend theref
 
 ## 3. Compatibility checks
 
-The current build and launcher check:
+The current build enforces these public package requirements in `CMakeLists.txt`:
 
-- PUC Lua 5.4.x at configure time;
-- Kernel package minimum version 1.2.1;
-- logger package compatibility with 0.1.0;
-- Frontend Core package compatibility with 1.0.0;
-- Backend runtime version against the Backend header version;
-- Backend and Frontend Protocol major/minor equality at compile time.
+- `find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)`;
+- `find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)`;
+- `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`.
 
-These checks do not replace a versioned Backend package configuration. The current CMake uses installed Backend header/library discovery by name; the pinned source revision is enforced by the stack build.
+The pinned stack build also builds the Kernel dependency closure and checks PUC Lua 5.4.x. At runtime, CDIN checks the Backend version reported by the loaded library against the version constants in the Backend headers. The compile checks require Backend and Frontend Protocol major/minor constants to agree. The stack smoke additionally checks the Runtime-reported version against the exact version declared in `deps.lock`.
+
+These are explicit package/version/Protocol guards, not a proof of every semantic ABI or behavioral compatibility guarantee. Component public contracts and integration tests remain authoritative.
 
 ## 4. Current boundary
 
-CDIN does not yet connect a Frontend client to Backend. The `--check` path validates Runtime loading and Backend lifecycle only. TUI/GUI launch remains disabled until the FE-019 readiness/wakeup and event-loop path is complete. Do not add a second editor loop or a fake Frontend session to make the launcher appear interactive.
+CDIN does not yet connect a live Frontend client to Backend. The `--check` path validates Runtime loading, Backend lifecycle and a headless Frontend Core HELLO/HELLO_ACK protocol smoke. It does not attach a view, publish a UI snapshot, render, dispatch input or edit documents. TUI/GUI launch remains disabled until the FE-019 readiness/wakeup and event-loop path is implemented and verified.
+
+Do not add a second editor loop or a fake Frontend session to make the launcher appear interactive.
 
 See the [Architecture audit](audit.md), [Spec traceability](traceability.md) and [Integration status](../development/integration-status.md).

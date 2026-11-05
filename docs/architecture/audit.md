@@ -20,13 +20,14 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 
 | Area | Evidence | Scope |
 | --- | --- | --- |
-| CLI and launcher | `src/main.c`, `src/cli/options.c` | Parse options and compose Backend lifecycle. |
+| CLI and launcher | `src/main.c`, `src/cli/options.c` | Parse options and compose Backend lifecycle. Interactive launch remains gated. |
 | Diagnostics | `src/diagnostics/log.c`, `include/cdin/log.h` | CDIN logger setup and Backend callback adapter. |
 | Dependency pins | `deps.lock`, `scripts/deps.py` | Immutable component/tool revisions and source materialization. |
-| Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Build, test and install pinned components. |
-| Boundary checks | `scripts/check_boundaries.py`, `psx.yml` | Mechanical architecture/repository-shape checks. |
-| CLI E2E | `scripts/assert_cli.py`, root CTest entries | CLI behavior and lifecycle smoke. |
+| Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Build, test and install pinned components; verify Runtime-reported package version. |
+| Boundary checks | `scripts/check_boundaries.py`, `psx.yml` | Mechanical architecture/repository-shape checks; include-graph coverage is partial. |
+| CLI E2E | `scripts/assert_cli.py`, root CTest entries | CLI success, invalid arguments and fail-closed launch paths. |
 | Frontend smoke | `src/integration/frontend_smoke.c` | In-process Frontend Core HELLO/HELLO_ACK only. |
+| Source snapshot | `scripts/package.py` | Reproducible source ZIP, archive safety/CRC checks and SHA-256 sidecar. |
 | Product E2E | `tests/e2e/README.md` | Documents live edit/save E2E still required. |
 | Benchmarks | `tests/bench/README.md` | Measurement plan; no verified product RSS/soak benchmark. |
 
@@ -35,32 +36,35 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Capability | Status | Evidence / limitation |
 | --- | --- | --- |
 | Immutable component source pins | IMPLEMENTED | `deps.lock`. |
-| Full pinned stack build | VERIFIED | CI run 42009406506 passed Linux, macOS and Windows jobs for commit `4ab4064...`. |
-| Backend package compatibility | IMPLEMENTED | Backend 1.0.0 versioned CMake package is consumed with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
+| Full pinned stack build | PASS for inspected baseline | CI run 42015347702 passed Linux, macOS and Windows jobs on commit `b1a0a4a...`; current continuation changes require a fresh run. |
+| Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.0 CMake package is consumed with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
+| Runtime version identity | VERIFIED for pinned revision | CI log reports Runtime `1.0.0-rc.1`, matching `deps.lock`; `build_stack.py` now enforces this check. |
 | Runtime hosting | VERIFIED for lifecycle smoke | Backend creates/owns Runtime; CDIN supplies root and entry. |
 | Frontend Core handshake | VERIFIED for headless smoke | HELLO/HELLO_ACK through in-process byte transport. |
 | Interactive TUI/GUI launch | NOT IMPLEMENTED | No supported installed adapter/readiness event loop is connected. |
 | View attach and UI snapshot | NOT VERIFIED | An earlier attempt returned `CDIN_BACKEND_LIMIT_EXCEEDED`; current smoke deliberately stops at handshake. |
 | Document create/open/edit/save/reopen | NOT IMPLEMENTED in CDIN | No connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | NOT VERIFIED | No real Frontend input path through the Composition Root. |
-| ASan/UBSan/leak checks | PASS for inspected baseline | CI run 42009406506 sanitizer job passed. |
+| ASan/UBSan/leak checks | PASS for inspected baseline | CI run 42015347702 sanitizer job passed. |
 | Product RSS/soak/latency benchmarks | NOT IMPLEMENTED | Existing benchmark material is a plan, not product measurements. |
-| Platform installers | NOT IMPLEMENTED | Source archive is not a runnable application package. |
+| Application installers | NOT IMPLEMENTED | Source archive is not a runnable application package. |
 
 ## 4. CI and security verification
 
-CI run [42009406506](https://github.com/cdin-editor/cdin/actions/runs/42009406506) completed successfully for Linux, macOS, Windows and Linux ASan/UBSan/leak detection on commit `4ab4064af53f347ee714e57c3c2e936310f12673`. The later `9bc6ed3...` commit changed documentation only; the new CI run for that latest head must still be inspected before claiming the latest commit is verified.
+CI run [42015347702](https://github.com/cdin-editor/cdin/actions/runs/42015347702) completed successfully for Linux, macOS, Windows and Linux ASan/UBSan/leak detection on commit `b1a0a4af6e976996aaaba05182efbfdc0403c75e`. Each native job also validated and uploaded a source ZIP artifact. The current continuation adds deterministic archive validation, updated SHA-pinned Actions and extra CLI tests; its fresh CI result is still required.
 
-The successful jobs verify the pinned component stack, CLI/lifecycle smoke and Frontend Core HELLO/HELLO_ACK handshake. They do not verify view attachment, UI snapshot delivery, rendering, editing, persistence, keymap dispatch or plugin behavior.
+CodeQL run [42015347819](https://github.com/cdin-editor/cdin/actions/runs/42015347819) completed successfully for traced C/C++ and Python analysis.
 
-The previous CodeQL auto-configuration attempted JavaScript/TypeScript analysis despite no JS/TS source being present. A dedicated workflow now targets C/C++ and Python separately; its first successful run is still a release-quality check.
+The GitHub-managed dynamic workflow [42015339040](https://github.com/cdin-editor/cdin/actions/runs/42015339040) passed Python but failed JavaScript/TypeScript because no processable JS/TS source exists. This Default Setup language selection is configured in GitHub repository settings, outside the committed workflows. The explicit C/C++ and Python workflow does not disable that separate configuration.
 
 ## 5. Compatibility findings
 
-- **Runtime version identity:** lock/status metadata says candidate `1.0.0-rc.1`, while an earlier Runtime self-report in CI was `0.2.1-beta.10.next.17+gc7b50b8`. Resolve Git-derived package versioning and release metadata before publishing.
+- **Runtime version identity:** the prior discrepancy is resolved for the pinned Runtime revision. CI logs show the exact `1.0.0-rc.1` version recorded in `deps.lock`; the build now rejects a mismatch.
+- **Backend package:** versioned CMake package discovery is enforced at 1.0.0; do not regress to unversioned header/library discovery.
 - **Frontend adapter:** the TUI target is experimental/unexported by Frontend Core 1.0.0. CDIN must consume an installable supported adapter, not copy sources into the Composition Root.
 - **Snapshot limits:** initial Runtime UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`. The current handshake smoke does not bypass this by increasing message limits or claim snapshot delivery.
 - **Readiness integration:** Backend exposes a worker-completion wakeup callback, but CDIN still needs a real readiness-driven event loop that combines terminal readiness, Backend wakeups, resize and termination.
+- **Static include boundaries:** the current boundary script catches selected copied implementation calls but does not parse the compiler's full include graph. It is a guardrail, not a proof of all architectural include rules.
 
 ## 6. Remaining release gates
 
@@ -71,8 +75,8 @@ The previous CodeQL auto-configuration attempted JavaScript/TypeScript analysis 
 5. Verify Runtime command/keymap dispatch through actual Frontend input.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify detach/reconnect, multiple Frontends and failure recovery.
-8. Keep native platform CI and sanitizer checks green on the current head.
-9. Add measured RSS, allocator peak where available, leaks, soak and latency benchmarks.
-10. Build platform installers and publish release artifacts only after the live editing path is complete.
+8. Keep native platform CI, sanitizer checks and both CodeQL language analyses green on the current head.
+9. Add measured RSS, allocator peak, leaks, soak and latency benchmarks.
+10. Build platform installers and publish signed release artifacts only after the live editing path is complete.
 
 A green component CI is necessary, but it is not proof that CDIN is already an interactive editor.

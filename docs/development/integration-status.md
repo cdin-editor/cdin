@@ -6,50 +6,66 @@ This document reports what the current CDIN branch actually connects. A componen
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Composition Root CLI | IMPLEMENTED | `--help`, `--version`, `--check`, Runtime root/entry and frontend options are parsed. |
+| Composition Root CLI | IMPLEMENTED | Help/version/check, Runtime root/entry and frontend options are parsed; unsupported frontends and interactive launch fail closed. |
 | Component pinning | IMPLEMENTED | `deps.lock` records immutable source revisions. |
-| Stack orchestration | IMPLEMENTED | `scripts/build_stack.py` builds and tests the pinned component stack. |
+| Stack orchestration | IMPLEMENTED | `scripts/build_stack.py` builds, tests and installs the pinned component stack in dependency order. |
 | Runtime module installation | IMPLEMENTED | CMake installs the pinned Lua module tree under `share/cdin/lua`. |
+| Runtime version identity | VERIFIED | The stack smoke compares the Runtime-reported version with the version in `deps.lock`; run 42015347702 logged Runtime `1.0.0-rc.1`, matching the lock. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
-| Backend package contract | IMPLEMENTED | Backend 1.0.0 exports versioned `cdinBackend` CMake package targets; CDIN consumes the installed package with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
-| Backend/Frontend protocol compatibility | PARTIAL | Major/minor header constants are compared at compile time; `--check` sends Frontend Core HELLO through an in-process byte transport and validates Backend HELLO_ACK. |
+| Backend package contract | IMPLEMENTED | Backend 1.0.0 exports versioned `cdinBackend` CMake package targets; CDIN consumes them with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
+| Backend/Frontend protocol compatibility | PARTIAL | Protocol major/minor header constants are compared at compile time; `--check` sends Frontend Core HELLO through an in-process byte transport and validates Backend HELLO_ACK. |
 | Shared logging | IMPLEMENTED for CDIN and Backend callbacks | CDIN owns a logger instance and routes Backend log callbacks into it. |
+| CLI fail-closed tests | IMPLEMENTED; new cases await CI | CTest covers missing option values, unsupported frontend selection and attempts to launch without `--check`. |
+| Source snapshot | IMPLEMENTED as a review artifact | `scripts/package.py` builds a sorted, fixed-metadata ZIP, rejects symlinks, verifies archive paths/CRCs, checks two builds match and writes a SHA-256 sidecar. |
+| CI platform coverage | VERIFIED on preceding PR head | Run 42015347702 passed Linux, macOS, Windows and Linux ASan/UBSan/leak checks. The new action pins and reproducible archive changes require a fresh run on the updated head. |
+| Explicit CodeQL | VERIFIED on preceding PR head | Run 42015347819 passed traced C/C++ analysis and Python analysis. The action-major/SHA update requires a fresh run. |
 
 ## 2. Not complete
 
 | Area | Status | Missing work |
 | --- | --- | --- |
-| Frontend Core handshake | IMPLEMENTED for headless smoke | `--check` creates a Frontend Core client/session, sends HELLO, validates HELLO_ACK and closes the Backend client. This is not view attachment or an interactive transport. |
-| Interactive TUI | NOT IMPLEMENTED | The TUI adapter is not exported by Frontend Core 1.0.0; initial UI snapshot publication returned `CDIN_BACKEND_LIMIT_EXCEEDED`; readiness/wakeup and FE-019 event-loop integration remain. |
+| Interactive TUI | NOT IMPLEMENTED | Frontend TUI adapter is not exported as an installable supported target; initial UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`; Backend wakeup and FE-019 event-loop integration remain. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
-| Real editing workflow | NOT IMPLEMENTED | Create/open/edit/save/reopen through real Runtime, Backend, Kernel and Frontend interfaces. |
+| View attachment and UI state | NOT VERIFIED | HELLO/HELLO_ACK is tested, but ATTACH, initial UI snapshot publication, UI flush/ACK and resize have not passed through CDIN. |
+| Real editing workflow | NOT IMPLEMENTED | Create/open/edit/save/close/reopen through real Runtime, Backend, Kernel and Frontend interfaces. |
 | Keymaps and commands through input | NOT VERIFIED | Feed real Frontend input into Backend and verify Runtime dispatch. |
 | Plugin lifecycle and isolation | NOT VERIFIED from CDIN | Exercise plugin load, capability denial, failure isolation and unload in a live session. |
 | Multi-frontend attach/detach | NOT VERIFIED from CDIN | Exercise driver/observer roles, detach and reconnect. |
-| Product memory and soak measurements | NOT IMPLEMENTED | Measure RSS, allocator peak, leaks and long-running sessions. |
-| Platform installers | NOT IMPLEMENTED | The current package task creates a source snapshot only; it is not an application installer. |
-| Docker image | NOT IMPLEMENTED | No verified runtime image is published. |
+| Product memory and soak measurements | NOT IMPLEMENTED | Measure RSS, allocator peak, leaks, long-running sessions and latency. |
+| Application installers | NOT IMPLEMENTED | Current package task creates a source snapshot only; it is not a runnable application installer. |
+| Docker image | NOT IMPLEMENTED | No verified runtime image is built or published. |
+| Stable application release | NOT READY | Interactive product path and release gates below remain open. |
 
-## 3. CI evidence
+## 3. CI and security evidence
 
-The current code baseline was verified by [CI run 42009406506](https://github.com/cdin-editor/cdin/actions/runs/42009406506) on commit `4ab4064af53f347ee714e57c3c2e936310f12673`. All four jobs completed successfully:
+### Explicit workflows
 
-- Ubuntu pinned stack + E2E: PASS.
-- macOS pinned stack + E2E: PASS.
-- Windows pinned stack + E2E: PASS.
-- Linux ASan + UBSan + leak detection: PASS.
-
-The latest PR-head commit `9bc6ed3645dbdd47144d3b78b35df569c5379e59` also has CI run [42009406506](https://github.com/cdin-editor/cdin/actions/runs/42009406506) for its preceding code-identical commit; subsequent change at that point was documentation-only. The CI run on the latest PR head must be inspected independently before treating the newest commit as verified.
+- [CI run 42015347702](https://github.com/cdin-editor/cdin/actions/runs/42015347702) passed on PR head `b1a0a4af6e976996aaaba05182efbfdc0403c75e`:
+  - Ubuntu pinned stack + E2E: PASS.
+  - macOS pinned stack + E2E: PASS.
+  - Windows pinned stack + E2E: PASS.
+  - Linux ASan + UBSan + leak detection: PASS.
+  - Source-snapshot ZIP validation and artifact upload: PASS on all three native platforms.
+- [CodeQL run 42015347819](https://github.com/cdin-editor/cdin/actions/runs/42015347819) passed both C/C++ traced-build analysis and Python analysis.
+- These runs predate the current continuation commit. The latest action-pin, archive reproducibility and extra CLI test changes must pass a new run before they are considered verified.
 
 The passing stack jobs include a Frontend Core HELLO/HELLO_ACK protocol smoke over an in-process transport, component tests, CLI checks and Backend/Runtime startup/shutdown. They do **not** prove view attachment, UI snapshot delivery, rendering, document editing, save/reopen, input dispatch or plugin behavior.
 
-The previous dynamic CodeQL workflow attempted JavaScript/TypeScript analysis even though the repository contains no JS/TS source. The new dedicated CodeQL workflow analyzes only C/C++ and Python in separate jobs; its first run is still required before calling the new configuration verified.
+### GitHub Default Setup CodeQL
 
-## 4. Compatibility and release blockers
+The separate GitHub-managed dynamic workflow [42015339040](https://github.com/cdin-editor/cdin/actions/runs/42015339040) passed Python but failed its JavaScript/TypeScript job. Its log says CodeQL found only empty or syntactically invalid JavaScript/TypeScript files (the repository has no JS/TS source) and then reported that it could not process any JS/TS code.
 
-- Runtime package identity is unresolved: the lock/status documents identify candidate `1.0.0-rc.1`, while the Runtime self-reported version observed in earlier CI logs was `0.2.1-beta.10.next.17+gc7b50b8`. Reconcile Runtime's Git-derived version with its release metadata before publishing.
-- Backend 1.0.0 package discovery is versioned at CMake package level; do not regress to unversioned header/library discovery.
-- Initial UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`; the headless handshake was intentionally narrowed rather than increasing message limits or claiming a snapshot test.
+This dynamic workflow is configured by GitHub repository security settings, not by `.github/workflows/codeql.yml`. The repository-owned workflow adds successful C/C++ and Python analysis, but cannot disable the unrelated Default Setup language selection. Set Default Setup to the languages actually present (C/C++ and Python), or disable its unsupported JS/TS selection in GitHub settings.
+
+### Action/runtime update
+
+The preceding CI log emitted Node.js 20 deprecation warnings for the old Actions versions. The current change pins updated Node 24-compatible action releases by full commit SHA. The new versions and provenance step require fresh CI verification on the current PR head.
+
+## 4. Compatibility findings
+
+- Backend 1.0.0 package discovery is versioned; keep `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`.
+- Runtime's version mismatch is **resolved for the pinned revision**: `build_stack.py` asserts that Backend's startup log reports the Runtime version from `deps.lock`; CI run 42015347702 confirmed `1.0.0-rc.1`.
+- Initial UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`; the headless handshake was intentionally kept narrow instead of increasing message limits or claiming snapshot coverage.
 - Frontend TUI target remains experimental/unexported by Frontend Core 1.0.0. CDIN must consume a supported installable adapter, not copy its implementation.
 
 ## 5. Release gates
@@ -63,8 +79,8 @@ Before describing CDIN as an interactive editor:
 5. Verify Runtime command/keymap execution through real input.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify Frontend detach/reconnect, multi-frontend sessions and failure recovery.
-8. Maintain native Linux/macOS/Windows CI and sanitizer evidence on the latest commit.
+8. Maintain native Linux/macOS/Windows CI, sanitizer evidence and C/C++/Python CodeQL on the latest commit.
 9. Add measured process RSS, allocator peak where available, leak checks, soak workloads and latency measurements.
-10. Produce platform packages/installers and a release workflow only after the interactive path is complete.
+10. Produce reproducible platform packages/installers and signed release artifacts only after the interactive path is complete.
 
 Unrun checks must be reported as NOT RUN, not PASS.

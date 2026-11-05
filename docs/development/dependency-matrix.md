@@ -4,9 +4,9 @@ The lock file is the source of truth for immutable source revisions. Version fie
 
 | Component | Pinned revision | Declared version/contract | Role and current limitation |
 | --- | --- | --- | --- |
-| Runtime | `762aba7d5674149cae3a8f736d93159360fff730` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Runtime policy and Lua assets loaded by Backend. `deps.lock` pins the package and compatibility labels. Runtime version resolution ignores a parent repository when installed inside CDIN; the CDIN lifecycle log verifies `1.0.0-rc.1`. |
+| Runtime | `762aba7d5674149cae3a8f736d93159360fff730` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Runtime policy and Lua assets loaded by Backend. The build verifies the Runtime-reported version equals the lock-file version. |
 | Kernel | `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Package 1.2.1; ABI 1.1.0 | Backend's native document engine dependency. |
-| Backend | `7cf9fca7b4629deb428e741712e65d4b34dd03ae` | Version 1.0.0; Protocol 1.0.0 | Backend lifecycle and Runtime/Kernel host. Adds an optional owner-loop wakeup callback for worker completions; callback runs outside the pool mutex and is thread-safe/nonblocking by contract. Exports versioned `cdinBackend` CMake package targets, an explicit control-reply consume API for HELLO_ACK/DETACH_ACK, and a worker-completion wakeup callback. It also includes the Windows scenario-path normalization correction. Backend Linux/macOS/Windows and sanitizer CI pass; CDIN consumes the package with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
+| Backend | `7cf9fca7b4629deb428e741712e65d4b34dd03ae` | Version 1.0.0; Protocol 1.0.0 | Backend lifecycle and Runtime/Kernel host. Adds an optional owner-loop wakeup callback for worker completions; callback runs outside the pool mutex and is thread-safe/nonblocking by contract. Exports versioned `cdinBackend` CMake package targets, an explicit control-reply consume API for HELLO_ACK/DETACH_ACK, and a worker-completion wakeup callback. CDIN requires `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
 | Frontend | `a18ef423faf2fe3305c4c432063b431cb6ffca98` | Project version 1.0.0; Protocol header 1.0.0 | Core package and peer adapters. The pinned Frontend PR commit uses a bounded comparison for semantic document IDs to keep GCC 15's strict overread diagnostics clean. CDIN does not launch a live adapter yet. |
 | m-mdy-m/log.c | `c9b53e9901dc7103eb50be282ae055fe16e98f9a` | Version 0.1.0; ABI 1.0 | Shared diagnostics library. |
 | Pipeline | `79169afc4f9f74ee46c52be2bf6974f8544c7db1` | Immutable tool revision | Local and CI task execution. |
@@ -17,15 +17,16 @@ The CDIN executable target is version 0.2.0 in the root CMake project. This is t
 
 ## Compatibility checks
 
-- CMake requires logger 0.1.0 and Frontend Core 1.0.0.
-- CMake requires PUC Lua 5.4.x.
-- CMake requires Kernel package version 1.2.1 or newer.
-- The build stack compiles the pinned Backend and Frontend revisions.
-- CDIN checks the Backend runtime version against the header version.
+- Root CMake requires logger 0.1.0, Frontend Core 1.0.0 and the versioned Backend package 1.0.0.
+- The pinned component build checks PUC Lua 5.4.x and the Kernel package dependency used by Backend.
+- CDIN checks the Backend runtime version against the Backend header version.
 - CDIN checks Backend/Frontend Protocol major and minor values at compile time.
+- The stack lifecycle smoke checks the Runtime-reported package version against `deps.lock`.
 
-The package-level Backend ABI contract and a released prebuilt dependency installation are still incomplete. Do not infer ABI compatibility from a matching repository SHA alone.
+These checks are stronger than comparing repository SHAs alone, but they do not assert complete semantic compatibility across every component API.
 
 ## Current verification note
 
-The immutable source revisions above were built in the current CDIN CI run on Linux and macOS. The Windows stack reached Backend tests but failed one Backend-owned path workflow test. The Linux ASan/UBSan/leak-detection job passed. These results do not make the Runtime package candidate a stable release and do not verify a connected Frontend.
+CI run [42015347702](https://github.com/cdin-editor/cdin/actions/runs/42015347702) passed the pinned stack and CLI/lifecycle E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection. Its three native jobs also created, CRC-validated and uploaded source snapshots. The CI log confirms Runtime reported `1.0.0-rc.1`, matching `deps.lock`.
+
+CodeQL run [42015347819](https://github.com/cdin-editor/cdin/actions/runs/42015347819) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.
