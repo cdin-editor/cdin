@@ -4,7 +4,7 @@ The lock file is the source of truth for immutable source revisions. Version fie
 
 | Component | Pinned revision | Declared version/contract | Role and current limitation |
 | --- | --- | --- | --- |
-| Runtime | `fda2db69d8e0ab90c854c3a74efa1dd80d9714cc` | Lua 5.4 module tree; version is not recorded in `deps.lock` | Runtime policy and Lua assets loaded by Backend. |
+| Runtime | `fda2db69d8e0ab90c854c3a74efa1dd80d9714cc` | Lua 5.4; Spec/Runtime docs claim package candidate `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0` | Runtime policy and Lua assets loaded by Backend. `deps.lock` does not pin the package/Host API labels. Current CDIN CI observed Runtime self-report `0.2.1-beta.10.next.17+gc7b50b8`; release identity must be reconciled. |
 | Kernel | `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Package 1.2.1; ABI 1.1.0 | Backend's native document engine dependency. |
 | Backend | `322a3e95e669541e63f5a5c10a16b76823c45200` | Version 1.0.0; Protocol 1.0.0 | Backend lifecycle and Runtime/Kernel host. CMake discovers installed libraries by name; runtime version is checked by CDIN. The pinned Backend PR commit applies explicit unsigned CBOR integer promotion, exposes POSIX APIs to its macOS integration-test targets, and aligns a `size_t`/`uint64_t` helper definition with its public declaration and guards Windows path-allocation overflow without triggering 64-bit `type-limits` warnings. These changes do not alter Backend 1.0.0 ABI or wire bytes. |
 | Frontend | `a18ef423faf2fe3305c4c432063b431cb6ffca98` | Project version 1.0.0; Protocol header 1.0.0 | Core package and peer adapters. The pinned Frontend PR commit uses a bounded comparison for semantic document IDs to keep GCC 15's strict overread diagnostics clean. CDIN does not launch a live adapter yet. |
@@ -25,3 +25,7 @@ The CDIN executable target is version 0.2.0 in the root CMake project. This is t
 - CDIN checks Backend/Frontend Protocol major and minor values at compile time.
 
 The package-level Backend ABI contract and a released prebuilt dependency installation are still incomplete. Do not infer ABI compatibility from a matching repository SHA alone.
+
+## Current verification note
+
+The immutable source revisions above were built in the current CDIN CI run on Linux and macOS. The Windows stack reached Backend tests but failed one Backend-owned path workflow test. The Linux ASan/UBSan/leak-detection job passed. These results do not make the Runtime package candidate a stable release and do not verify a connected Frontend.
