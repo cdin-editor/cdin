@@ -85,7 +85,7 @@ Never depend on floating branches, download unverified source during builds, use
 
 ## 4. Complete legacy removal
 
-Remove the old architecture completely. Review and replace its source, data, assets, libraries, Make/CMake files, website, tests, scripts, documentation, workflows, dependency configuration, packaging and release configuration.
+Remove the old architecture completely. Audit each former surface: `src/`, `data/`, `assets/`, `lib/`, `mk/`, `website/`, `tests/`, `scripts/`, `docs/`, `CMakeLists.txt`, `Makefile`, `Dockerfile`, `docker-compose.yml`, `.github/`, `.gix/`, dependency configuration, packaging and release configuration. Replace legacy contents with the new composition-only implementation where the same directory name is still useful; do not retain old SDL/Lua/editor-domain modules beside their replacements.
 
 The website belongs exclusively to:
 

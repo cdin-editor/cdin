@@ -11,7 +11,9 @@ This page connects requirements to CDIN source and records whether the current i
 | [ARCH-041](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L66-L66) — Runtime uses Backend Host API | PROPOSED | `src/main.c` passes Runtime root/entry to Backend | **IMPLEMENTED for lifecycle smoke test**, not live editor behavior. |
 | [ARCH-042](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L67-L67) — Backend has no display-toolkit dependency | ACCEPTED | Backend's own CMake/source; pinned build in `scripts/build_stack.py` | **Owned by Backend; not reimplemented in CDIN.** |
 | [ARCH-043](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L68-L68) — Frontend depends on Protocol and its toolkit | ACCEPTED | Frontend package pin and Frontend-owned code | **Owned by Frontend; CDIN does not implement an adapter.** |
+| [ARCH-044](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L69-L69) — `cdin-x` depends only on the extension contract | PROPOSED | Not applicable to this `cdin` Composition Root executable | **NOT IMPLEMENTED here** — `cdin-x` is a separate Spec-defined extension host and is not silently treated as the application Composition Root. |
 | [ARCH-045](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L70-L70) — Composition Root may assemble components and must not be depended on | PROPOSED | Root executable links installed component interfaces | **PARTIAL** — no reverse dependency is introduced in this repository; complete product composition remains open. |
+| [ARCH-046](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L71-L71) — include-direction rules are enforced by implementation repositories' static checks | PROPOSED | `scripts/check_boundaries.py` | **PARTIAL** — the current check rejects several copied implementation calls, but does not yet inspect the complete include graph. |
 | [ROOT-001](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L22-L22) — no reimplementation of component logic | ACCEPTED | `src/` contains launcher, CLI parsing and diagnostics only | **IMPLEMENTED for current source tree.** |
 | [ROOT-006](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L27-L27) — launcher selects a frontend and passes Backend endpoint | PROPOSED | `src/cli/options.c`; `src/main.c` | **NOT IMPLEMENTED** — only the headless check value is accepted; there is no attached frontend endpoint. |
 | [ROOT-007](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28) — compatibility checks for assembled components | PROPOSED | `CMakeLists.txt`; `src/main.c` | **PARTIAL** — package minimums, Backend runtime version and Protocol major/minor are checked; package-level Backend ABI discovery still needs work. |
@@ -31,6 +33,10 @@ This page connects requirements to CDIN source and records whether the current i
 - Component build/test order: [`scripts/build_stack.py`](https://github.com/cdin-editor/cdin/blob/feature/complete-composition-root-rewrite/scripts/build_stack.py#L48-L93).
 - Pipeline tasks: [`pipeline.toml`](https://github.com/cdin-editor/cdin/blob/feature/complete-composition-root-rewrite/pipeline.toml#L10-L35).
 
-## 3. Verification rule
+## 3. Static boundary check
+
+The current [`scripts/check_boundaries.py`](https://github.com/cdin-editor/cdin/blob/feature/complete-composition-root-rewrite/scripts/check_boundaries.py) scans CDIN C sources for selected calls that would copy Kernel, Runtime or Frontend implementation into the Composition Root. It does not parse compiler include graphs and cannot prove all ARCH-040 through ARCH-046 include-direction constraints. Full include-graph checking remains **PARTIAL** and must not be reported as complete.
+
+## 4. Verification rule
 
 A source link proves where code or a requirement is written; it does not prove runtime behavior. Runtime behavior is marked implemented only after an executable test or component integration test exercises the relevant public interface. Workflow configuration is not a passing CI result. See [Integration status](../development/integration-status.md) for current run evidence.

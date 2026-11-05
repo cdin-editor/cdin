@@ -7,11 +7,13 @@
 
 ## Context
 
-The repository still contains the original monolithic SDL/Lua editor runtime. The target architecture has independently versioned Kernel, Runtime, Backend and Frontend components, with this repository acting as their composition root. The repository owner explicitly approved replacing the old implementation in one breaking-change rewrite. There are no production users whose compatibility requirements justify carrying the old interfaces forward.
+The branch replaces the original monolithic SDL/Lua editor runtime with independently versioned Kernel, Runtime, Backend and Frontend components, while this repository acts only as their composition root. The repository owner explicitly approved replacing the old implementation in one breaking-change rewrite. There are no production users whose compatibility requirements justify carrying the old interfaces forward.
 
 ## Decision
 
 Replace the legacy implementation rather than migrating it incrementally. This decision is an explicit owner-approved exception to the incremental migration strategy in Spec ADR-0012. ADR-0012 is no longer the governing implementation strategy for this repository.
+
+The website is not part of this rewrite's deliverables. Its source, assets, dependencies and deployment workflow live only in https://github.com/cdin-editor/cdin-editor.github.io; this repository must not contain a second website tree or Pages workflow.
 
 The rewrite has these boundaries:
 
