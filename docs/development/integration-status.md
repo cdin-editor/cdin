@@ -90,3 +90,15 @@ Before describing CDIN as an interactive editor:
 10. Produce reproducible platform packages/installers and signed application releases only after the interactive path is complete.
 
 The epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). Unrun checks must be reported as NOT RUN, not PASS.
+
+## POSIX TUI readiness gate
+
+The interactive TUI remains **fail-closed by default**. The product CLI requires the explicit
+`CDIN_ENABLE_EXPERIMENTAL_TUI=1` opt-in while the readiness and PTY acceptance tests are being
+validated. The CI-only PTY smoke sets that opt-in to exercise the real executable.
+
+The candidate test covers initial ATTACH snapshot delivery, rendered text input, SIGWINCH wakeup,
+save followed immediately by quit, and terminal restoration. A separate startup-failure run
+checks that terminal attributes and descriptor flags remain unchanged or are restored. Windows
+interactive launch remains fail-closed because a native Windows readiness adapter is not yet
+published. These tests are not considered passed until the current CDIN PR workflow is green.
