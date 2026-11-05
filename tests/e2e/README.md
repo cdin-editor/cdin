@@ -22,9 +22,9 @@ The pinned stack builder also runs the test suites owned by Kernel, Backend, Fro
 
 ## 2. Latest inspected evidence
 
-On candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`:
+On current candidate commit `006263f89f1c1c5352807b00544c8944e131a2dd`:
 
-- [CI run 42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) passed the Linux, macOS and Windows full-stack jobs.
+- [CI run 42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322) passed the Linux, macOS and Windows full-stack jobs, including the expanded document smoke.
 - All nine CDIN CTest cases passed on each native platform.
 - The pinned Frontend component suite passed 16/16 tests on each native platform.
 - The Backend component suite passed 10/10 tests on each native platform.
@@ -37,20 +37,20 @@ The PR provenance job is skipped by design: pull-request builds do not receive O
 
 The separate GitHub-managed Default Setup workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) still fails JavaScript/TypeScript analysis because this repository has no processable JS/TS source. Its Python job passes. This is a repository security setting, not a failure of the explicit C/C++ and Python workflow.
 
-The current `cdin_headless_frontend_protocol_smoke` implementation now covers one complete byte-exact document cycle through the real in-process Frontend/Backend/Runtime/Kernel stack. It remains a headless protocol check, not an interactive terminal or GUI session. The expanded CI result is pending; product work for the FE-019 TUI loop, GUI, plugin isolation, multiple Frontends, reconnect and soak/latency gates remains tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
+The `cdin_headless_frontend_protocol_smoke` implementation covers one complete byte-exact document cycle through the real in-process Frontend/Backend/Runtime/Kernel stack. CI run 42074655322 verifies it on Linux, macOS and Windows, with Linux ASan/UBSan/leak detection. It remains a headless protocol check, not an interactive terminal or GUI session. FE-019 TUI launch, GUI, plugin isolation, multiple Frontends, reconnect and soak/latency gates remain tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
 
 ## 3. Remaining interactive product E2E
 
-The headless document workflow is now implemented in `src/integration/frontend_smoke.c`: it uses the public Frontend session API and a real Backend/Runtime/Kernel instance to create a document, send text and binary paste, exercise Runtime undo/redo/save bindings, close and reopen the file, and compare exact bytes from both disk and `view.request_lines`. The current CI result is pending; do not mark it PASS until the run on the current commit completes.
+The headless document workflow is now implemented in `src/integration/frontend_smoke.c`: it uses the public Frontend session API and a real Backend/Runtime/Kernel instance to create a document, send text and binary paste, exercise Runtime undo/redo/save bindings, close and reopen the file, and compare exact bytes from both disk and `view.request_lines`. All three native platform jobs and the Linux sanitizer job passed in [CI run 42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322).
 
-Once the FE-019 readiness/wakeup path is connected, the remaining E2E scenarios must cover:
+Remaining E2E scenarios must cover:
 
 1. Start CDIN and launch the installable TUI adapter in a real terminal.
 2. Verify rendering, scrolling, resize, signals, terminal restore and orderly shutdown.
 3. Verify Backend worker wakeups reach the native Frontend owner loop without polling-only regressions.
 4. Detach and reattach a Frontend without losing Backend-owned editor state.
 5. Exercise multiple Frontends, Driver/Observer permissions, promotion and reconnect.
-6. Inject Runtime, Backend, transport and filesystem failures and verify cleanup/recovery.
+6. Extend the exact-byte fixture to BOM, LF-only and mixed-EOL data, and inject Runtime, Backend, transport and filesystem failures through the full CDIN executable.
 7. Load a plugin, verify capability restrictions, failure isolation and unload.
 8. Add a separate GUI-SDL launch and input/render integration path before claiming GUI support.
 
