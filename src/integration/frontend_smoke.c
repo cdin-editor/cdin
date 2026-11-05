@@ -327,7 +327,7 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
                      cdin_backend_status_name(backend_status));
         goto cleanup;
     }
-    if (cdin_frontend_receive_snapshot(&session, model, &transport, log, &flush_count) != 0) {
+    if (cdin_frontend_receive_snapshot(&session, &transport, log, &flush_count) != 0) {
         goto cleanup;
     }
 
