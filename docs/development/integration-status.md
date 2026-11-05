@@ -43,7 +43,7 @@ The current failure is in Frontend's line-request lifecycle. A snapshot may pres
 - cancel only when the committed snapshot changes document version or first-line target;
 - treat duplicate/obsolete line responses as stale no-ops while continuing to reject malformed and future-version responses.
 
-At the latest inspection, PR #11 had green Ubuntu, Windows and Pipeline/quality jobs; macOS was still queued. It must not be treated as merged or fully cross-platform verified until macOS completes. For integration testing only, CDIN's feature branch now pins the immutable PR head `efbb5804943d5aa4f0a303f2f7b7cd10bab42444` in `deps.lock`; this is an unmerged candidate, not a release pin. The CDIN run for that pin, [42120816389](https://github.com/cdin-editor/cdin/actions/runs/42120816389), is pending. After PR #11's full matrix passes and it is merged, replace this temporary pin with the immutable merge commit and rerun CDIN's complete native/sanitizer matrix.
+Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) is now merged. Its merge commit `e29df5118e7b822912724b15c0c963b0b99f2f8a` is the exact revision pinned in `deps.lock`; Frontend `main` points to the same SHA. Its Ubuntu, Windows and Pipeline/quality checks passed; the first macOS job was cancelled, not failed. CDIN native validation on the merged pin is running in [CI run 42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431). The merge fixes the diagnosed Frontend request-state defect, but it does not establish that CDIN's live PTY smoke now passes; that requires current CDIN CI evidence.
 
 Windows TUI remains fail-closed until a native Console readiness/restore adapter is implemented. GUI-SDL launch is not implemented.
 
@@ -71,7 +71,7 @@ The reproducible source snapshot and trusted-main provenance flow are source-dis
 
 | Area | Status | Remaining work |
 | --- | --- | --- |
-| Live TUI on POSIX | BLOCKED | Merge and pin the Frontend request-lifecycle fix, rerun Linux/macOS/Windows and sanitizers, and pass the real PTY smoke. |
+| Live TUI on POSIX | BLOCKED pending current CDIN CI | Frontend fix is merged and pinned; verify the live PTY smoke on Linux/macOS and the Linux sanitizer gate. |
 | Windows TUI | NOT IMPLEMENTED | Native Console readiness, input/resize multiplexer and restoration. |
 | GUI-SDL | NOT IMPLEMENTED | Adapter composition, lifecycle and GUI E2E. |
 | Runtime/plugin lifecycle | NOT VERIFIED FROM CDIN | Live plugin load/unload, capability grant/deny, failure isolation and configuration/command error propagation. |
@@ -84,8 +84,8 @@ Registry handoff is deliberately not a blocker for this epic; it is a later, pro
 
 ## 5. Ordered release gates
 
-1. Merge the Frontend TUI request-lifecycle fix only after its complete native CI matrix passes.
-2. Update CDIN's immutable Frontend pin and rerun the entire CDIN Linux/macOS/Windows and sanitizer matrix.
+1. Verify the CDIN native matrix and POSIX PTY smoke against merged Frontend SHA `e29df5118e7b822912724b15c0c963b0b99f2f8a`; the current run is in progress.
+2. Run the compiler-resolved include graph on Linux, macOS and Windows and complete the Linux ASan/UBSan/leak gate on the merged pin.
 3. Pass the live POSIX PTY test, including render, edit, save, resize/signal interruption, terminal restoration and shutdown.
 4. Run the compiler-resolved include graph on Linux, macOS and Windows.
 5. Keep the exact-byte and filesystem-failure smoke tests green on all native platforms.
