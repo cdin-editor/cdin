@@ -43,7 +43,7 @@ The current failure is in Frontend's line-request lifecycle. A snapshot may pres
 - cancel only when the committed snapshot changes document version or first-line target;
 - treat duplicate/obsolete line responses as stale no-ops while continuing to reject malformed and future-version responses.
 
-At the latest inspection, PR #11 had green Ubuntu, Windows and Pipeline/quality jobs; macOS was still queued. It must not be treated as merged or fully cross-platform verified until macOS completes. CDIN currently pins the diagnostics-only Frontend revision `d890217d89e4da3f14ca51ab01d373f52788b8cc`; after PR #11 is verified and merged, `deps.lock` must be advanced to its immutable merge commit and CDIN CI rerun.
+At the latest inspection, PR #11 had green Ubuntu, Windows and Pipeline/quality jobs; macOS was still queued. It must not be treated as merged or fully cross-platform verified until macOS completes. For integration testing only, CDIN's feature branch now pins the immutable PR head `efbb5804943d5aa4f0a303f2f7b7cd10bab42444` in `deps.lock`; this is an unmerged candidate, not a release pin. The CDIN run for that pin, [42120816389](https://github.com/cdin-editor/cdin/actions/runs/42120816389), is pending. After PR #11's full matrix passes and it is merged, replace this temporary pin with the immutable merge commit and rerun CDIN's complete native/sanitizer matrix.
 
 Windows TUI remains fail-closed until a native Console readiness/restore adapter is implemented. GUI-SDL launch is not implemented.
 
