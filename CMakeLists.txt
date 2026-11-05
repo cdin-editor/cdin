@@ -19,7 +19,8 @@ target_compile_features(cdin_options PUBLIC c_std_11)
 
 add_executable(cdin
     src/main.c
-    src/diagnostics/log.c)
+    src/diagnostics/log.c
+    src/integration/frontend_smoke.c)
 target_include_directories(cdin PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(cdin PRIVATE c_std_11)
 target_compile_definitions(cdin PRIVATE
@@ -29,7 +30,8 @@ target_link_libraries(cdin PRIVATE
     cdin_options
     cdin::backend
     m-mdy-m::log
-    cdin::frontend_core)
+    cdin::frontend_core
+    cdin::frontend_ui_tui)
 
 # Resolve installed shared component libraries relative to the executable so
 # the packaged tree runs without a developer-specific loader environment.
@@ -75,7 +77,7 @@ if(BUILD_TESTING)
     add_test(NAME cdin_cli_unknown_option
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --not-a-cdin-option)
-    add_test(NAME cdin_backend_runtime_lifecycle COMMAND cdin --check)
-    set_tests_properties(cdin_backend_runtime_lifecycle PROPERTIES
+    add_test(NAME cdin_headless_frontend_protocol_smoke COMMAND cdin --check)
+    set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
 endif()
