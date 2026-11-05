@@ -55,7 +55,7 @@ The POSIX TUI path is deliberately gated. To attempt it from a POSIX terminal:
 CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui
 ```
 
-This opt-in is for integration testing, not general use. The last fully completed CDIN run with the diagnostics-only Frontend pin failed because Frontend could clear a pending version-pinned `view.lines` request before its matching response arrived. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-lifecycle fix and regression tests. For integration testing, CDIN now pins the immutable PR head `efbb5804943d5aa4f0a303f2f7b7cd10bab42444`; CDIN CI run [42120816389](https://github.com/cdin-editor/cdin/actions/runs/42120816389) is pending. PR #11 still awaits macOS CI and merge; after merge, CDIN must switch to its merge SHA and pass the full native/sanitizer matrix.
+This opt-in is for integration testing, not general use. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) has merged the request-lifecycle fix and regression tests as `e29df5118e7b822912724b15c0c963b0b99f2f8a`, and CDIN's `deps.lock` pins that immutable commit. The current CDIN native matrix run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431) is queued. The POSIX TUI remains experimental until CDIN's live PTY and sanitizer tests pass on this merged pin.
 
 The experimental TUI currently targets POSIX. Windows remains fail-closed until the native Console readiness/input/restore bridge is implemented. GUI-SDL is not implemented.
 
