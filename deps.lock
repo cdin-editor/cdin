@@ -2,7 +2,7 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "84379cb7f837d1df95edd296e7ccec838f664fba"
+revision = "dddebe07e7a773c7d8f3cb83321c2cbb5d259c52"
 version = "1.0.0-rc.1"
 host_api = "1.0.0"
 protocol = "1.0.0"
