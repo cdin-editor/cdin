@@ -106,6 +106,14 @@ def wait_exit(master: int, process: subprocess.Popen[bytes], output: bytearray,
     return process.returncode
 
 
+def public_status_flags(flags: int) -> int:
+    """Ignore kernel-maintained F_GETFL bits such as Darwin FWASWRITTEN."""
+    mask = os.O_ACCMODE | os.O_APPEND | os.O_NONBLOCK
+    for name in ("O_ASYNC", "O_SYNC", "O_DSYNC"):
+        mask |= getattr(os, name, 0)
+    return flags & mask
+
+
 def assert_restored(slave: int, before_termios, before_flags: int, output: bytearray) -> None:
     missing = [token for token in RESTORE if token not in output]
     if missing:
@@ -113,9 +121,11 @@ def assert_restored(slave: int, before_termios, before_flags: int, output: bytea
     if termios.tcgetattr(slave) != before_termios:
         raise AssertionError("terminal mode was not restored")
     after_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
-    if after_flags != before_flags:
+    if public_status_flags(after_flags) != public_status_flags(before_flags):
         raise AssertionError(
-            f"terminal descriptor flags were not restored: before=0x{before_flags:x}, after=0x{after_flags:x}"
+            "terminal descriptor status flags were not restored: "
+            f"before=0x{public_status_flags(before_flags):x}, "
+            f"after=0x{public_status_flags(after_flags):x}"
         )
 
 
@@ -242,8 +252,9 @@ def run_startup_failure(executable: str) -> None:
             else:
                 if termios.tcgetattr(slave) != before_termios:
                     raise AssertionError("startup failure changed terminal mode without restoring it")
-                if fcntl.fcntl(slave, fcntl.F_GETFL) != before_flags:
-                    raise AssertionError("startup failure changed terminal flags without restoring them")
+                after_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
+                if public_status_flags(after_flags) != public_status_flags(before_flags):
+                    raise AssertionError("startup failure changed terminal status flags without restoring them")
             print("CDIN TUI startup-failure smoke passed: terminal state remained unchanged or was restored")
         finally:
             if process is not None and process.poll() is None:
