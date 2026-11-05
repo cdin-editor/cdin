@@ -41,7 +41,7 @@ Workflow run [41987494172](https://github.com/cdin-editor/cdin/actions/runs/4198
 - Linux sanitizer and Linux/macOS stack builds then stopped at Backend configuration. The Kernel install generated `cdin-kernel.pc` with the ABI value `1.1.0`, while Backend checks for package release `>=1.2.1`.
 - Windows installed Pipeline but failed to find `go` inside the MSYS2 shell.
 
-The current stack builder now supplies Kernel's pinned release version from `deps.lock` as `PACKAGE_VERSION` during installation, matching Kernel's own release packaging script while keeping ABI 1.1.0 unchanged. Windows CI now installs Go in UCRT64 instead of relying on the host Go path. These fixes remain **NOT VERIFIED** until a new run completes.
+The current stack builder supplies Kernel's pinned release version from `deps.lock` as `PACKAGE_VERSION` during installation, matching Kernel's own release packaging script while keeping ABI 1.1.0 unchanged. Windows CI installs Go in UCRT64 instead of relying on the host Go path. Backend has a component-owned Draft fix at [Backend PR #1](https://github.com/cdin-editor/backend/pull/1) for the GCC 15 CBOR integer-promotion warning; CDIN now pins that immutable commit. All three changes remain **NOT VERIFIED** until a new full stack run completes.
 
 The failed workflow did not compile Backend or CDIN. It therefore provides no CDIN E2E, sanitizer or platform build result.
 

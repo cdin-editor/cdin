@@ -13,6 +13,7 @@
 ### Fixed
 - Always materialize dependency worktrees after cloning, even when the cloned HEAD already equals the locked SHA.
 - Install the MSYS2 Python pip and Go toolchain packages needed by Windows CI.
+- Pin the Backend component's compiler-warning fix from [Backend PR #1](https://github.com/cdin-editor/backend/pull/1).
 - Prepare a local main branch and Git identity before running Gix diagnostics.
 - Install Kernel's pkg-config metadata with the pinned package release version while preserving its separate ABI version.
 - Avoid running the same architecture-boundary check twice in the Pipeline task graph.
