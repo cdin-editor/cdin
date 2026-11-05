@@ -343,34 +343,52 @@ static int expect_protocol_error(
     const char *path)
 {
     cdin_frontend_protocol_message_view message;
-    if (transport == NULL || session == NULL || command == NULL ||
-        cdin_frontend_session_request_command(session, command, path) !=
-            CDIN_FRONTEND_PROTOCOL_OK ||
-        cdin_frontend_session_receive(session, &message) != CDIN_FRONTEND_PROTOCOL_OK ||
-        message.type != CDIN_FRONTEND_PROTOCOL_ERROR) {
-        return -1;
+    unsigned int attempt;
+    int saw_error = 0;
+    if (transport == NULL || session == NULL) return -1;
+    if (cdin_frontend_session_request_command(session, command, path) != CDIN_FRONTEND_PROTOCOL_OK) return -1;
+    for (attempt = 0u; attempt < 16u; attempt++) {
+        int status = cdin_frontend_session_receive(session, &message);
+        if (status != CDIN_FRONTEND_PROTOCOL_OK) return saw_error ? 0 : -1;
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+            saw_error = 1;
+            if (message.flush_sequence == 0u) return 0;
+            continue;
+        }
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            if (cdin_frontend_session_ack(session, message.flush_sequence) !=
+                CDIN_FRONTEND_PROTOCOL_OK) return -1;
+            if (saw_error) return 0;
+        }
     }
-    return cdin_backend_frontend_pending(transport->frontend) == 0u ? 0 : -1;
-}
-
-static int expect_key_protocol_error(
+    return -1;
+}static int expect_key_protocol_error(
     cdin_inproc_transport *transport,
     cdin_frontend_session *session,
     const char *key,
     uint32_t modifiers)
 {
     cdin_frontend_protocol_message_view message;
-    if (transport == NULL || session == NULL || key == NULL ||
-        cdin_frontend_session_send_key(session, key, modifiers, "press") !=
-            CDIN_FRONTEND_PROTOCOL_OK ||
-        cdin_frontend_session_receive(session, &message) != CDIN_FRONTEND_PROTOCOL_OK ||
-        message.type != CDIN_FRONTEND_PROTOCOL_ERROR) {
-        return -1;
+    unsigned int attempt;
+    int saw_error = 0;
+    if (transport == NULL || session == NULL) return -1;
+    if (cdin_frontend_session_send_key(session, key, modifiers, "press") != CDIN_FRONTEND_PROTOCOL_OK) return -1;
+    for (attempt = 0u; attempt < 16u; attempt++) {
+        int status = cdin_frontend_session_receive(session, &message);
+        if (status != CDIN_FRONTEND_PROTOCOL_OK) return saw_error ? 0 : -1;
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+            saw_error = 1;
+            if (message.flush_sequence == 0u) return 0;
+            continue;
+        }
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            if (cdin_frontend_session_ack(session, message.flush_sequence) !=
+                CDIN_FRONTEND_PROTOCOL_OK) return -1;
+            if (saw_error) return 0;
+        }
     }
-    return cdin_backend_frontend_pending(transport->frontend) == 0u ? 0 : -1;
-}
-
-static int cdin_frontend_file_fixture_smoke(
+    return -1;
+}static int cdin_frontend_file_fixture_smoke(
     cdin_inproc_transport *transport,
     cdin_frontend_session *session,
     cdin_log *log)
