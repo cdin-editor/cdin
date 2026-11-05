@@ -23,6 +23,7 @@ typedef struct cdin_inproc_transport {
     size_t outgoing_length;
     size_t outgoing_offset;
     size_t outgoing_index;
+    uint64_t outgoing_flush_sequence;
 } cdin_inproc_transport;
 
 static int count_acked_messages(cdin_inproc_transport *transport,
@@ -147,6 +148,7 @@ static ptrdiff_t cdin_inproc_read(void *context, uint8_t *buffer, size_t length)
         backend_status = cdin_backend_frontend_message_at(
             transport->frontend, transport->outgoing_index, &message);
         if (backend_status != CDIN_BACKEND_OK) return -1;
+        transport->outgoing_flush_sequence = message.flush_sequence;
         backend_status = cdin_backend_frontend_encode_message(
             transport->frontend, transport->outgoing_index,
             transport->outgoing, CDIN_SMOKE_FRAME_CAPACITY,
@@ -160,7 +162,7 @@ static ptrdiff_t cdin_inproc_read(void *context, uint8_t *buffer, size_t length)
     transport->outgoing_offset += amount;
 
     if (transport->outgoing_offset == transport->outgoing_length) {
-        if (message.flush_sequence == 0u) {
+        if (transport->outgoing_flush_sequence == 0u) {
             backend_status = cdin_backend_frontend_consume_control_message(
                 transport->frontend);
             if (backend_status != CDIN_BACKEND_OK) return -1;
