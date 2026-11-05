@@ -85,7 +85,8 @@ class IncludeGraphTests(unittest.TestCase):
 
     def test_probe_removes_compile_outputs_and_keeps_include_flags(self) -> None:
         result = dependency_probe_command([
-            "cc", "-Iinclude", "-DCDIN_TEST=1", "-openmp", "-c", "src/main.c",
+            "cc", "-Iinclude", "-DCDIN_TEST=1", "-openmp", "-Wall", "-Wextra",
+            "-Werror", "-Werror=conversion", "-c", "src/main.c",
             "-o", "main.o", "-MF", "main.d", "-MMD",
         ])
         self.assertEqual(
