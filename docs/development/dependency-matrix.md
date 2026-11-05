@@ -27,6 +27,6 @@ These checks are stronger than comparing repository SHAs alone, but they do not 
 
 ## Current verification note
 
-CI run [42015347702](https://github.com/cdin-editor/cdin/actions/runs/42015347702) passed the pinned stack and CLI/lifecycle E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection. Its three native jobs also created, CRC-validated and uploaded source snapshots. The CI log confirms Runtime reported `1.0.0-rc.1`, matching `deps.lock`.
+CI run [42023541244](https://github.com/cdin-editor/cdin/actions/runs/42023541244) passed the pinned stack and CDIN E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`. The nine CDIN CTest cases passed on each native platform. All three platforms generated the same reproducible source ZIP digest: `d7277ced2fd45c4028fd76535badcd63a90a2f2e2a492a12d2f15bfdc6b57341`.
 
-CodeQL run [42015347819](https://github.com/cdin-editor/cdin/actions/runs/42015347819) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.
+CodeQL run [42023541330](https://github.com/cdin-editor/cdin/actions/runs/42023541330) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.

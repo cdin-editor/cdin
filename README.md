@@ -1,3 +1,5 @@
+# CDIN
+
 <p align="center">
   <a href="https://github.com/cdin-editor/cdin-editor.github.io">
     <img src="https://raw.githubusercontent.com/cdin-editor/cdin-editor.github.io/main/public/cdin-icons/source/cdin-original-transparent-512.png" width="180" alt="CDIN logo" />
@@ -10,8 +12,6 @@
   <a href="https://www.lua.org/versions.html"><img src="https://img.shields.io/badge/Runtime-Lua%205.4-blue.svg" alt="Lua 5.4"></a>
   <a href="https://github.com/cdin-editor/spec"><img src="https://img.shields.io/badge/CDIN-Specification-purple.svg" alt="CDIN specification"></a>
 </p>
-
-<h1 align="center">CDIN</h1>
 
 <p align="center">The composition root for the CDIN editor components.</p>
 
@@ -33,11 +33,11 @@ CDIN is not a second editor engine. It must not copy document operations from Ke
 
 ## Current status
 
-This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack can be built and its component tests and Backend/Runtime lifecycle smoke test can be run through the development workflow.
+This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack builds and its component tests and Backend/Runtime lifecycle smoke test pass on Linux, macOS and Windows at candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`. Linux ASan/UBSan/leak detection and explicit C/C++ plus Python CodeQL also pass on that commit.
 
 The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules, exercises Backend create/start/pump/shutdown/destroy, and performs a headless Frontend Core HELLO/HELLO_ACK handshake against Backend over an in-process byte transport. Interactive TUI and GUI launch are deliberately disabled until the initial UI snapshot/flush path, a supported adapter package, Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
 
-This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and verified green native CI are still release gates. See [Integration status](docs/development/integration-status.md) for the current evidence.
+This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and stable release process are still release gates. See [Integration status](docs/development/integration-status.md) for the current evidence. GitHub's separate Default Setup CodeQL workflow still needs its unsupported JavaScript/TypeScript language selection removed in repository settings; the repository-owned C/C++ and Python CodeQL workflow passes.
 
 The [CDIN Specification](https://github.com/cdin-editor/spec) defines the cross-component contracts. This README describes the implementation in this repository and does not override the Spec.
 
@@ -75,11 +75,11 @@ The `--check` command is a headless lifecycle and protocol-handshake check. It i
 
 - Immutable component and tooling pins in `deps.lock`.
 - A repeatable source-build workflow for the pinned component stack.
-- Build-time Frontend/Backend Protocol version checks and a Backend version check at startup.
+- Build-time Frontend/Backend Protocol version checks and runtime Backend/Runtime version checks.
 - Runtime asset installation and Backend lifecycle composition.
 - A small CLI for help, version and lifecycle validation.
 - Pipeline tasks, PSX repository checks and Gix branch-flow configuration.
-- A source archive task for development snapshots.
+- A deterministic source snapshot with SHA-256 verification; trusted pushes to `main` receive artifact provenance attestation.
 
 ## Documentation
 
