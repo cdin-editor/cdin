@@ -61,11 +61,11 @@ Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Ma
 ```sh
 pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
   mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf \
-  mingw-w64-ucrt-x86_64-lua mingw-w64-ucrt-x86_64-python \
+  mingw-w64-ucrt-x86_64-lua54 mingw-w64-ucrt-x86_64-python \
   mingw-w64-ucrt-x86_64-python-pip mingw-w64-ucrt-x86_64-go
 ```
 
-Run the build commands from that environment so compiler, Python, Go and pkg-config resolve to the same toolchain. MSVC is not currently a verified build target.
+Use the `lua54` package rather than the unversioned `lua` package. The CI build selects `/ucrt64/include/lua5.4` and `/ucrt64/lib/liblua5.4.dll.a` explicitly so Lua 5.5 cannot be selected accidentally. Run the build commands from that environment so compiler, Python, Go and pkg-config resolve to the same toolchain. MSVC is not currently a verified build target.
 
 ## 3. Build and test the pinned stack
 

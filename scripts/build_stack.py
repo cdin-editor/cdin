@@ -62,6 +62,14 @@ def main() -> int:
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     env = pkg_env()
+    lua_options: list[str] = []
+    if os.name == "nt":
+        lua_include = os.environ.get("CDIN_LUA_INCLUDE_DIR")
+        lua_library = os.environ.get("CDIN_LUA_LIBRARY")
+        if not lua_include or not lua_library:
+            print("Windows builds require the explicit Lua 5.4 UCRT64 include and library paths", file=sys.stderr)
+            return 2
+        lua_options = [f"-DLUA_INCLUDE_DIR={lua_include}", f"-DLUA_LIBRARY={lua_library}"]
 
     logger = DEPS / "logger"
     logger_build = BUILD / "logger"
@@ -89,7 +97,7 @@ def main() -> int:
     backend = DEPS / "backend"
     cmake_component("backend", backend, options=["-DCDIN_WITH_LUA=ON",
         "-DCDIN_BUILD_BACKEND=ON", "-DCDIN_BUILD_INTEGRATION_TESTS=ON",
-        "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON"], env=env)
+        "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
 
     frontend = DEPS / "frontend"
     cmake_component("frontend", frontend, options=["-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
@@ -101,7 +109,7 @@ def main() -> int:
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
-         "-DCDIN_INSTALL_RUNTIME=ON", "-DBUILD_TESTING=ON"], env=env)
+         "-DCDIN_INSTALL_RUNTIME=ON", "-DBUILD_TESTING=ON", *lua_options], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(root_build), "--output-on-failure"], env=env)
     run(["cmake", "--install", str(root_build)], env=env)

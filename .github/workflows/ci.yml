@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/**", "bugfix/**"]
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: cdin-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -47,10 +52,16 @@ jobs:
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-lua
+            mingw-w64-ucrt-x86_64-lua54
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
             mingw-w64-ucrt-x86_64-go
+      - name: Select Lua 5.4 for Windows (UCRT64)
+        if: runner.os == 'Windows'
+        run: |
+          pkg-config --modversion lua5.4
+          echo "CDIN_LUA_INCLUDE_DIR=$(cygpath -m /ucrt64/include/lua5.4)" >> "$GITHUB_ENV"
+          echo "CDIN_LUA_LIBRARY=$(cygpath -m /ucrt64/lib/liblua5.4.dll.a)" >> "$GITHUB_ENV"
       - name: Install native build dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
