@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Audit compiler-resolved include dependencies of CDIN translation units.
 
-The compiler's own include trace is authoritative here: this check does not
-infer dependency edges from textual include spelling. Component source
-checkouts and component build trees are private implementation details;
-CDIN may consume only headers from the installed component prefix.
+The compiler's own include trace is authoritative. Compile-database paths and
+compiler names are validated before they are used; the probe receives only
+allowlisted compiler options and a resolved CDIN source file.
 """
 from __future__ import annotations
 
@@ -12,26 +11,39 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATABASE = ROOT / "build" / "stack" / "cdin" / "compile_commands.json"
+BUILD_ROOT = ROOT / "build" / "stack" / "cdin"
+SOURCE_ROOT = ROOT / "src"
+DEFAULT_DATABASE = BUILD_ROOT / "compile_commands.json"
 DEPENDENCY_ROOT = ROOT / ".deps"
 INSTALL_PREFIX = DEPENDENCY_ROOT / "install"
 PRIVATE_BUILD_ROOTS = tuple(
     ROOT / "build" / "stack" / name
     for name in ("logger", "kernel", "backend", "frontend")
 )
-
-
-def absolute(path: str | Path, base: Path) -> Path:
-    value = Path(path)
-    if not value.is_absolute():
-        value = base / value
-    return value.resolve(strict=False)
+ALLOWED_SYSTEM_ROOTS = tuple(
+    Path(value)
+    for value in (
+        "/usr",
+        "/opt",
+        "/Library",
+        "/Applications",
+        "/ucrt64",
+        "/mingw64",
+        "C:/msys64",
+    )
+)
+ALLOWED_COMPILERS = {
+    "cc", "cc.exe", "gcc", "gcc.exe", "clang", "clang.exe",
+    "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-gcc.exe",
+}
+ALLOWED_STANDARDS = {"c11", "gnu11", "c17", "gnu17"}
 
 
 def is_within(path: Path, root: Path) -> bool:
@@ -40,6 +52,37 @@ def is_within(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def resolve_path(raw: str | Path, base: Path, *, strict: bool = True) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    return candidate.resolve(strict=strict)
+
+
+def resolve_entry_paths(
+    entry: dict[str, Any],
+    *,
+    build_root: Path,
+    source_root: Path,
+) -> tuple[Path, Path]:
+    """Resolve one compile-database entry inside the trusted build/source roots."""
+    raw_directory = entry.get("directory")
+    raw_file = entry.get("file")
+    if not isinstance(raw_directory, str) or not isinstance(raw_file, str):
+        raise ValueError("compile entry must contain string directory and file fields")
+
+    working_directory = resolve_path(raw_directory, ROOT)
+    if not working_directory.is_dir() or not is_within(working_directory, build_root):
+        raise ValueError("compile entry working directory is outside the CDIN build tree")
+
+    translation_unit = resolve_path(raw_file, working_directory)
+    if not translation_unit.is_file() or translation_unit.suffix.lower() != ".c":
+        raise ValueError("compile entry must resolve to a C source file")
+    if not is_within(translation_unit, source_root):
+        raise ValueError("compile entry source is outside the CDIN source tree")
+    return working_directory, translation_unit
 
 
 def classify_include(
@@ -51,7 +94,7 @@ def classify_include(
     private_build_roots: tuple[Path, ...] = PRIVATE_BUILD_ROOTS,
 ) -> str | None:
     """Return a violation reason, or None for an allowed resolved header."""
-    resolved = absolute(include_path, working_directory)
+    resolved = resolve_path(include_path, working_directory, strict=True)
     dependency_root = dependency_root.resolve(strict=False)
     install_prefix = install_prefix.resolve(strict=False)
 
@@ -76,8 +119,6 @@ def command_from_entry(entry: dict[str, Any]) -> list[str]:
         raise ValueError("compile command entry has neither arguments nor command")
 
     if os.name == "nt":
-        # CMake's Windows command strings follow Windows quoting rules.
-        # posix=False preserves backslashes in MSYS2/UCRT64 executable paths.
         parts = shlex.split(command, posix=False)
         return [
             part[1:-1] if len(part) >= 2 and part[0] == part[-1] and part[0] in "'\"" else part
@@ -86,30 +127,101 @@ def command_from_entry(entry: dict[str, Any]) -> list[str]:
     return shlex.split(command, posix=True)
 
 
-def dependency_probe_command(arguments: list[str]) -> list[str]:
-    """Turn one compile command into a compiler -H dependency trace."""
+def resolve_compiler(raw: str) -> str:
+    name = Path(raw).name.lower()
+    if name not in ALLOWED_COMPILERS:
+        raise ValueError(f"compiler is not allowlisted: {name}")
+    compiler = shutil.which(name)
+    if compiler is None:
+        raise ValueError(f"allowlisted compiler was not found on PATH: {name}")
+    return str(Path(compiler).resolve(strict=True))
+
+
+def resolve_include_directory(raw: str, working_directory: Path) -> Path:
+    directory = resolve_path(raw, working_directory, strict=True)
+    if not directory.is_dir():
+        raise ValueError(f"compiler include path is not a directory: {directory}")
+    trusted_roots = (
+        ROOT.resolve(strict=False),
+        DEPENDENCY_ROOT.resolve(strict=False),
+        *(root.resolve(strict=False) for root in PRIVATE_BUILD_ROOTS),
+        *(root.resolve(strict=False) for root in ALLOWED_SYSTEM_ROOTS),
+    )
+    if not any(is_within(directory, root) for root in trusted_roots):
+        raise ValueError(f"compiler include directory is outside trusted roots: {directory}")
+    return directory
+
+
+def dependency_probe_command(
+    arguments: list[str],
+    *,
+    translation_unit: Path,
+    working_directory: Path,
+) -> list[str]:
+    """Build a safe compiler include-trace command from a compile entry."""
     if not arguments:
         raise ValueError("empty compiler command")
 
-    result = [arguments[0]]
-    takes_value = {"-o", "-MF", "-MT", "-MQ", "-MJ"}
-    no_compile = {"-c", "-MD", "-MMD", "-MP"}
+    result = [resolve_compiler(arguments[0])]
     index = 1
+    include_flags = {"-I", "-isystem", "-iquote", "-idirafter", "-isysroot"}
     while index < len(arguments):
         argument = arguments[index]
-        if argument in takes_value:
+
+        if argument in include_flags:
+            if index + 1 >= len(arguments):
+                raise ValueError(f"compiler option is missing its value: {argument}")
+            directory = resolve_include_directory(arguments[index + 1], working_directory)
+            result.extend([argument, str(directory)])
             index += 2
             continue
-        if argument in no_compile or argument == "-w" or argument.startswith("-W"):
-            # Include tracing is an inspection pass, not a diagnostic build.
-            # GCC's -H may emit include-guard warnings; compiler warning flags
-            # (especially -Werror) must not turn those into trace failures.
+
+        matched_include = next(
+            (flag for flag in ("-isystem", "-iquote", "-idirafter", "-I")
+             if argument.startswith(flag) and len(argument) > len(flag)),
+            None,
+        )
+        if matched_include is not None:
+            directory = resolve_include_directory(argument[len(matched_include):], working_directory)
+            result.append(matched_include + str(directory))
             index += 1
             continue
-        result.append(argument)
+
+        if argument in {"-D", "-U"}:
+            if index + 1 >= len(arguments):
+                raise ValueError(f"compiler option is missing its value: {argument}")
+            value = arguments[index + 1]
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:=.*)?", value):
+                raise ValueError(f"unsafe preprocessor definition: {value!r}")
+            result.extend([argument, value])
+            index += 2
+            continue
+
+        if argument.startswith("-D") or argument.startswith("-U"):
+            value = argument[2:]
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:=.*)?", value):
+                raise ValueError(f"unsafe preprocessor definition: {value!r}")
+            result.append(argument)
+            index += 1
+            continue
+
+        if argument.startswith("-std="):
+            standard = argument.removeprefix("-std=")
+            if standard not in ALLOWED_STANDARDS:
+                raise ValueError(f"C language standard is not allowlisted: {standard}")
+            result.append(argument)
+            index += 1
+            continue
+
+        if argument == "-pthread":
+            result.append(argument)
+
+        # All other compiler flags (outputs, warning flags, plugins, response
+        # files, linker options and code-generation options) are intentionally
+        # omitted from this preprocessing-only inspection pass.
         index += 1
 
-    result.extend(["-E", "-H", "-o", os.devnull])
+    result.extend([str(translation_unit), "-E", "-H", "-o", os.devnull])
     return result
 
 
@@ -120,24 +232,23 @@ def traced_headers(stderr: str, working_directory: Path) -> list[Path]:
         if match is None:
             continue
         candidate = match.group(1).strip()
-        path = absolute(candidate, working_directory)
-        if path.exists():
+        try:
+            path = resolve_path(candidate, working_directory, strict=True)
+        except OSError:
+            continue
+        if path.is_file():
             headers.append(path)
     return headers
 
 
 def main() -> int:
-    if len(sys.argv) > 2:
-        print("usage: check_include_graph.py [COMPILE_COMMANDS_JSON]", file=sys.stderr)
+    if len(sys.argv) != 1:
+        print("usage: check_include_graph.py", file=sys.stderr)
         return 2
 
-    database = Path(sys.argv[1]) if len(sys.argv) == 2 else DEFAULT_DATABASE
-    database = database if database.is_absolute() else ROOT / database
-    if not database.is_file():
-        print(
-            f"compiler database not found: {database}; run pipeline run stack first",
-            file=sys.stderr,
-        )
+    database = DEFAULT_DATABASE.resolve(strict=False)
+    if not database.is_file() or not is_within(database, BUILD_ROOT.resolve(strict=False)):
+        print(f"compiler database not found in the CDIN build tree: {database}", file=sys.stderr)
         return 2
 
     try:
@@ -149,20 +260,28 @@ def main() -> int:
         print("compile_commands.json must contain an array", file=sys.stderr)
         return 2
 
-    source_root = (ROOT / "src").resolve(strict=False)
+    build_root = BUILD_ROOT.resolve(strict=True)
+    source_root = SOURCE_ROOT.resolve(strict=True)
     checked = 0
     violations: list[str] = []
     for entry in entries:
-        if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
-            continue
-        working_directory = absolute(entry.get("directory", ROOT), ROOT)
-        translation_unit = absolute(entry["file"], working_directory)
-        if not is_within(translation_unit, source_root):
+        if not isinstance(entry, dict):
+            violations.append("compile database contains a non-object entry")
             continue
 
-        checked += 1
         try:
-            probe = dependency_probe_command(command_from_entry(entry))
+            working_directory, translation_unit = resolve_entry_paths(
+                entry,
+                build_root=build_root,
+                source_root=source_root,
+            )
+            arguments = command_from_entry(entry)
+            probe = dependency_probe_command(
+                arguments,
+                translation_unit=translation_unit,
+                working_directory=working_directory,
+            )
+            checked += 1
             completed = subprocess.run(
                 probe,
                 cwd=working_directory,
@@ -172,9 +291,10 @@ def main() -> int:
                 encoding="utf-8",
                 errors="replace",
                 check=False,
+                shell=False,
             )
         except (OSError, ValueError) as error:
-            violations.append(f"{translation_unit}: include trace could not run: {error}")
+            violations.append(f"compile entry rejected: {error}")
             continue
 
         if completed.returncode != 0:
@@ -194,7 +314,7 @@ def main() -> int:
                 )
 
     if checked == 0:
-        print(f"no CDIN translation units were found in {database}", file=sys.stderr)
+        print(f"no CDIN translation units were checked in {database}", file=sys.stderr)
         return 2
     if violations:
         print("Compiler-resolved include boundary violations:", file=sys.stderr)
