@@ -30,6 +30,16 @@ def pkg_env() -> dict[str, str]:
     result["CMAKE_PREFIX_PATH"] = os.pathsep.join(
         [str(PREFIX), result.get("CMAKE_PREFIX_PATH", "")]
     ).rstrip(os.pathsep)
+    if os.name == "nt":
+        # Windows does not use the executable's RPATH. The Kernel package
+        # installs cdin_kernel.dll into PREFIX/bin, while CTest launches the
+        # CDIN build-tree executable from BUILD/cdin. Make installed component
+        # runtime DLLs discoverable for both CTest and the installed smoke test.
+        runtime_dirs = [str(PREFIX / "bin"), str(PREFIX / "lib")]
+        current_path = result.get("PATH")
+        if current_path:
+            runtime_dirs.append(current_path)
+        result["PATH"] = os.pathsep.join(runtime_dirs)
     return result
 
 
