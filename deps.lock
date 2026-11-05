@@ -2,7 +2,7 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "dddebe07e7a773c7d8f3cb83321c2cbb5d259c52"
+revision = "ca2f386c858dcd93fc3481f6d39f29c4daf128e3"
 version = "1.0.0-rc.1"
 host_api = "1.0.0"
 protocol = "1.0.0"
@@ -25,9 +25,9 @@ role = "Backend lifecycle, bounded UI snapshot publication, protocol server and 
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "967bd5635653d4da41793bd9c3b072b126874e7e"
+revision = "a480bfe229e3764b67e24a5ef98f3ff9256d8a29"
 version = "1.0.0"
-role = "Installable Frontend Core and TUI peer adapter with nonblocking POSIX terminal reads and namespaced drain outcomes; Windows TUI remains fail-closed"
+role = "Installable Frontend Core and TUI peer adapter with nonblocking POSIX terminal reads; Windows TUI remains fail-closed"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
