@@ -29,6 +29,7 @@ custom:
       structure:
         e2e: {}
         bench: {}
+        architecture: {}
     - path: "docs"
       structure:
         architecture: {}
