@@ -35,7 +35,7 @@ CDIN is not a second editor engine. It must not copy document operations from Ke
 
 This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack builds and its component tests and Backend/Runtime lifecycle smoke test pass on Linux, macOS and Windows. Candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4` passed [CI run 42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897), including Linux ASan/UBSan/leak detection. [CodeQL run 42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed C/C++ traced analysis and Python analysis.
 
-The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules, exercises Backend create/start/pump/shutdown/destroy, and performs a headless Frontend Core HELLO/HELLO_ACK handshake against Backend over an in-process byte transport. Interactive TUI and GUI launch are deliberately disabled until the initial UI snapshot/flush path, a supported adapter package, Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
+The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules, exercises Backend create/start/pump/shutdown/destroy, then performs Frontend Core HELLO/HELLO_ACK, a real ATTACH, ordered initial UI snapshot delivery, `ui.flush`/ACK and resize over an in-process byte transport. This integration path is implemented in the current candidate and awaits fresh native CI. Interactive TUI and GUI launch remain disabled until a supported adapter package, Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
 
 This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and stable release process are still release gates. Track them in [issue #111](https://github.com/cdin-editor/cdin/issues/111) and see [Integration status](docs/development/integration-status.md) for current evidence. GitHub Code Quality's generated analysis is still configured to scan JavaScript/TypeScript, although this repository contains no JS/TS source. Remove that language under Settings → Security → Code quality; the Python Code Quality job and repository-owned C/C++/Python CodeQL analyses are separate and pass.
 
@@ -69,7 +69,7 @@ After `make stack`, the executable is installed under `.deps/install/bin`:
 
 On Windows, use `.deps/install/bin/cdin.exe` from the MSYS2 UCRT64 environment.
 
-The `--check` command is a headless lifecycle and protocol-handshake check. It is not an interactive editing session: it does not attach a view, render UI, create a document or open a window.
+The `--check` command is a headless lifecycle and protocol integration check. It attaches a headless view and verifies the initial semantic snapshot/flush/ACK and resize path; it is not an interactive editing session and does not render a display, create/edit a document or open a window.
 
 ## What CDIN provides
 
