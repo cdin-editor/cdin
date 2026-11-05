@@ -140,7 +140,8 @@ def main() -> int:
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
-         "-DCDIN_INSTALL_RUNTIME=ON", "-DBUILD_TESTING=ON"], env=env)
+         "-DCDIN_INSTALL_RUNTIME=ON", "-DBUILD_TESTING=ON",
+         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(root_build), "--output-on-failure"], env=env)
     run(["cmake", "--install", str(root_build)], env=env)
