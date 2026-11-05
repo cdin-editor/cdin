@@ -1,12 +1,80 @@
 cmake_minimum_required(VERSION 3.22)
+project(cdin VERSION 0.2.0 LANGUAGES C)
 
-project(cdin VERSION 0.1.0 LANGUAGES C)
+include(GNUInstallDirs)
+include(CTest)
 
-option(CDIN_BUILD_COMPOSITION "Build the cdin composition-root executable" ON)
+option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
 
-if(NOT CDIN_BUILD_COMPOSITION)
-    message(FATAL_ERROR "The cdin repository is a composition root; CDIN_BUILD_COMPOSITION=OFF is unsupported")
+# ROOT-002: every production dependency is an installed, immutable component
+# package. The Composition Root never compiles copied component sources.
+find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
+find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)
+find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
+find_package(Lua 5.4 REQUIRED)
+if(LUA_VERSION_STRING VERSION_LESS "5.4" OR NOT LUA_VERSION_STRING VERSION_LESS "5.5")
+    message(FATAL_ERROR "cdin requires PUC Lua 5.4.x; found ${LUA_VERSION_STRING}")
+endif()
+pkg_check_modules(CDIN_KERNEL REQUIRED IMPORTED_TARGET "cdin-kernel>=1.2.1")
+
+find_path(CDIN_BACKEND_INCLUDE_DIR cdin/backend.h REQUIRED)
+foreach(lib cdin_backend cdin_backend_services cdin_protocol)
+    string(TOUPPER "${lib}" var)
+    find_library(${var}_LIBRARY NAMES ${lib} REQUIRED)
+    list(APPEND CDIN_BACKEND_LIBRARIES "${${var}_LIBRARY}")
+endforeach()
+
+add_library(cdin_options STATIC src/cli/options.c)
+target_include_directories(cdin_options PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(cdin_options PUBLIC c_std_11)
+
+add_executable(cdin
+    src/main.c
+    src/diagnostics/log.c)
+target_include_directories(cdin PRIVATE "${CDIN_BACKEND_INCLUDE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_features(cdin PRIVATE c_std_11)
+target_compile_definitions(cdin PRIVATE
+    CDIN_VERSION="${PROJECT_VERSION}"
+    CDIN_DEFAULT_RUNTIME_ROOT="${CMAKE_INSTALL_FULL_DATADIR}/cdin/lua")
+target_link_libraries(cdin PRIVATE
+    cdin_options
+    ${CDIN_BACKEND_LIBRARIES}
+    PkgConfig::CDIN_KERNEL
+    m-mdy-m::log
+    cdin::frontend_core
+    Lua::Lua
+    Threads::Threads)
+
+function(cdin_enable_strict target)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes
+            -Wformat=2 -Wpedantic -Werror)
+    elseif(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /WX)
+    endif()
+endfunction()
+cdin_enable_strict(cdin_options)
+cdin_enable_strict(cdin)
+
+install(TARGETS cdin RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+if(CDIN_INSTALL_RUNTIME)
+    set(CDIN_RUNTIME_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/src/runtime" CACHE PATH
+        "Path to the pinned cdin-editor/runtime checkout")
+    if(NOT EXISTS "${CDIN_RUNTIME_SOURCE_DIR}/lua/cdin/runtime.lua")
+        message(FATAL_ERROR "Pinned Runtime Lua modules are missing at ${CDIN_RUNTIME_SOURCE_DIR}; run make deps")
+    endif()
+    install(DIRECTORY "${CDIN_RUNTIME_SOURCE_DIR}/lua/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/cdin/lua")
 endif()
 
-enable_testing()
-add_subdirectory(composition)
+if(BUILD_TESTING)
+    add_test(NAME cdin_cli_help COMMAND cdin --help)
+    add_test(NAME cdin_cli_version COMMAND cdin --version)
+    add_test(NAME cdin_cli_unknown_option COMMAND cdin --not-a-cdin-option)
+    set_tests_properties(cdin_cli_unknown_option PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cdin_backend_runtime_lifecycle COMMAND cdin --check)
+    set_tests_properties(cdin_backend_runtime_lifecycle PROPERTIES
+        ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
+endif()

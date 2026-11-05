@@ -1,23 +1,9 @@
-cdin
-!cdin/
-error.txt
-.psx-project.yml
-build/
-SDL3.dll
-test.sdl.c
-backup/*
-cdin_code_backup/
-cdin_code_backup/*
-# Auto-generated icon C array
-./src/icon.inl
-*icon.inl*
-results
-scripts/icons
-/fixtures
-*.rar
-__pycache__
-# Node dependencies
-node_modules/
-soak_target.*
-corpus/*
-tests/*.json
+/build/
+/build-*/
+/.deps/
+/dist/
+*.o
+*.a
+*.so
+*.dll
+*.dylib

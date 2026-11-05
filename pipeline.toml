@@ -1,0 +1,36 @@
+schema_version = 1
+
+[project]
+name = "cdin"
+description = "Composition Root build, pinned stack verification and lifecycle E2E"
+
+[defaults]
+timeout_seconds = 3600
+fail_fast = true
+
+[tasks.dependencies]
+description = "Resolve every immutable source and tooling pin"
+command = ["python3", "scripts/deps.py"]
+timeout_seconds = 1200
+
+[tasks.boundaries]
+description = "Reject copied Kernel, Runtime or Frontend implementation"
+command = ["python3", "scripts/check_boundaries.py"]
+timeout_seconds = 60
+
+[tasks.stack]
+description = "Build, test, install and smoke-test the full pinned component stack"
+command = ["python3", "scripts/build_stack.py"]
+depends_on = ["dependencies"]
+timeout_seconds = 3600
+
+[tasks.check]
+description = "Run full component integration, CDIN lifecycle E2E and architecture boundaries"
+command = ["python3", "scripts/check_boundaries.py"]
+depends_on = ["stack", "boundaries"]
+timeout_seconds = 120
+
+[tasks.package]
+description = "Create a reproducible source archive"
+command = ["python3", "scripts/package.py"]
+timeout_seconds = 120

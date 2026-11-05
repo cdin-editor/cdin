@@ -1,30 +1,41 @@
 version: 1
 project:
-  type: "" # generic
+  type: generic
 
 rules:
   readme: error
   license: warning
-  gitignore: warning
   changelog: info
-  src_folder: warning
-  docs_folder: info
-  scripts_folder: info
+  tests_folder: error
+  docs_folder: error
   contributing: info
   security: info
   code_of_conduct: info
   pull_request_template: info
   issue_templates: info
   editorconfig: info
+  code_owners: info
 
 custom:
   folders:
-    - path: "bin/"
+    - path: "include"
+      structure:
+        cdin: {}
     - path: "src"
-    - path: "scripts"
+      structure:
+        cli: {}
+        diagnostics: {}
+    - path: "tests"
+      structure:
+        e2e: {}
+        bench: {}
     - path: "docs"
       structure:
-        reference: {}
-        guides: {}
-        configuration: {}
-        installation: {}
+        architecture: {}
+        development: {}
+    - path: ".github/workflows"
+    - path: "scripts"
+  files:
+    - path: "/pipeline.toml"
+    - path: "/deps.lock"
+    - path: "/Makefile"
