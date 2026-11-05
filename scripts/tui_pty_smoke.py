@@ -17,10 +17,41 @@ import termios
 import time
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+BUILD_BIN = ROOT / "build" / "stack" / "cdin"
+INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
+
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
 RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
 ENTER = (b"\x1b[?25l", b"\x1b[?2004h", b"\x1b[?1049h")
+
+
+def is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_cdin_executable(raw: str) -> str:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError("CDIN executable path must be absolute")
+    try:
+        executable = candidate.resolve(strict=True)
+    except OSError as error:
+        raise ValueError(f"CDIN executable does not exist: {error}") from error
+    allowed_roots = (
+        BUILD_BIN.resolve(strict=False),
+        INSTALL_BIN.resolve(strict=False),
+    )
+    if not any(is_within(executable, root) for root in allowed_roots):
+        raise ValueError("CDIN executable must be inside the repository build/install bin directory")
+    if executable.name.lower() not in {"cdin", "cdin.exe"} or not executable.is_file():
+        raise ValueError("target must be the built CDIN executable")
+    return str(executable)
 
 
 def drain(master: int, output: bytearray) -> None:
@@ -104,9 +135,21 @@ def run_live_edit(executable: str) -> None:
             )
             read_until(master, process, output,
                        lambda b: SCRATCH_RE.search(b) is not None, 10.0, "TUI title")
-            match = SCRATCH_RE.search(output)
-            assert match is not None
-            scratch_path = Path(working) / match.group(0).decode("ascii")
+            if SCRATCH_RE.search(output) is None:
+                raise AssertionError("TUI title did not contain the expected scratch document name")
+
+            # Locate the scratch file only inside the private temporary
+            # directory. Never turn process-controlled terminal output into a
+            # filesystem path.
+            working_root = Path(working).resolve(strict=True)
+            scratch_candidates = list(working_root.glob("cdin-untitled-*.cdin"))
+            if len(scratch_candidates) != 1:
+                raise AssertionError(
+                    f"expected one scratch document in the temporary directory, found {len(scratch_candidates)}"
+                )
+            scratch_path = scratch_candidates[0].resolve(strict=True)
+            if scratch_path.parent != working_root or not scratch_path.is_file():
+                raise AssertionError("scratch document escaped the temporary directory")
 
             # Force a signal to interrupt the platform wait while the loop is
             # live; the self-pipe must turn it into a resize notification.
@@ -206,9 +249,10 @@ def main() -> int:
     if len(sys.argv) != 2:
         print("usage: tui_pty_smoke.py CDIN_EXECUTABLE", file=sys.stderr)
         return 2
-    executable = os.path.abspath(sys.argv[1])
-    if not os.path.isfile(executable):
-        print(f"cdin executable not found: {executable}", file=sys.stderr)
+    try:
+        executable = resolve_cdin_executable(sys.argv[1])
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
         return 2
     if not os.environ.get("CDIN_RUNTIME_ROOT"):
         print("CDIN_RUNTIME_ROOT must point at the pinned Runtime Lua tree", file=sys.stderr)
