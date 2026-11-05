@@ -14,14 +14,14 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "24de2c744c9f54bc770dde896a1007f243e39796"
+revision = "2f7bcc973ded9f2202ac96de40e4ea413a64af34"
 version = "1.0.0"
 protocol = "1.0.0"
 role = "Backend lifecycle and protocol server"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "7145c931e4202ae32f8b38bc3cc8b07726b48ee1"
+revision = "a18ef423faf2fe3305c4c432063b431cb6ffca98"
 version = "1.0.0"
 role = "Peer frontend Core and adapters; launch gated until readiness integration is complete"
 
