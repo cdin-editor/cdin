@@ -25,9 +25,9 @@ role = "Backend lifecycle, bounded UI snapshot publication, protocol server and 
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "94643adada76cb3d056baf0b6ad475451d56ab0f"
+revision = "d0e4b62ecb7a9872c4d1cc517e69ba6e0fa0d1f6"
 version = "1.0.0"
-role = "Installable Frontend Core and TUI peer adapter; FE-019 launch readiness remains gated"
+role = "Installable Frontend Core and TUI peer adapter with POSIX nonblocking terminal reads; Windows TUI remains fail-closed"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
