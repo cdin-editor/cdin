@@ -1,6 +1,6 @@
 # Architecture audit
 
-**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`, component revisions in `deps.lock`, inspected on 2026-11-05.
+**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, current tip `ecc9c0548c5cda9d75b751f12f752dfe08c7b52f`; product-code verification at parent candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553`, component revisions in `deps.lock`, inspected on 2026-11-05.
 
 This audit distinguishes code that exists from behavior exercised by the current Composition Root. It is not a claim that the complete editor is implemented.
 
@@ -37,51 +37,51 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | --- | --- | --- |
 | Immutable component source pins | IMPLEMENTED | `deps.lock`. |
 | Full pinned stack build | PASS | CI run 42024750897 passed Linux, macOS and Windows jobs on candidate commit `167de187...`. |
-| Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.0 CMake package is consumed with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
+| Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.1 CMake package is consumed with `find_package(cdinBackend 1.0.1 CONFIG REQUIRED)`. |
 | Runtime version identity | VERIFIED for pinned revision | CI log reports Runtime `1.0.0-rc.1`, matching `deps.lock`; `build_stack.py` enforces this check. |
 | Runtime hosting | VERIFIED for lifecycle smoke | Backend creates/owns Runtime; CDIN supplies root and entry. |
-| Frontend Core protocol path | IMPLEMENTED; CI verification pending | HELLO/HELLO_ACK, ATTACH, initial snapshot delivery, ordered `ui.flush`/ACK and resize through in-process byte transport. |
+| Frontend Core protocol path | VERIFIED on Linux/macOS/Windows | HELLO/HELLO_ACK, real ATTACH, initial snapshot delivery, ordered `ui.flush`/ACK, queue release and resize through Frontend Core over in-process byte transport; CI run 42051385717 passed. |
 | Interactive TUI/GUI launch | NOT IMPLEMENTED | No supported installed adapter/readiness event loop is connected. |
-| View attach and UI snapshot | IMPLEMENTED; CI verification pending | Backend aggregate snapshot budget is separated from per-frame size in Backend PR #7; CDIN smoke now attaches, drains the snapshot and ACKs its final flush. |
+| View attach and UI snapshot | VERIFIED on Linux/macOS/Windows | Backend PRs #7–#9 are merged. The smoke validates the six-message initial snapshot, snapshot-scoped `ui.flush`, ACK-based queue release and resize. Linux, macOS and Windows E2E plus Linux sanitizers pass in CI run 42051385717. |
 | Document create/open/edit/save/reopen | NOT IMPLEMENTED in CDIN | No connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | NOT VERIFIED | No real Frontend input path through the Composition Root. |
 | CLI fail-closed paths | PASS | Nine CDIN CTest cases passed on all three native platforms. |
 | ASan/UBSan/leak checks | PASS | Linux sanitizer job in run 42024750897 passed. |
-| C/C++ and Python CodeQL | PASS | Run 42024750919 completed both analyses successfully. |
+| CodeQL scanning | DEFAULT SETUP ACTIVE | The repository CodeQL Default Setup is enabled. The branch no longer adds a competing advanced-mode `.github/workflows/codeql.yml`; run 42051385905 showed that advanced SARIF uploads are rejected while Default Setup is enabled. |
 | Source snapshot integrity | PASS | Determinism, archive safety, CRC and SHA-256 verified on Linux, macOS and Windows. |
 | Product RSS/soak/latency benchmarks | NOT IMPLEMENTED | Existing benchmark material is a plan, not product measurements. |
 | Application installers | NOT IMPLEMENTED | Source archive is not a runnable application package. |
 
 ## 4. CI and security verification
 
-CI run [42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) completed successfully on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4` for Linux, macOS, Windows and Linux ASan/UBSan/leak detection. The run also passed nine CDIN CTest cases on each platform, the pinned component suites, reproducible archive verification, SHA-256 comparison and source artifact upload.
+CI run [42051385717](https://github.com/cdin-editor/cdin/actions/runs/42051385717) completed successfully on candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553`: Linux, macOS and Windows pinned-stack E2E passed, and Linux ASan/UBSan/leak detection passed. The Linux test log explicitly records `Frontend attach smoke passed: snapshot revision=0 messages=6 ordered flush/ACK and resize`. The current branch tip only removes the redundant CodeQL workflow file; product code is unchanged from the passing candidate.
 
-CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) completed successfully for traced C/C++ and Python analysis.
+Repository CodeQL **Default Setup** is enabled. The custom advanced CodeQL workflow produced `CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled` in [run 42051385905](https://github.com/cdin-editor/cdin/actions/runs/42051385905). The custom `.github/workflows/codeql.yml` was therefore removed from this branch; Default Setup remains the repository's scanner. The precise language selection of Default Setup still needs to be checked in repository settings.
 
-The GitHub Code Quality dynamic workflow [42025677183](https://github.com/cdin-editor/cdin/actions/runs/42025677183) passed Python but failed JavaScript/TypeScript because the extractor found only YAML configuration files and no JS/TS source. This language selection belongs to the repository's Settings → Security → Code quality configuration, not to `.github/workflows/codeql.yml`. The repository-owned C/C++ and Python CodeQL workflow is independent and passed.
+The separate GitHub Code Quality dynamic workflow [run 42052219702](https://github.com/cdin-editor/cdin/actions/runs/42052219702) passes Python but fails JavaScript/TypeScript because its extractor sees only YAML configuration and no JS/TS source. That language selection belongs to Settings → Security → Code quality, not to `.github/workflows/codeql.yml`; deselect JavaScript/TypeScript there.
 
 The current action-pinned run emitted no Node.js 20 deprecation warning in the Linux, macOS or Windows logs inspected. OIDC and attestation permissions are isolated to a separate trusted-main job; PR build jobs receive only `contents: read`.
 
 ## 5. Compatibility findings
 
 - **Runtime version identity:** the prior discrepancy is resolved for the pinned Runtime revision. CI logs show the exact `1.0.0-rc.1` version recorded in `deps.lock`; the build rejects a mismatch.
-- **Backend package:** versioned CMake package discovery is enforced at 1.0.0; do not regress to unversioned header/library discovery.
+- **Backend package:** versioned CMake package discovery is enforced at 1.0.1; do not regress to unversioned header/library discovery.
 - **Frontend adapter:** the TUI target is experimental/unexported by Frontend Core 1.0.0. CDIN must consume an installable supported adapter, not copy sources into the Composition Root.
-- **Snapshot limits:** the pinned Backend used the 16 KiB per-frame limit as an aggregate snapshot limit. Backend PR [#7](https://github.com/cdin-editor/backend/pull/7) adds a separate bounded 4 MiB snapshot budget (64 MiB hard maximum) while retaining the per-frame cap; CDIN pins the immutable PR head and exercises ATTACH/snapshot/ACK. Native CI is still required to verify the candidate.
+- **Snapshot limits:** Backend PR [#7](https://github.com/cdin-editor/backend/pull/7) separates the 16 KiB per-frame cap from the 4 MiB default/64 MiB maximum aggregate snapshot budget. Backend PR [#8](https://github.com/cdin-editor/backend/pull/8) fixes the reported package version, and [#9](https://github.com/cdin-editor/backend/pull/9) fixes optional Runtime `options` projection and HELLO_ACK driver role. All three are merged; CDIN pins the immutable Backend 1.0.1 revision. ATTACH/snapshot/ACK/resize passes three-platform CI.
 - **Readiness integration:** Backend exposes a worker-completion wakeup callback, but CDIN still needs a real readiness-driven event loop that combines terminal readiness, Backend wakeups, resize and termination.
 - **Static include boundaries:** the current boundary script catches selected copied implementation calls but does not parse the compiler's full include graph. It is a guardrail, not a proof of all architectural include rules.
-- **GitHub Code Quality:** deselect JavaScript/TypeScript in Settings → Security → Code quality; keep the repository-owned CodeQL workflow for C/C++ and Python.
+- **GitHub Code Quality:** deselect JavaScript/TypeScript in Settings → Security → Code quality; the Python Code Quality job passes. The repository CodeQL Default Setup is enabled, so this branch removes the duplicate advanced workflow. Verify Default Setup has the intended C/C++ and Python languages selected.
 
 ## 6. Remaining release gates
 
-1. Run native CI for Backend PR #7 and CDIN PR #110; verify ATTACH, initial snapshot, ordered UI flush/ACK and resize end-to-end.
+1. Keep the now-verified Backend ATTACH/snapshot/flush/ACK/resize path covered by native CI and prevent regressions.
 2. Obtain an installable Frontend TUI adapter or another supported Frontend adapter.
 3. Implement the FE-019 readiness multiplexer and connect Backend wakeups.
 4. Add live product E2E for create/open/edit/save/reopen and exact-byte preservation.
 5. Verify Runtime command/keymap dispatch through actual Frontend input.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify detach/reconnect, multiple Frontends and failure recovery.
-8. Keep native platform CI, sanitizer checks and both CodeQL language analyses green on every release candidate.
+8. Keep native platform CI and sanitizer checks green; verify the CodeQL Default Setup language selection and keep the separate Python Code Quality job green after disabling JS/TS.
 9. Add measured RSS, allocator peak, leaks, soak and latency benchmarks.
 10. Build platform installers and publish signed application release artifacts only after the live editing path is complete.
 
