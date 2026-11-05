@@ -1,4 +1,8 @@
-/* ROOT-006: CLI parsing only; no editor-domain policy lives here. */
+/*
+ * ROOT-006 is PROPOSED: this module parses launcher options only. It does not
+ * yet select a live Frontend endpoint or attach a Frontend client.
+ * https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L27-L27
+ */
 #include "cdin/options.h"
 #include <string.h>
 

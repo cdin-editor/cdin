@@ -1,4 +1,9 @@
-/* Composition Root: ARCH-001 / ROOT-001. No editor-domain state is owned here. */
+/*
+ * Implements ARCH-001 and ROOT-001: assemble components without reimplementing
+ * their editor-domain behavior.
+ * https://github.com/cdin-editor/spec/blob/main/docs/architecture/overview.md#L113-L113
+ * https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L22-L22
+ */
 #include "cdin/backend.h"
 #include "cdin/log.h"
 #include "cdin/options.h"
@@ -98,6 +103,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     if (strcmp(options.frontend, "headless") != 0) {
+        /*
+         * FE-019 requires the TUI loop to multiplex input and Backend readiness.
+         * Keep interactive launch disabled until that integration is implemented.
+         * https://github.com/cdin-editor/spec/blob/main/docs/components/frontend.md#L82-L82
+         */
         (void)fprintf(stderr, "cdin: frontend '%s' is not launchable; readiness/wakeup integration FE-019 is required\n",
                       options.frontend);
         return 3;

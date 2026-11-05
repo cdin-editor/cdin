@@ -6,7 +6,8 @@ include(CTest)
 
 option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
 
-# ROOT-002: every production dependency is an installed, immutable component
+# ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
+# https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # package. The Composition Root never compiles copied component sources.
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
 find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)
