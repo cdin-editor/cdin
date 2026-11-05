@@ -43,7 +43,7 @@ An experimental POSIX TUI path is available only with an explicit environment op
 CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui
 ```
 
-This is for development and integration testing only. It is not a supported end-user installation path. The live PTY acceptance test currently fails due to Frontend's pending `view.lines` request lifecycle; Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the fix and regression tests. Wait for its complete native CI matrix, merge it, update CDIN's immutable Frontend pin and pass the CDIN PTY/sanitizer matrix before treating the POSIX TUI as usable.
+This is for development and integration testing only. It is not a supported end-user installation path. The previous completed CDIN run with the diagnostics-only Frontend pin failed due to Frontend's pending `view.lines` request lifecycle. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the fix and regression tests. CDIN currently pins the immutable PR head `efbb5804943d5aa4f0a303f2f7b7cd10bab42444` for integration testing; CDIN CI run [42120816389](https://github.com/cdin-editor/cdin/actions/runs/42120816389) is pending. PR #11's macOS job is still queued. After the PR merges, use its immutable merge commit and pass the CDIN native/sanitizer matrix before treating the POSIX TUI as usable.
 
 Windows TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented. GUI-SDL launch is not available.
 
