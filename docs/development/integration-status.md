@@ -29,8 +29,8 @@ The remaining interactive-product and production-release work is tracked in [iss
 | Interactive TUI | PARTIAL / NOT LAUNCHABLE | Frontend PR #2 now installs and exports `cdin::frontend_ui_tui` and its public headers, with a clean-prefix consumer test. CDIN still does not run the TUI app: Backend worker wakeup wiring, native readiness bridge, FE-019 multiplexing and terminal restore/recovery remain. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
 | View attachment and UI state | VERIFIED on Linux/macOS/Windows | CDIN smoke performs ATTACH, verifies the ordered six-message initial snapshot including options/style/layout, validates snapshot flush, ACKs it, verifies queue release and sends resize. CI run 42051385717 passed on all three platforms plus Linux sanitizers. |
-| Real editing workflow | IMPLEMENTATION ADDED; CI PENDING | `src/integration/frontend_smoke.c` now sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel, then compares saved and reopened bytes. Do not mark VERIFIED until the pinned-stack Linux/macOS/Windows CI run passes. |
-| Keymaps and commands through input | IMPLEMENTATION ADDED; CI PENDING | The same expanded CDIN smoke exercises typed `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S over Frontend Protocol; native CI evidence is pending. |
+| Real editing workflow | IMPLEMENTATION ADDED; CI PENDING | `src/integration/frontend_smoke.c` now sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel, then compares saved and reopened bytes. Do not mark the all-platform gate VERIFIED until the macOS job completes; Linux and Windows have passed. |
+| Keymaps and commands through input | IMPLEMENTATION ADDED; CI PENDING | The same expanded CDIN smoke exercises typed `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S over Frontend Protocol; Linux and Windows passed in run 42073455899; macOS remains queued. |
 | Plugin lifecycle and isolation | NOT VERIFIED from CDIN | Exercise plugin load, capability denial, failure isolation and unload in a live session. |
 | Multi-frontend attach/detach | NOT VERIFIED from CDIN | Exercise driver/observer roles, detach and reconnect. |
 | Product memory and soak measurements | NOT IMPLEMENTED | Measure RSS, allocator peak, leaks, long-running sessions and latency. |
@@ -64,13 +64,15 @@ This dynamic workflow is configured independently under repository Settings → 
 
 The provenance-attestation job is intentionally skipped on pull requests. PR build jobs receive only `contents: read`. The separate job with OIDC and attestation permissions runs only on trusted pushes to `main`, after both the full native matrix and sanitizer job have passed. It recreates and validates the same reproducible source ZIP before attesting it. PR artifacts are short-lived CI evidence, not signed release artifacts. The source ZIP is not an application installer.
 
+- [CI run 42073455899](https://github.com/cdin-editor/cdin/actions/runs/42073455899) passed the expanded headless document smoke on Linux and Windows, and Linux ASan/UBSan/leak detection passed. The log confirms `Frontend document smoke passed: text/paste, undo/redo, atomic save, close/open and 6 exact bytes`. The macOS job in this run is still queued. The previous attach-only all-platform matrix passed in run 42051385717.
+
 ## 4. Compatibility findings
 
-- Backend 1.0.1 package discovery is versioned; keep `find_package(cdinBackend 1.0.1 CONFIG REQUIRED)`.
+- Backend 1.0.2 package discovery is versioned; CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. The optional `host.fs.read_file` keeps file I/O Backend-owned and returns exact bytes with structured error identities.
 - Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
 - The initial ATTACH failure had three Backend integration causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) runtime version reporting remained hard-coded at 1.0.0 after the package bump, fixed in merged PR #8; (3) Backend required Runtime UI Model v1's optional `options` member and advertised the driver role too late for Frontend Core, fixed in merged PR #9 by encoding an empty CBOR map and reserving the first negotiated driver before HELLO_ACK. CDIN pins PR #9's immutable revision and the full ATTACH/snapshot/flush/ACK/resize smoke passes on Linux/macOS/Windows.
 - Frontend PR #2 is merged at `94643adada76cb3d056baf0b6ad475451d56ab0f`; `cdinFrontend` now installs/exports `cdin::frontend_ui_tui` when enabled and exposes a typed `request.command` session API. CDIN consumes the package; FE-019 remains the interactive launch gate.
-- Runtime PR #2 is Ready for review at tested head `84379cb7f837d1df95edd296e7ccec838f664fba`; it starts from the exact prior CDIN Runtime pin and adds lifecycle commands/keymaps plus FakeHost persistence tests. It is not merged yet.
+- Runtime PR #2 is Ready for review at tested head `84379cb7f837d1df95edd296e7ccec838f664fba`; it starts from the exact prior CDIN Runtime pin and adds lifecycle commands/keymaps plus FakeHost persistence tests. It is not merged yet. CDIN pins this tested commit while the PR awaits maintainer merge.
 
 ## 5. Release gates
 
