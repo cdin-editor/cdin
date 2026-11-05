@@ -35,7 +35,7 @@ CDIN is not a second editor engine. It must not copy document operations from Ke
 
 This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack can be built and its component tests and Backend/Runtime lifecycle smoke test can be run through the development workflow.
 
-The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules and exercises Backend create/start/pump/shutdown/destroy. Interactive TUI and GUI launch are deliberately disabled until Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
+The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules, exercises Backend create/start/pump/shutdown/destroy, and performs a headless Frontend Core HELLO/HELLO_ACK handshake against Backend over an in-process byte transport. Interactive TUI and GUI launch are deliberately disabled until the initial UI snapshot/flush path, a supported adapter package, Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
 
 This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and verified green native CI are still release gates. See [Integration status](docs/development/integration-status.md) for the current evidence.
 
@@ -69,7 +69,7 @@ After `make stack`, the executable is installed under `.deps/install/bin`:
 
 On Windows, use `.deps/install/bin/cdin.exe` from the MSYS2 UCRT64 environment.
 
-The `--check` command is a headless lifecycle check. It is not an interactive editing session and does not create a document or open a window.
+The `--check` command is a headless lifecycle and protocol-handshake check. It is not an interactive editing session: it does not attach a view, render UI, create a document or open a window.
 
 ## What CDIN provides
 
