@@ -60,7 +60,7 @@ The harness uses a pseudo-terminal and checks:
 - startup failure with a missing Runtime root;
 - terminal mode, descriptor flags and alternate-screen/cursor/bracketed-paste restoration.
 
-The current live PTY acceptance test fails on Linux and macOS because Frontend may clear its outstanding version-pinned `view.lines` request when a snapshot leaves the same document version/line target unchanged. The matching response then arrives without `request_pending` and is rejected. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) changes request-state lifecycle semantics and adds regression coverage. Its Linux, Windows and Pipeline/quality checks passed; macOS remained queued at the latest inspection. After full Frontend matrix success and merge, CDIN must update `deps.lock` to the immutable merge SHA and rerun the complete native/sanitizer matrix.
+The last completed CDIN PTY run failed because Frontend could clear its outstanding version-pinned `view.lines` request when a snapshot left the same document version/line target unchanged. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) has now merged the request-state lifecycle fix and regression coverage as `e29df5118e7b822912724b15c0c963b0b99f2f8a`; CDIN's `deps.lock` pins that exact commit. The current CDIN native matrix and PTY result on the merged pin are pending in run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431). Do not treat the earlier PTY failure as the result of the merged fix, or mark the new PTY gate PASS until this run completes.
 
 Windows does not run the POSIX PTY test. Its TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented.
 
