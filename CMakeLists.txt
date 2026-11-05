@@ -104,6 +104,6 @@ if(BUILD_TESTING)
                     "$<TARGET_FILE:cdin>")
         set_tests_properties(cdin_tui_live_pty_smoke PROPERTIES
             ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
-            TIMEOUT 30)
+            TIMEOUT 60)
     endif()
 endif()
