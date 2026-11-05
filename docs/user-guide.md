@@ -1,6 +1,6 @@
 # User guide
 
-This guide explains what the CDIN application does in the current rewrite. CDIN is not yet an interactive editor, so the examples exercise the available command-line and lifecycle behavior only.
+This guide explains what the CDIN application does in the current rewrite. CDIN is not yet an interactive TUI/GUI editor, but `--check` now exercises a headless end-to-end document workflow through the public component interfaces.
 
 ## 1. What CDIN does
 
@@ -19,10 +19,10 @@ The Composition Root pins compatible component revisions, builds and installs th
 | --- | --- |
 | `cdin --help` or `cdin -h` | Print the supported command-line options. |
 | `cdin --version` | Print the CDIN application version. |
-| `cdin --check` | Load Runtime, create and start Backend, pump pending work once, then shut Backend down. |
+| `cdin --check` | Load Runtime, create/start Backend, negotiate and attach a Frontend Protocol session, validate the UI snapshot/flush/ACK and resize path, then exercise document new/text/paste/undo/redo/save/close/open and exact-byte readback before Backend shutdown. |
 | `cdin --runtime-root PATH` | Select the root directory used to load Runtime Lua modules. |
 | `cdin --runtime-entry MODULE` | Select the Lua module Backend loads as the Runtime entry point. |
-| `cdin --frontend headless` | Select the only frontend value accepted by the current launcher. It does not yet attach a live Frontend adapter. |
+| `cdin --frontend headless` | Select the headless protocol verification path; it does not launch a terminal renderer. |
 
 Unknown options and missing option values are rejected. Interactive launch currently exits with status 3 and an explanation. This is deliberate: the readiness/wakeup and event-loop contract is not complete.
 
@@ -59,12 +59,12 @@ The default module entry is `cdin.runtime`. The entry can be overridden with `--
 
 ## 5. What this check does not prove
 
-A successful `--check` confirms that the current pinned Runtime can be loaded by Backend and that the Backend lifecycle can be created, started, pumped and stopped. It does not prove that:
+A successful `--check` is intended to verify the headless Frontend Protocol path through Backend and Runtime, including document lifecycle, text/paste, undo/redo, save, close/reopen and byte-exact reads. The expanded test must be confirmed by the current native CI before treating it as passing. It does not prove that:
 
-- a TUI or GUI is connected;
-- key input reaches Runtime;
-- a user can create, edit, save or reopen a document;
-- plugins can be used in a live Frontend session;
-- a long-running application has passed memory, leak or soak testing.
+- a terminal or GUI renderer is running or usable;
+- the native FE-019 readiness loop, worker wakeups and terminal restoration are complete;
+- plugins can be used safely in a live TUI session;
+- multiple Frontends, detach/reconnect and Observer/Driver promotion work end-to-end;
+- a long-running application has passed memory, leak, soak or latency testing.
 
 Those are separate integration and release gates. Their current state is recorded in [Integration status](development/integration-status.md).
