@@ -59,7 +59,7 @@ The default module entry is `cdin.runtime`. The entry can be overridden with `--
 
 ## 5. What this check does not prove
 
-A successful `--check` is intended to verify the headless Frontend Protocol path through Backend and Runtime, including document lifecycle, text/paste, undo/redo, save, close/reopen and byte-exact reads. The expanded test must be confirmed by the current native CI before treating it as passing. It does not prove that:
+A successful `--check` is intended to verify the headless Frontend Protocol path through Backend and Runtime, including document lifecycle, text/paste, undo/redo, save, close/reopen and byte-exact reads. The expanded smoke currently passes Linux and Windows, with Linux ASan/UBSan/leak detection; macOS validation remains queued. A green component suite is not the same as a complete interactive TUI. It does not prove that:
 
 - a terminal or GUI renderer is running or usable;
 - the native FE-019 readiness loop, worker wakeups and terminal restoration are complete;
