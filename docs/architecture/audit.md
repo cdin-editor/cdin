@@ -1,6 +1,6 @@
 # Architecture audit
 
-**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, current tip `ecc9c0548c5cda9d75b751f12f752dfe08c7b52f`; product-code verification at parent candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553`, component revisions in `deps.lock`, inspected on 2026-11-05.
+**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, current tip `3b3542c8130462a425aa09cdb0be5ce29f09d4a3`; expanded document-smoke code validated on Linux and Windows in run `42073455899` (with Linux ASan/UBSan/leak detection), macOS job queued; component revisions in `deps.lock`, inspected on 2026-11-05.
 
 This audit distinguishes code that exists from behavior exercised by the current Composition Root. It is not a claim that the complete editor is implemented.
 
@@ -54,7 +54,7 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 
 ## 4. CI and security verification
 
-CI run [42051385717](https://github.com/cdin-editor/cdin/actions/runs/42051385717) completed successfully on candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553`: Linux, macOS and Windows pinned-stack E2E passed, and Linux ASan/UBSan/leak detection passed. The Linux test log explicitly records `Frontend attach smoke passed: snapshot revision=0 messages=6 ordered flush/ACK and resize`. The current branch tip only removes the redundant CodeQL workflow file; product code is unchanged from the passing candidate.
+CI run [42051385717](https://github.com/cdin-editor/cdin/actions/runs/42051385717) completed successfully on candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553` for the attach-only path: Linux, macOS and Windows pinned-stack E2E plus Linux ASan/UBSan/leak detection passed. The expanded document workflow passed Linux and Windows plus Linux sanitizers in [run 42073455899](https://github.com/cdin-editor/cdin/actions/runs/42073455899); macOS remains queued. The Linux test log explicitly records `Frontend attach smoke passed: snapshot revision=0 messages=6 ordered flush/ACK and resize`. The current branch tip only removes the redundant CodeQL workflow file; product code is unchanged from the passing candidate.
 
 Repository CodeQL **Default Setup** is enabled. The custom advanced CodeQL workflow produced `CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled` in [run 42051385905](https://github.com/cdin-editor/cdin/actions/runs/42051385905). The custom `.github/workflows/codeql.yml` was therefore removed from this branch; Default Setup remains the repository's scanner. The precise language selection of Default Setup still needs to be checked in repository settings.
 
@@ -65,8 +65,8 @@ The current action-pinned run emitted no Node.js 20 deprecation warning in the L
 ## 5. Compatibility findings
 
 - **Runtime version identity:** the prior discrepancy is resolved for the pinned Runtime revision. CI logs show the exact `1.0.0-rc.1` version recorded in `deps.lock`; the build rejects a mismatch.
-- **Backend package:** versioned CMake package discovery is enforced at 1.0.1; do not regress to unversioned header/library discovery.
-- **Frontend adapter:** the TUI target is experimental/unexported by Frontend Core 1.0.0. CDIN must consume an installable supported adapter, not copy sources into the Composition Root.
+- **Backend package:** versioned CMake package discovery is enforced at 1.0.2; the optional bounded binary-safe Host read is Backend-owned.
+- **Frontend adapter:** merged Frontend PR #2 installs/exports `cdin::frontend_ui_tui` and public headers, verified by a clean-prefix external consumer. CDIN must use the package target and not copy sources. FE-019 readiness/wakeup/terminal restoration still blocks interactive launch.
 - **Snapshot limits:** Backend PR [#7](https://github.com/cdin-editor/backend/pull/7) separates the 16 KiB per-frame cap from the 4 MiB default/64 MiB maximum aggregate snapshot budget. Backend PR [#8](https://github.com/cdin-editor/backend/pull/8) fixes the reported package version, and [#9](https://github.com/cdin-editor/backend/pull/9) fixes optional Runtime `options` projection and HELLO_ACK driver role. All three are merged; CDIN pins the immutable Backend 1.0.1 revision. ATTACH/snapshot/ACK/resize passes three-platform CI.
 - **Readiness integration:** Backend exposes a worker-completion wakeup callback, but CDIN still needs a real readiness-driven event loop that combines terminal readiness, Backend wakeups, resize and termination.
 - **Static include boundaries:** the current boundary script catches selected copied implementation calls but does not parse the compiler's full include graph. It is a guardrail, not a proof of all architectural include rules.
