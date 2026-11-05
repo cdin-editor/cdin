@@ -629,6 +629,8 @@ typedef struct cdin_tui_context {
     int backend_ready;
     int terminate_pending;
     int flush_escape;
+    int parser_ready_pending;
+    int terminal_buffer_only;
     uint32_t columns;
     uint32_t rows;
     char scratch_path[160];
@@ -744,9 +746,10 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
         context->backend_ready = 0;
     }
-    if (context->resize_pending) {
-        ready |= CDIN_FRONTEND_TUI_EVENT_RESIZE;
-        context->resize_pending = 0;
+    if (context->parser_ready_pending) {
+        context->parser_ready_pending = 0;
+        context->terminal_buffer_only = 1;
+        ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
     }
     if (context->terminate_pending) {
         *out_ready_events = ready | CDIN_FRONTEND_TUI_EVENT_TERMINATE;
@@ -865,21 +868,27 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     ptrdiff_t amount;
     size_t processed = 0u;
     int was_escape_timeout;
+    int buffer_only;
     if (context == NULL || out_processed == NULL || max_items == 0u) {
         return CDIN_FRONTEND_TUI_IO_ERROR;
     }
     *out_processed = 0u;
     was_escape_timeout = context->flush_escape;
+    buffer_only = context->terminal_buffer_only;
+    context->terminal_buffer_only = 0;
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
         return CDIN_FRONTEND_TUI_IO_ERROR;
     }
     if (processed != 0u) {
+        if (processed == max_items && context->parser.length != 0u) {
+            context->parser_ready_pending = 1;
+        }
         *out_processed = processed;
         return CDIN_FRONTEND_TUI_IO_PROGRESS;
     }
-    /* A timeout event is only for a lone ESC. Do not call the blocking
-     * terminal reader unless poll actually reported terminal bytes. */
-    if (was_escape_timeout) return CDIN_FRONTEND_TUI_IO_AGAIN;
+    /* Parser-buffer and ESC-timeout notifications do not authorize a read
+     * from the blocking terminal adapter. Only poll readiness does. */
+    if (was_escape_timeout || buffer_only) return CDIN_FRONTEND_TUI_IO_AGAIN;
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
     if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
@@ -894,6 +903,9 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         return CDIN_FRONTEND_TUI_IO_ERROR;
     }
     if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
+    if (processed == max_items && context->parser.length != 0u) {
+        context->parser_ready_pending = 1;
+    }
     *out_processed = processed;
     return CDIN_FRONTEND_TUI_IO_PROGRESS;
 }
