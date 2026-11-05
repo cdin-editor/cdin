@@ -1,21 +1,24 @@
 # Resource and soak benchmarks
 
-No CDIN product memory or latency benchmark is implemented yet. The current `--check` command creates and shuts down Backend; it does not exercise a live editing workload. Bounded queue configuration is not a measurement of process RSS, allocator peak or leak behavior.
+The real headless document workflow is now exercised through Frontend → Backend → Runtime → Kernel: create/open, text and binary paste, undo/redo, atomic save, close/reopen and exact-byte readback. That is integration evidence, not a performance measurement.
+
+**No CDIN product RSS, allocator-peak, latency or long-running soak benchmark is implemented yet.** Bounded queue capacities and a short `--check` run are not substitutes for measured process memory or sustained workloads.
 
 ## 1. Required workloads
 
-Run repeatable workloads against the real Kernel-backed editor path:
+Run repeatable workloads against the real document and Frontend session path:
 
-- open and close many small, medium and large documents;
-- large paste, replace, undo and redo histories;
-- repeated save and reopen;
-- many views and multiple frontend sessions;
-- plugin load, use and unload;
-- cancellation and Backend shutdown during background work;
-- long-lived idle and active sessions;
-- malformed input and repeated transport reconnect.
+- Open/close many small, medium and large documents.
+- Large paste, replace, undo and redo histories.
+- Repeated save/reopen, including BOM and mixed-EOL files.
+- Multiple views and multiple Frontend sessions.
+- Plugin load, use, capability denial and unload.
+- Cancellation, transport interruption and Backend shutdown during background work.
+- Long-lived idle and active sessions.
+- Malformed input, disconnect/reconnect and repeated recovery.
+- TUI redraw/resize/input workloads after the interactive PTY gate passes.
 
-The benchmark must not be published until the real create/open/edit/save/reopen product E2E path is implemented.
+Each workload must specify document/session/view counts, payload sizes, operation mix, warmup, iteration count and soak duration. Run on the supported native platform/toolchain matrix where practical.
 
 ## 2. Required report fields
 
@@ -24,14 +27,18 @@ The benchmark must not be published until the real create/open/edit/save/reopen 
 | Source | Commit SHA and immutable component pins. |
 | Platform | OS version, architecture and native toolchain. |
 | Build | Compiler, flags, build type and sanitizer settings. |
-| Workload | Document bytes, document/session/view counts, operation mix and iteration count. |
-| Memory | Peak process RSS and allocator peak when a component exposes it. |
-| Latency | Wall-clock p50, p95 and p99 for named operations. |
-| Safety | ASan, UBSan, leak checker and soak duration/results. |
-| Comparison | Previous baseline and percentage change for the same workload. |
+| Workload | Document bytes, document/session/view counts, operation mix, warmup and iterations. |
+| Memory | Peak process RSS and allocator peak when exposed by a component. |
+| Latency | p50, p95 and p99 for named operations, with sample count. |
+| Safety | ASan, UBSan, leak checker, soak duration and failure count. |
+| Comparison | Previous baseline and percentage change under the same workload. |
 
-Do not infer missing memory values. Write NOT AVAILABLE when a component does not expose a measurement and NOT RUN when the workload has not been executed.
+Do not infer missing memory values. Record `NOT AVAILABLE` when a component does not expose a metric and `NOT RUN` when a workload has not executed. Preserve raw measurement artifacts so results can be reproduced.
 
 ## 3. Current status
 
-**NOT IMPLEMENTED / NOT RUN.** This document is a measurement specification, not evidence of a benchmark result.
+**Integration workload: IMPLEMENTED / native CI verified for headless document operations.**
+
+**Performance and soak measurement: NOT IMPLEMENTED / NOT RUN.**
+
+This document is a benchmark specification, not evidence of a benchmark result. Performance budgets must be established from measurements rather than chosen from queue limits or expectations.
