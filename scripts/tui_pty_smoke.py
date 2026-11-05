@@ -9,6 +9,7 @@ import pty
 import re
 import select
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -80,6 +81,7 @@ def assert_restored(slave: int, before_termios, before_flags: int, output: bytea
 
 def run_live_edit(executable: str) -> None:
     master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     before_termios = termios.tcgetattr(slave)
     before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
     output = bytearray()
@@ -125,6 +127,7 @@ def run_live_edit(executable: str) -> None:
 
 def run_startup_failure(executable: str) -> None:
     master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     before_termios = termios.tcgetattr(slave)
     before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
     output = bytearray()
