@@ -1,3 +1,6 @@
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 
 #include "cdin/backend.h"
@@ -894,6 +897,7 @@ typedef struct cdin_tui_context {
     int flush_escape;
     int parser_ready_pending;
     int terminal_buffer_only;
+    int defer_line_requests;
     uint32_t columns;
     uint32_t rows;
     char scratch_path[160];
@@ -1215,14 +1219,33 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
                          cdin_frontend_protocol_status_name(protocol_status));
             return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
-        model_status = cdin_frontend_tui_receive(
-            &context->session, context->model, &message, &committed);
+        if (context->defer_line_requests) {
+            /* The ATTACH snapshot can arrive before this new process has
+             * created its first document. Apply and ACK the snapshot now,
+             * but do not ask Runtime for a view-line window until
+             * document.new has established a real document version. */
+            model_status = cdin_frontend_tui_model_apply_message(
+                context->model, &message, &committed);
+            if (model_status == CDIN_FRONTEND_TUI_MODEL_OK && committed &&
+                message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+                if (context->session.last_flush_sequence == 0u ||
+                    cdin_frontend_session_ack(
+                        &context->session, context->session.last_flush_sequence) !=
+                        CDIN_FRONTEND_PROTOCOL_OK) {
+                    MMLLOG_ERROR(context->log->logger,
+                                 "Initial TUI snapshot ACK failed");
+                    return CDIN_FRONTEND_TUI_IO_FAILURE;
+                }
+            }
+        } else {
+            model_status = cdin_frontend_tui_receive(
+                &context->session, context->model, &message, &committed);
+        }
         if (model_status != CDIN_FRONTEND_TUI_MODEL_OK) {
             MMLLOG_ERROR(context->log->logger, "TUI model rejected Backend message: %d",
                          (int)model_status);
             return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
-        (void)committed;
         processed++;
     }
     if (cdin_backend_frontend_pending(context->transport.frontend) != 0u) {
@@ -1333,8 +1356,7 @@ static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
             result == CDIN_FRONTEND_TUI_IO_EOF) return -1;
         pending = cdin_backend_frontend_pending(context->transport.frontend);
         if (pending == 0u &&
-            cdin_frontend_tui_model_last_flush(context->model) != 0u &&
-            !cdin_frontend_tui_model_needs_lines(context->model)) {
+            cdin_frontend_tui_model_last_flush(context->model) != 0u) {
             return 0;
         }
         if (result == CDIN_FRONTEND_TUI_IO_AGAIN || processed == 0u) {
@@ -1503,10 +1525,15 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
         MMLLOG_ERROR(log->logger, "Could not create Frontend TUI semantic model");
         goto cleanup;
     }
+    /* ATTACH initially publishes an empty view. Do not trigger a line-window
+     * request for that view until the first Runtime document is created. */
+    context.defer_line_requests = 1;
     if (cdin_tui_drain_initial_snapshot(&context) != 0) {
+        context.defer_line_requests = 0;
         MMLLOG_ERROR(log->logger, "Frontend TUI could not apply the initial attached snapshot");
         goto cleanup;
     }
+    context.defer_line_requests = 0;
     if (cdin_tui_make_scratch_path(&context) != 0) {
         MMLLOG_ERROR(log->logger, "Could not allocate a unique scratch document path");
         goto cleanup;
