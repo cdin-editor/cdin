@@ -25,7 +25,7 @@ role = "Backend lifecycle, bounded UI snapshot publication, protocol server and 
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "efbb5804943d5aa4f0a303f2f7b7cd10bab42444"
+revision = "e29df5118e7b822912724b15c0c963b0b99f2f8a"
 version = "1.0.0"
 role = "Integration-only pin to Frontend PR #11 request-lifecycle fix and regression tests (unmerged; macOS CI pending); Windows TUI remains fail-closed"
 
