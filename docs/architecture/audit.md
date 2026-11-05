@@ -33,8 +33,8 @@ The current top-level tree contains no legacy SDL renderer, embedded editor poli
 | --- | --- | --- |
 | Composition Root boundary | **IMPLEMENTED (partial product)** | Current native source is limited to launcher, CLI parsing and diagnostics. The full user-facing editor remains incomplete. |
 | Immutable component source pins | **IMPLEMENTED** | Revisions are recorded in `deps.lock`. |
-| Dependency source materialization | **IMPLEMENTED in the current change; NOT VERIFIED by CI yet** | `scripts/deps.py` explicitly checks out the locked SHA after clone/fetch. |
-| Full stack build orchestration | **IMPLEMENTED; current CI fix NOT VERIFIED** | `scripts/build_stack.py` drives logger, Kernel, Backend, Frontend and CDIN builds and tests. |
+| Dependency source materialization | **IMPLEMENTED and VERIFIED in CI** | Linux, macOS and Windows reached the pinned component build using the immutable revisions in `deps.lock`; Windows later failed in a Backend-owned E2E test. |
+| Full stack build orchestration | **IMPLEMENTED; Linux/macOS VERIFIED; Windows PARTIAL** | `scripts/build_stack.py` builds and tests logger, Kernel, Backend, Frontend and CDIN. Linux and macOS pass; Windows stops at `backend_e2e_platform_file_workflow`. |
 | Protocol compatibility | **PARTIAL** | Backend/Frontend Protocol major/minor are checked at compile time. No live protocol transport connection is created by CDIN. |
 | Backend version compatibility | **PARTIAL** | The executable compares `cdin_backend_version()` to the header version at startup. |
 | Kernel document integration | **EXISTS in Backend; not a CDIN product workflow** | Backend integration tests are built by the pinned stack. CDIN does not directly call the Kernel API. |
@@ -43,8 +43,8 @@ The current top-level tree contains no legacy SDL renderer, embedded editor poli
 | Interactive TUI/GUI launch | **NOT IMPLEMENTED** | Launcher fails closed pending the FE-019 readiness/wakeup event-loop integration. |
 | Document create/open/edit/save/reopen product E2E | **NOT IMPLEMENTED** | There is no connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | **NOT VERIFIED** | CDIN has no live Frontend input route exercising these Runtime features. |
-| Linux/macOS/Windows green CI | **NOT VERIFIED** | The inspected CI run failed before compilation; see section 5. |
-| ASan/UBSan/leak result | **NOT VERIFIED** | The inspected sanitizer job failed before compilation. |
+| Linux/macOS/Windows green CI | **PARTIAL** | Linux and macOS pass. Windows reaches Backend tests but one path workflow fails; see section 5. |
+| ASan/UBSan/leak result | **PASS on Linux for the inspected HEAD** | The ASan + UBSan + leak-detection job completed successfully in run `41991189690`. |
 | Product memory/soak benchmarks | **NOT IMPLEMENTED / NOT RUN** | The current benchmark document is a plan, not a benchmark executable. |
 | Production installers and release artifacts | **NOT IMPLEMENTED** | The package task currently creates a source archive only. |
 | Docker image | **NOT IMPLEMENTED** | No Dockerfile or container workflow exists in the current tree. |
@@ -59,15 +59,24 @@ The current top-level tree contains no legacy SDL renderer, embedded editor poli
 
 Potential compatibility improvement still needed: the lock file records the Backend commit and version, but CMake currently discovers the installed Backend headers/libraries by name rather than through a versioned Backend package config. The runtime version comparison catches a mismatch at startup, but dependency discovery should become a package-level contract.
 
-## 5. CI evidence at the audit baseline
+## 5. CI evidence for the current HEAD
 
-Workflow run [41985097875](https://github.com/cdin-editor/cdin/actions/runs/41985097875) failed on all four jobs before the actual CDIN build:
+The current branch HEAD is `c7b50b87034968a083c6fa2d52bee05babdea337`. Workflow run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690) completed on 2026-11-05:
 
-- Linux and macOS: the dependency script cloned source repositories with `--no-checkout` and could leave their working trees empty even when `HEAD` matched the pin.
-- Windows: the MSYS2 Python package was installed without its pip package, so Pipeline could not be installed.
-- macOS/Linux Gix diagnostics also found a detached HEAD/no configured local mainline identity/base branch during the original workflow. The workflow now prepares the expected branch and commit identity before Gix checks.
+| Job | Result | Evidence |
+| --- | --- | --- |
+| Ubuntu pinned stack | **PASS** | Dependencies, component builds/tests, CDIN build, CLI E2E, lifecycle smoke and boundary check completed. |
+| macOS pinned stack | **PASS** | Same Pipeline task graph completed. |
+| Linux ASan + UBSan + leak detection | **PASS** | Instrumented `pipeline run check` completed successfully. |
+| Windows pinned stack | **FAIL** | Backend built, but 8/9 Backend CTest cases passed. `backend_e2e_platform_file_workflow` failed at `tests/e2e/scenarios/platform_file_workflow.c:56`, comparing the result of `cdin_path_join` with the scenario helper's path string. The failure is in the Backend-owned test and must be fixed in the Backend repository, not by duplicating Backend path logic in CDIN. |
+| CodeQL Python | **PASS** | Python analysis completed. |
+| CodeQL JavaScript/TypeScript | **CONFIGURATION FAILURE** | CodeQL found no JavaScript/TypeScript source in this repository and could not finalize that language database. This is not evidence of a source vulnerability; the language selection needs to match the repository's languages. |
 
-The dependency materialization script, CI environment and Gix configuration have been corrected in the current working tree. These corrections remain **NOT VERIFIED** until a new workflow run completes.
+The passing Linux and macOS jobs verify the pinned component stack and the current CDIN executable's CLI/lifecycle smoke test. They do **not** verify a connected Frontend, document editing, persistence, keymap dispatch or plugin workflows. The sanitizer pass likewise covers the configured stack checks, not the missing interactive product path.
+
+The CI log also reports Runtime startup with Host API `1.0.0` and Kernel ABI `1.1.0`, but the Runtime self-reported version is `0.2.1-beta.10.next.17+gc7b50b8`. This conflicts with the Spec status page and Runtime status document, which identify the package candidate as `1.0.0-rc.1`. Resolve the version-source discrepancy before publishing a component version matrix or release.
+
+Historical runs `41985097875` and `41987494172` record earlier dependency checkout, toolchain and package-version failures. They are superseded as evidence for the current HEAD by run `41991189690`; retain them only as history, not as the current CI status.
 
 ## 6. Main gaps before an interactive release
 
@@ -81,3 +90,13 @@ The dependency materialization script, CI environment and Gix configuration have
 8. Complete the native CI matrix and sanitizer run on the updated branch.
 
 Until these gates pass, the accurate project description is “Composition Root with a headless Backend/Runtime lifecycle smoke test,” not “complete editor.”
+
+## 7. Cross-source discrepancies found during this audit
+
+1. **Frontend Protocol version documentation is internally stale.** The pinned Backend public header declares Backend `1.0.0` and Protocol `1.0.0` at [backend.h](https://github.com/cdin-editor/backend/blob/322a3e95e669541e63f5a5c10a16b76823c45200/include/cdin/backend.h#L11-L19). However, the Spec's [frontend-protocol.md](https://github.com/cdin-editor/spec/blob/main/docs/architecture/frontend-protocol.md#L3-L3) still says the Backend implementation is `0.2.0`, and [module-boundaries.md](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L19-L19) repeats that stale value. The accepted ADR-0020 and Spec v1.4.0 status page identify Protocol `1.0.0`; synchronize the descriptive pages.
+2. **The Spec Frontend overview has stale decision text.** [components/frontend.md](https://github.com/cdin-editor/spec/blob/main/docs/components/frontend.md#L3-L3) says serialized wire encoding and a shared protocol client remain open, while accepted ADR-0018/ADR-0020 and the pinned Frontend repository provide the Protocol 1.0.0 wire contract and client API. Update the component overview without changing accepted decisions.
+3. **Runtime package version does not match its documented candidate.** Spec status [line 27](https://github.com/cdin-editor/spec/blob/main/docs/reference/status.md#L27-L27) and Runtime status [line 3](https://github.com/cdin-editor/runtime/blob/fda2db69d8e0ab90c854c3a74efa1dd80d9714cc/docs/status.md#L3-L3) say `1.0.0-rc.1`; the current CDIN CI log reports `0.2.1-beta.10.next.17+gc7b50b8`. Runtime derives its package version from Git metadata in [version.lua](https://github.com/cdin-editor/runtime/blob/fda2db69d8e0ab90c854c3a74efa1dd80d9714cc/lua/cdin/runtime/core/version.lua#L159-L159). Confirm the intended release identity and ensure the packaged Runtime metadata is deterministic.
+4. **Backend package discovery is weaker than the lock contract.** CDIN pins Backend commit/version but CMake finds Backend headers and libraries by unversioned names; only a runtime version string is compared. Add a versioned package/config or another explicit public ABI contract before treating the installed Backend as a reproducible production package.
+5. **The readiness gap is at composition time.** The pinned Frontend TUI exposes a readiness-driven event-loop callback contract, but CDIN does not supply the wait/readiness bridge or connect a Frontend session. Backend exposes in-process Frontend queue/codec APIs, while its own readiness audit says concrete out-of-process transports are not implemented. Do not treat the presence of the TUI event-loop header or a successful Backend lifecycle smoke test as a connected frontend.
+
+These discrepancies are findings, not accepted design changes. Component-owned issues must be corrected in their owning repositories; CDIN must consume the corrected released interfaces rather than copy their implementations.
