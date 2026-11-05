@@ -3,11 +3,26 @@
 #include "cdin/log.h"
 #include "cdin/frontend/core/protocol/client.h"
 #include "cdin/frontend/core/session/session.h"
+#include "cdin/frontend/ui/tui/event_loop.h"
+#include "cdin/frontend/ui/tui/input/parser.h"
+#include "cdin/frontend/ui/tui/model.h"
+#include "cdin/frontend/ui/tui/platform/terminal.h"
+#include "cdin/frontend/ui/tui/session.h"
+#include "cdin/frontend/ui/tui/tui.h"
+#include "cdin/options.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef _WIN32
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <time.h>
+#include <unistd.h>
+#endif
 #ifdef _WIN32
 #include <process.h>
 #define CDIN_SMOKE_PROCESS_ID() ((unsigned long)_getpid())
@@ -585,3 +600,663 @@ cleanup:
     free(transport.incoming);
     return result;
 }
+
+
+#ifndef _WIN32
+
+typedef struct cdin_tui_context {
+    cdin_backend *backend;
+    cdin_inproc_transport transport;
+    cdin_frontend_protocol_io io;
+    cdin_frontend_client client;
+    cdin_frontend_session session;
+    cdin_frontend_terminal terminal;
+    cdin_frontend_input_parser parser;
+    cdin_frontend_tui_model *model;
+    cdin_log *log;
+    int wake_read;
+    int wake_write;
+    int terminal_opened;
+    int session_initialized;
+    int signals_installed;
+    int shutdown_called;
+    int backend_ready;
+    int terminate_pending;
+    int resize_pending;
+    int flush_escape;
+    uint32_t columns;
+    uint32_t rows;
+    char scratch_path[160];
+    char title[192];
+    char help_status[192];
+    struct sigaction previous_winch;
+    struct sigaction previous_term;
+    struct sigaction previous_int;
+    uint8_t *client_buffer;
+} cdin_tui_context;
+
+static volatile sig_atomic_t cdin_tui_signal_write_fd = -1;
+
+static void cdin_tui_signal_handler(int signal_number)
+{
+    int descriptor = (int)cdin_tui_signal_write_fd;
+    uint8_t code = signal_number == SIGWINCH ? (uint8_t)'R' : (uint8_t)'T';
+    if (descriptor >= 0) {
+        (void)write(descriptor, &code, 1u);
+    }
+}
+
+static int cdin_tui_set_nonblocking(int descriptor)
+{
+    int flags = fcntl(descriptor, F_GETFL, 0);
+    int descriptor_flags;
+    if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != 0) return -1;
+    descriptor_flags = fcntl(descriptor, F_GETFD, 0);
+    if (descriptor_flags < 0 ||
+        fcntl(descriptor, F_SETFD, descriptor_flags | FD_CLOEXEC) != 0) return -1;
+    return 0;
+}
+
+static int cdin_tui_create_wakeup_pipe(cdin_tui_context *context)
+{
+    int descriptors[2];
+    if (context == NULL || pipe(descriptors) != 0) return -1;
+    if (cdin_tui_set_nonblocking(descriptors[0]) != 0 ||
+        cdin_tui_set_nonblocking(descriptors[1]) != 0) {
+        (void)close(descriptors[0]);
+        (void)close(descriptors[1]);
+        return -1;
+    }
+    context->wake_read = descriptors[0];
+    context->wake_write = descriptors[1];
+    return 0;
+}
+
+static void cdin_tui_signal_write(cdin_tui_context *context, uint8_t code)
+{
+    ssize_t result;
+    if (context == NULL || context->wake_write < 0) return;
+    do {
+        result = write(context->wake_write, &code, 1u);
+    } while (result < 0 && errno == EINTR);
+    /* EAGAIN means the pipe already contains a wakeup and is readable. */
+}
+
+static void cdin_tui_backend_wakeup(void *opaque)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    cdin_tui_signal_write(context, (uint8_t)'B');
+}
+
+static int cdin_tui_install_signal_handlers(cdin_tui_context *context)
+{
+    struct sigaction action;
+    if (context == NULL || context->wake_write < 0) return -1;
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = cdin_tui_signal_handler;
+    if (sigemptyset(&action.sa_mask) != 0) return -1;
+    cdin_tui_signal_write_fd = (sig_atomic_t)context->wake_write;
+    if (sigaction(SIGWINCH, &action, &context->previous_winch) != 0) goto fail;
+    if (sigaction(SIGTERM, &action, &context->previous_term) != 0) {
+        (void)sigaction(SIGWINCH, &context->previous_winch, NULL);
+        goto fail;
+    }
+    if (sigaction(SIGINT, &action, &context->previous_int) != 0) {
+        (void)sigaction(SIGTERM, &context->previous_term, NULL);
+        (void)sigaction(SIGWINCH, &context->previous_winch, NULL);
+        goto fail;
+    }
+    context->signals_installed = 1;
+    return 0;
+fail:
+    cdin_tui_signal_write_fd = -1;
+    return -1;
+}
+
+static void cdin_tui_restore_signal_handlers(cdin_tui_context *context)
+{
+    if (context == NULL || !context->signals_installed) return;
+    cdin_tui_signal_write_fd = -1;
+    (void)sigaction(SIGINT, &context->previous_int, NULL);
+    (void)sigaction(SIGTERM, &context->previous_term, NULL);
+    (void)sigaction(SIGWINCH, &context->previous_winch, NULL);
+    context->signals_installed = 0;
+}
+
+static int cdin_tui_wait(void *opaque, uint32_t requested_events,
+                         int timeout_ms, uint32_t *out_ready_events)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    struct pollfd descriptors[2];
+    int timeout = timeout_ms;
+    int polled;
+    uint32_t ready = 0u;
+    if (context == NULL || out_ready_events == NULL ||
+        (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL) {
+        return -1;
+    }
+    if (context->backend_ready) {
+        ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
+        context->backend_ready = 0;
+    }
+    if (context->resize_pending) {
+        ready |= CDIN_FRONTEND_TUI_EVENT_RESIZE;
+        context->resize_pending = 0;
+    }
+    if (context->terminate_pending) {
+        *out_ready_events = ready | CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+        return 0;
+    }
+    if (ready != 0u) {
+        *out_ready_events = ready;
+        return 0;
+    }
+
+    /* The Frontend parser needs one short ESC disambiguation window. All other
+     * waits block indefinitely; there is no periodic polling or busy-wait. */
+    if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) timeout = 30;
+    descriptors[0].fd = STDIN_FILENO;
+    descriptors[0].events = POLLIN;
+    descriptors[0].revents = 0;
+    descriptors[1].fd = context->wake_read;
+    descriptors[1].events = POLLIN;
+    descriptors[1].revents = 0;
+    do {
+        polled = poll(descriptors, (nfds_t)2u, timeout);
+    } while (polled < 0 && errno == EINTR);
+    if (polled < 0) return -1;
+    if (polled == 0) {
+        context->flush_escape = 1;
+        *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+        return 0;
+    }
+    if ((descriptors[0].revents & (POLLIN | POLLHUP)) != 0) {
+        ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+    }
+    if ((descriptors[0].revents & (POLLERR | POLLNVAL)) != 0) return -1;
+    if ((descriptors[1].revents & POLLIN) != 0) {
+        uint8_t bytes[128];
+        ssize_t amount;
+        for (;;) {
+            amount = read(context->wake_read, bytes, sizeof(bytes));
+            if (amount > 0) {
+                ssize_t index;
+                for (index = 0; index < amount; index++) {
+                    switch (bytes[index]) {
+                        case 'B': ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE; break;
+                        case 'R': ready |= CDIN_FRONTEND_TUI_EVENT_RESIZE; break;
+                        case 'T': ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE; break;
+                        default: break;
+                    }
+                }
+                continue;
+            }
+            if (amount < 0 && errno == EINTR) continue;
+            if (amount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+            if (amount == 0) break;
+            return -1;
+        }
+    }
+    if ((descriptors[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) return -1;
+    *out_ready_events = ready;
+    return ready != 0u ? 0 : -1;
+}
+
+static int cdin_tui_dispatch_input(cdin_tui_context *context,
+                                   const cdin_frontend_input_event *event)
+{
+    cdin_frontend_protocol_status status;
+    if (context == NULL || event == NULL) return -1;
+    if (event->kind == CDIN_FRONTEND_INPUT_KEY &&
+        (event->modifiers & CDIN_FRONTEND_MOD_CTRL) != 0u &&
+        (strcmp(event->key, "c") == 0 || strcmp(event->key, "q") == 0)) {
+        context->terminate_pending = 1;
+        return 0;
+    }
+    status = cdin_frontend_tui_send_input(&context->session, event);
+    if (status != CDIN_FRONTEND_PROTOCOL_OK) {
+        MMLLOG_ERROR(context->log->logger, "TUI input forwarding failed: %s",
+                     cdin_frontend_protocol_status_name(status));
+        return -1;
+    }
+    /* The in-process transport pumps synchronously; still schedule a Backend
+     * drain so the common event loop applies and renders every resulting batch. */
+    context->backend_ready = 1;
+    return 0;
+}
+
+static int cdin_tui_parse_pending(cdin_tui_context *context, size_t budget,
+                                  size_t *out_processed)
+{
+    size_t processed = 0u;
+    while (processed < budget) {
+        cdin_frontend_input_event event;
+        int flush_escape = context->flush_escape;
+        cdin_frontend_input_parser_status status;
+        context->flush_escape = 0;
+        status = cdin_frontend_input_parser_next(&context->parser, flush_escape, &event);
+        if (status == CDIN_FRONTEND_INPUT_PARSER_EVENT) {
+            if (cdin_tui_dispatch_input(context, &event) != 0) return -1;
+            processed++;
+            continue;
+        }
+        if (status == CDIN_FRONTEND_INPUT_PARSER_INVALID) continue;
+        if (status == CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
+            MMLLOG_WARN(context->log->logger, "TUI discarded an oversized bracketed paste");
+            continue;
+        }
+        if (status == CDIN_FRONTEND_INPUT_PARSER_NEED_MORE) break;
+        return -1;
+    }
+    *out_processed = processed;
+    return 0;
+}
+
+static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
+    void *opaque, size_t max_items, size_t *out_processed)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    uint8_t bytes[4096];
+    ptrdiff_t amount;
+    size_t processed = 0u;
+    int was_escape_timeout;
+    if (context == NULL || out_processed == NULL || max_items == 0u) {
+        return CDIN_FRONTEND_TUI_IO_ERROR;
+    }
+    *out_processed = 0u;
+    was_escape_timeout = context->flush_escape;
+    if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
+        return CDIN_FRONTEND_TUI_IO_ERROR;
+    }
+    if (processed != 0u) {
+        *out_processed = processed;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
+    }
+    /* A timeout event is only for a lone ESC. Do not call the blocking
+     * terminal reader unless poll actually reported terminal bytes. */
+    if (was_escape_timeout) return CDIN_FRONTEND_TUI_IO_AGAIN;
+
+    amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
+    if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
+    if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_ERROR;
+    if (cdin_frontend_input_parser_feed(&context->parser, bytes, (size_t)amount) ==
+        CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
+        cdin_frontend_input_parser_init(&context->parser);
+        MMLLOG_WARN(context->log->logger, "TUI discarded terminal input after parser capacity was exceeded");
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
+    }
+    if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
+        return CDIN_FRONTEND_TUI_IO_ERROR;
+    }
+    if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
+    *out_processed = processed;
+    return CDIN_FRONTEND_TUI_IO_PROGRESS;
+}
+
+static cdin_frontend_tui_io_result cdin_tui_drain_backend(
+    void *opaque, size_t max_items, size_t *out_processed)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    cdin_backend_status backend_status;
+    size_t pumped = 0u;
+    size_t processed = 0u;
+    if (context == NULL || out_processed == NULL || max_items == 0u) {
+        return CDIN_FRONTEND_TUI_IO_ERROR;
+    }
+    *out_processed = 0u;
+    backend_status = cdin_backend_pump(context->backend, max_items, &pumped);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(context->log->logger, "Backend pump failed in TUI loop: %s",
+                     cdin_backend_status_name(backend_status));
+        return CDIN_FRONTEND_TUI_IO_ERROR;
+    }
+    while (processed < max_items &&
+           cdin_backend_frontend_pending(context->transport.frontend) != 0u) {
+        cdin_frontend_protocol_message_view message;
+        cdin_frontend_protocol_status protocol_status;
+        cdin_frontend_tui_model_status model_status;
+        int committed = 0;
+        protocol_status = cdin_frontend_session_receive(&context->session, &message);
+        if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+            MMLLOG_ERROR(context->log->logger, "Frontend receive failed in TUI loop: %s",
+                         cdin_frontend_protocol_status_name(protocol_status));
+            return CDIN_FRONTEND_TUI_IO_ERROR;
+        }
+        model_status = cdin_frontend_tui_receive(
+            &context->session, context->model, &message, &committed);
+        if (model_status != CDIN_FRONTEND_TUI_MODEL_OK) {
+            MMLLOG_ERROR(context->log->logger, "TUI model rejected Backend message: %d",
+                         (int)model_status);
+            return CDIN_FRONTEND_TUI_IO_ERROR;
+        }
+        (void)committed;
+        processed++;
+    }
+    if (cdin_backend_frontend_pending(context->transport.frontend) != 0u) {
+        context->backend_ready = 1;
+    }
+    if (processed != 0u) {
+        *out_processed = processed;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
+    }
+    if (pumped != 0u) {
+        *out_processed = 1u;
+        return CDIN_FRONTEND_TUI_IO_PROGRESS;
+    }
+    return CDIN_FRONTEND_TUI_IO_AGAIN;
+}
+
+static int cdin_tui_on_resize(void *opaque)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    uint32_t columns = 80u;
+    uint32_t rows = 24u;
+    cdin_frontend_protocol_status status;
+    if (context == NULL || context->terminal.size(context->terminal.context,
+                                                  &columns, &rows) != 0 ||
+        columns == 0u || rows == 0u) return -1;
+    context->columns = columns;
+    context->rows = rows;
+    status = cdin_frontend_session_resize(&context->session, columns, rows);
+    if (status != CDIN_FRONTEND_PROTOCOL_OK) {
+        MMLLOG_ERROR(context->log->logger, "Frontend resize failed: %s",
+                     cdin_frontend_protocol_status_name(status));
+        return -1;
+    }
+    context->backend_ready = 1;
+    return 0;
+}
+
+static int cdin_tui_render_frame(void *opaque)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    cdin_frontend_tui_frame frame;
+    cdin_frontend_tui_model_status status;
+    if (context == NULL || context->model == NULL || !context->terminal.active) return -1;
+    status = cdin_frontend_tui_model_get_frame(context->model, &frame);
+    if (status != CDIN_FRONTEND_TUI_MODEL_OK) return -1;
+    frame.title = context->title;
+    if (frame.status == NULL || frame.status[0] == '\0') frame.status = context->help_status;
+    if (frame.mode == NULL || frame.mode[0] == '\0') frame.mode = "NORMAL";
+    return cdin_frontend_tui_render(&context->terminal, &frame, NULL) ==
+        CDIN_FRONTEND_TUI_OK ? 0 : -1;
+}
+
+static void cdin_tui_shutdown_loop(void *opaque, cdin_frontend_tui_loop_status reason)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    if (context == NULL || context->shutdown_called) return;
+    context->shutdown_called = 1;
+    if (context->session_initialized &&
+        context->session.state == CDIN_FRONTEND_SESSION_ATTACHED) {
+        cdin_frontend_protocol_status status =
+            cdin_frontend_session_detach(&context->session);
+        if (status != CDIN_FRONTEND_PROTOCOL_OK) {
+            MMLLOG_WARN(context->log->logger, "Frontend detach during TUI shutdown failed: %s",
+                        cdin_frontend_protocol_status_name(status));
+        }
+    }
+    if (context->model != NULL) {
+        cdin_frontend_tui_model_destroy(context->model);
+        context->model = NULL;
+    }
+    if (context->terminal_opened) {
+        cdin_frontend_terminal_close(&context->terminal);
+        context->terminal_opened = 0;
+    }
+    if (reason != CDIN_FRONTEND_TUI_LOOP_OK) {
+        MMLLOG_WARN(context->log->logger, "TUI event loop exited with status %d", (int)reason);
+    }
+}
+
+static int cdin_tui_make_scratch_path(cdin_tui_context *context)
+{
+    unsigned long process_id = CDIN_SMOKE_PROCESS_ID();
+    long long timestamp = (long long)time(NULL);
+    unsigned int suffix;
+    for (suffix = 0u; suffix < 100u; suffix++) {
+        FILE *existing;
+        int length = snprintf(context->scratch_path, sizeof(context->scratch_path),
+                              "cdin-untitled-%lu-%lld-%u.cdin",
+                              process_id, timestamp, suffix);
+        if (length < 0 || (size_t)length >= sizeof(context->scratch_path)) return -1;
+        existing = fopen(context->scratch_path, "rb");
+        if (existing == NULL) return 0;
+        (void)fclose(existing);
+    }
+    return -1;
+}
+
+static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
+{
+    unsigned int attempts;
+    for (attempts = 0u; attempts < 8u; attempts++) {
+        size_t processed = 0u;
+        cdin_frontend_tui_io_result result =
+            cdin_tui_drain_backend(context, 256u, &processed);
+        if (result == CDIN_FRONTEND_TUI_IO_ERROR ||
+            result == CDIN_FRONTEND_TUI_IO_EOF) return -1;
+        if (result == CDIN_FRONTEND_TUI_IO_AGAIN) {
+            return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
+        }
+    }
+    return cdin_backend_frontend_pending(context->transport.frontend) == 0u ? 0 : -1;
+}
+
+int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
+{
+    cdin_tui_context context;
+    cdin_backend_config config;
+    cdin_backend_status backend_status;
+    cdin_frontend_terminal_status terminal_status;
+    cdin_frontend_protocol_status protocol_status;
+    cdin_frontend_protocol_message_view hello_ack;
+    cdin_frontend_tui_event_loop loop;
+    size_t processed = 0u;
+    int result = EXIT_FAILURE;
+    int backend_created = 0;
+    int terminal_error = 0;
+    const char *runtime_root;
+    const char *runtime_entry;
+
+    if (options == NULL || log == NULL || log->logger == NULL) return EXIT_FAILURE;
+    memset(&context, 0, sizeof(context));
+    context.log = log;
+    context.wake_read = -1;
+    context.wake_write = -1;
+    context.transport.backend = NULL;
+    cdin_frontend_input_parser_init(&context.parser);
+
+    terminal_status = cdin_frontend_terminal_open(&context.terminal);
+    if (terminal_status != CDIN_FRONTEND_TERMINAL_OK) {
+        (void)fprintf(stderr,
+            "cdin: frontend 'tui' is not launchable: interactive terminal setup failed (%d)\n",
+            (int)terminal_status);
+        return 3;
+    }
+    context.terminal_opened = 1;
+    if (cdin_tui_create_wakeup_pipe(&context) != 0 ||
+        cdin_tui_install_signal_handlers(&context) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not initialize TUI wakeup and signal sources");
+        goto cleanup;
+    }
+
+    runtime_root = options->runtime_root;
+    if (runtime_root == NULL || runtime_root[0] == '\0') runtime_root = getenv("CDIN_RUNTIME_ROOT");
+    if (runtime_root == NULL || runtime_root[0] == '\0') runtime_root = CDIN_DEFAULT_RUNTIME_ROOT;
+    runtime_entry = options->runtime_entry != NULL ? options->runtime_entry : "cdin.runtime";
+
+    cdin_backend_config_init(&config);
+    config.runtime_root = runtime_root;
+    config.runtime_entry = runtime_entry;
+    config.enable_lua = 1;
+    config.enable_headless_protocol = 1;
+    config.log_output = CDIN_BACKEND_LOG_OUTPUT_CALLBACK;
+    config.log_level = CDIN_BACKEND_LOG_INFO;
+    config.log_callback = cdin_log_backend_sink;
+    config.log_context = log;
+    config.wakeup_callback = cdin_tui_backend_wakeup;
+    config.wakeup_context = &context;
+
+    backend_status = cdin_backend_create(&config, &context.backend);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(log->logger, "Backend create failed for TUI: %s",
+                     cdin_backend_status_name(backend_status));
+        goto cleanup;
+    }
+    backend_created = 1;
+    backend_status = cdin_backend_start(context.backend);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(log->logger, "Backend start failed for TUI: %s",
+                     cdin_backend_status_name(backend_status));
+        goto cleanup;
+    }
+    backend_status = cdin_backend_pump(context.backend, 64u, &processed);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(log->logger, "Backend initial pump failed for TUI: %s",
+                     cdin_backend_status_name(backend_status));
+        goto cleanup;
+    }
+
+    context.transport.backend = context.backend;
+    context.transport.incoming = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    context.transport.outgoing = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    context.client_buffer = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    if (context.transport.incoming == NULL || context.transport.outgoing == NULL ||
+        context.client_buffer == NULL) {
+        MMLLOG_ERROR(log->logger, "Could not allocate Frontend TUI protocol buffers");
+        goto cleanup;
+    }
+    backend_status = cdin_backend_frontend_open(context.backend, &context.transport.frontend);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(log->logger, "Backend frontend open failed for TUI: %s",
+                     cdin_backend_status_name(backend_status));
+        goto cleanup;
+    }
+    context.io.context = &context.transport;
+    context.io.read = cdin_inproc_read;
+    context.io.write = cdin_inproc_write;
+    protocol_status = cdin_frontend_client_init(&context.client, &context.io,
+        context.client_buffer, CDIN_SMOKE_FRAME_CAPACITY, CDIN_SMOKE_FRAME_BYTES);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+        MMLLOG_ERROR(log->logger, "Frontend TUI client init failed: %s",
+                     cdin_frontend_protocol_status_name(protocol_status));
+        goto cleanup;
+    }
+    cdin_frontend_session_init(&context.session, &context.client, NULL, "cdin-tui");
+    context.session_initialized = 1;
+    protocol_status = cdin_frontend_session_set_capabilities(&context.session, 0u);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
+    protocol_status = cdin_frontend_session_hello(&context.session);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
+    protocol_status = cdin_frontend_session_receive(&context.session, &hello_ack);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK ||
+        hello_ack.type != CDIN_FRONTEND_PROTOCOL_HELLO_ACK ||
+        !context.session.driver) goto protocol_failure;
+
+    if (context.terminal.size(context.terminal.context,
+                              &context.columns, &context.rows) != 0 ||
+        context.columns == 0u || context.rows == 0u) {
+        context.columns = 80u;
+        context.rows = 24u;
+    }
+    protocol_status = cdin_frontend_session_attach(&context.session, "view-1", "cells",
+        context.columns, context.rows);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
+    context.model = cdin_frontend_tui_model_create("view-1", 32u, NULL);
+    if (context.model == NULL) {
+        MMLLOG_ERROR(log->logger, "Could not create Frontend TUI semantic model");
+        goto cleanup;
+    }
+    if (cdin_tui_drain_initial_snapshot(&context) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend TUI could not apply the initial attached snapshot");
+        goto cleanup;
+    }
+    if (cdin_tui_make_scratch_path(&context) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not allocate a unique scratch document path");
+        goto cleanup;
+    }
+    {
+        int title_length = snprintf(context.title, sizeof(context.title),
+                                    "CDIN | %s", context.scratch_path);
+        int help_length = snprintf(context.help_status, sizeof(context.help_status),
+            "Ctrl+S Save   Ctrl+Z Undo   Ctrl+Shift+Z Redo   Ctrl+Q Quit");
+        if (title_length < 0 || (size_t)title_length >= sizeof(context.title) ||
+            help_length < 0 || (size_t)help_length >= sizeof(context.help_status)) {
+            goto cleanup;
+        }
+    }
+    protocol_status = cdin_frontend_session_request_command(
+        &context.session, "document.new", context.scratch_path);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
+    context.backend_ready = 1;
+
+    memset(&loop, 0, sizeof(loop));
+    loop.context = &context;
+    loop.wait = cdin_tui_wait;
+    loop.drain_terminal = cdin_tui_drain_terminal;
+    loop.drain_backend = cdin_tui_drain_backend;
+    loop.on_resize = cdin_tui_on_resize;
+    loop.render = cdin_tui_render_frame;
+    loop.shutdown = cdin_tui_shutdown_loop;
+    loop.max_items_per_source = 64u;
+    loop.render_initial_frame = 1;
+    {
+        cdin_frontend_tui_loop_status loop_status =
+            cdin_frontend_tui_event_loop_run(&loop);
+        result = loop_status == CDIN_FRONTEND_TUI_LOOP_OK ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
+    goto cleanup;
+
+protocol_failure:
+    MMLLOG_ERROR(log->logger, "Frontend TUI session setup failed: %s",
+                 cdin_frontend_protocol_status_name(protocol_status));
+cleanup:
+    if (!context.shutdown_called) {
+        cdin_tui_shutdown_loop(&context,
+            result == EXIT_SUCCESS ? CDIN_FRONTEND_TUI_LOOP_OK : CDIN_FRONTEND_TUI_LOOP_IO_ERROR);
+    }
+    if (context.transport.frontend != NULL) {
+        backend_status = cdin_backend_frontend_close(context.transport.frontend);
+        if (backend_status != CDIN_BACKEND_OK) {
+            MMLLOG_ERROR(log->logger, "Backend frontend close failed during TUI shutdown: %s",
+                         cdin_backend_status_name(backend_status));
+            result = EXIT_FAILURE;
+        }
+        context.transport.frontend = NULL;
+    }
+    if (backend_created) {
+        backend_status = cdin_backend_shutdown(context.backend, 0);
+        if (backend_status != CDIN_BACKEND_OK) {
+            MMLLOG_ERROR(log->logger, "Backend shutdown failed after TUI: %s",
+                         cdin_backend_status_name(backend_status));
+            result = EXIT_FAILURE;
+        }
+        cdin_backend_destroy(context.backend);
+        context.backend = NULL;
+    }
+    cdin_tui_restore_signal_handlers(&context);
+    if (context.wake_read >= 0) (void)close(context.wake_read);
+    if (context.wake_write >= 0) (void)close(context.wake_write);
+    free(context.client_buffer);
+    free(context.transport.outgoing);
+    free(context.transport.incoming);
+    (void)terminal_error;
+    return result;
+}
+
+#else
+
+int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
+{
+    (void)options;
+    if (log != NULL && log->logger != NULL) {
+        MMLLOG_WARN(log->logger, "Windows TUI launch remains gated until the Console readiness bridge is implemented");
+    }
+    (void)fputs("cdin: frontend 'tui' is not launchable: Windows Console readiness integration is not available yet\n",
+                stderr);
+    return 3;
+}
+
+#endif
+
