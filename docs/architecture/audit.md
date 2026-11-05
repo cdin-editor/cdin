@@ -26,7 +26,7 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Build, test and install pinned components; verify Runtime-reported package version. |
 | Boundary checks | `scripts/check_boundaries.py`, `psx.yml` | Mechanical architecture/repository-shape checks; include-graph coverage is partial. |
 | CLI E2E | `scripts/assert_cli.py`, root CTest entries | CLI success, invalid arguments and fail-closed launch paths. |
-| Frontend smoke | `src/integration/frontend_smoke.c` | In-process Frontend Core HELLO/HELLO_ACK only. |
+| Frontend smoke | `src/integration/frontend_smoke.c` | In-process HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot, `ui.flush`/ACK and resize. |
 | Source snapshot | `scripts/package.py` | Reproducible source ZIP, archive safety/CRC checks and SHA-256 sidecar. |
 | Product E2E | `tests/e2e/README.md` | Documents live edit/save E2E still required. |
 | Benchmarks | `tests/bench/README.md` | Measurement plan; no verified product RSS/soak benchmark. |
@@ -40,9 +40,9 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.0 CMake package is consumed with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
 | Runtime version identity | VERIFIED for pinned revision | CI log reports Runtime `1.0.0-rc.1`, matching `deps.lock`; `build_stack.py` enforces this check. |
 | Runtime hosting | VERIFIED for lifecycle smoke | Backend creates/owns Runtime; CDIN supplies root and entry. |
-| Frontend Core handshake | VERIFIED for headless smoke | HELLO/HELLO_ACK through in-process byte transport. |
+| Frontend Core protocol path | IMPLEMENTED; CI verification pending | HELLO/HELLO_ACK, ATTACH, initial snapshot delivery, ordered `ui.flush`/ACK and resize through in-process byte transport. |
 | Interactive TUI/GUI launch | NOT IMPLEMENTED | No supported installed adapter/readiness event loop is connected. |
-| View attach and UI snapshot | NOT VERIFIED | An earlier attempt returned `CDIN_BACKEND_LIMIT_EXCEEDED`; current smoke deliberately stops at handshake. |
+| View attach and UI snapshot | IMPLEMENTED; CI verification pending | Backend aggregate snapshot budget is separated from per-frame size in Backend PR #7; CDIN smoke now attaches, drains the snapshot and ACKs its final flush. |
 | Document create/open/edit/save/reopen | NOT IMPLEMENTED in CDIN | No connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | NOT VERIFIED | No real Frontend input path through the Composition Root. |
 | CLI fail-closed paths | PASS | Nine CDIN CTest cases passed on all three native platforms. |
@@ -67,14 +67,14 @@ The current action-pinned run emitted no Node.js 20 deprecation warning in the L
 - **Runtime version identity:** the prior discrepancy is resolved for the pinned Runtime revision. CI logs show the exact `1.0.0-rc.1` version recorded in `deps.lock`; the build rejects a mismatch.
 - **Backend package:** versioned CMake package discovery is enforced at 1.0.0; do not regress to unversioned header/library discovery.
 - **Frontend adapter:** the TUI target is experimental/unexported by Frontend Core 1.0.0. CDIN must consume an installable supported adapter, not copy sources into the Composition Root.
-- **Snapshot limits:** initial Runtime UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`. The current handshake smoke does not bypass this by increasing message limits or claim snapshot delivery.
+- **Snapshot limits:** the pinned Backend used the 16 KiB per-frame limit as an aggregate snapshot limit. Backend PR [#7](https://github.com/cdin-editor/backend/pull/7) adds a separate bounded 4 MiB snapshot budget (64 MiB hard maximum) while retaining the per-frame cap; CDIN pins the immutable PR head and exercises ATTACH/snapshot/ACK. Native CI is still required to verify the candidate.
 - **Readiness integration:** Backend exposes a worker-completion wakeup callback, but CDIN still needs a real readiness-driven event loop that combines terminal readiness, Backend wakeups, resize and termination.
 - **Static include boundaries:** the current boundary script catches selected copied implementation calls but does not parse the compiler's full include graph. It is a guardrail, not a proof of all architectural include rules.
 - **GitHub Code Quality:** deselect JavaScript/TypeScript in Settings → Security → Code quality; keep the repository-owned CodeQL workflow for C/C++ and Python.
 
 ## 6. Remaining release gates
 
-1. Resolve the Backend initial UI snapshot limit and verify ATTACH, UI flush/ACK and resize.
+1. Run native CI for Backend PR #7 and CDIN PR #110; verify ATTACH, initial snapshot, ordered UI flush/ACK and resize end-to-end.
 2. Obtain an installable Frontend TUI adapter or another supported Frontend adapter.
 3. Implement the FE-019 readiness multiplexer and connect Backend wakeups.
 4. Add live product E2E for create/open/edit/save/reopen and exact-byte preservation.
