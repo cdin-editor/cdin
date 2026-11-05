@@ -17,6 +17,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _WIN32
+#include <direct.h>
+#define CDIN_SMOKE_MKDIR(path) _mkdir(path)
+#define CDIN_SMOKE_RMDIR(path) _rmdir(path)
+#else
+#include <sys/stat.h>
+#define CDIN_SMOKE_MKDIR(path) mkdir((path), 0700)
+#define CDIN_SMOKE_RMDIR(path) rmdir(path)
+#endif
 #ifndef _WIN32
 #include <errno.h>
 #include <fcntl.h>
@@ -315,6 +324,223 @@ static int verify_saved_bytes(const char *path, const uint8_t *expected,
     return equal;
 }
 
+static int write_fixture_file(const char *path, const uint8_t *bytes, size_t length)
+{
+    FILE *file;
+    int result = 0;
+    if (path == NULL || bytes == NULL || length == 0u) return -1;
+    file = fopen(path, "wb");
+    if (file == NULL) return -1;
+    if (fwrite(bytes, 1u, length, file) != length || fflush(file) != 0) result = -1;
+    if (fclose(file) != 0) result = -1;
+    return result;
+}
+
+static int expect_protocol_error(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    const char *command,
+    const char *path)
+{
+    cdin_frontend_protocol_message_view message;
+    if (transport == NULL || session == NULL || command == NULL ||
+        cdin_frontend_session_request_command(session, command, path) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_session_receive(session, &message) != CDIN_FRONTEND_PROTOCOL_OK ||
+        message.type != CDIN_FRONTEND_PROTOCOL_ERROR) {
+        return -1;
+    }
+    return cdin_backend_frontend_pending(transport->frontend) == 0u ? 0 : -1;
+}
+
+static int expect_key_protocol_error(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    const char *key,
+    uint32_t modifiers)
+{
+    cdin_frontend_protocol_message_view message;
+    if (transport == NULL || session == NULL || key == NULL ||
+        cdin_frontend_session_send_key(session, key, modifiers, "press") !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_session_receive(session, &message) != CDIN_FRONTEND_PROTOCOL_OK ||
+        message.type != CDIN_FRONTEND_PROTOCOL_ERROR) {
+        return -1;
+    }
+    return cdin_backend_frontend_pending(transport->frontend) == 0u ? 0 : -1;
+}
+
+static int cdin_frontend_file_fixture_smoke(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    cdin_log *log)
+{
+    static const uint8_t bom_lf[] = {
+        0xefu, 0xbbu, 0xbfu, 'a', 'l', 'p', 'h', 'a', '\n', 'b', 'e', 't', 'a', '\n'
+    };
+    static const uint8_t lf_only[] = {
+        'o', 'n', 'e', '\n', 't', 'w', 'o', '\n', 't', 'h', 'r', 'e', 'e'
+    };
+    static const uint8_t mixed_eol[] = {
+        0xefu, 0xbbu, 0xbfu, 'x', '\r', '\n', 'y', '\n', 'z', '\r', 'w'
+    };
+    static const struct {
+        const char *name;
+        const uint8_t *bytes;
+        size_t length;
+    } fixtures[] = {
+        { "bom-lf", bom_lf, sizeof(bom_lf) },
+        { "lf-only", lf_only, sizeof(lf_only) },
+        { "mixed-eol", mixed_eol, sizeof(mixed_eol) },
+    };
+    uint8_t returned[64];
+    char path[128];
+    char view_id[64];
+    uint64_t version;
+    size_t returned_length;
+    size_t index;
+    unsigned long process_id = CDIN_SMOKE_PROCESS_ID();
+
+    for (index = 0u; index < sizeof(fixtures) / sizeof(fixtures[0]); index++) {
+        (void)snprintf(path, sizeof(path), "cdin-smoke-%s-%lu.bin",
+                       fixtures[index].name, process_id);
+        (void)remove(path);
+        if (write_fixture_file(path, fixtures[index].bytes, fixtures[index].length) != 0) {
+            MMLLOG_ERROR(log->logger, "Could not create %s fixture", fixtures[index].name);
+            (void)remove(path);
+            return -1;
+        }
+        view_id[0] = '\0';
+        version = 0u;
+        if (send_command_and_drain(transport, session, "document.open",
+                                   path, view_id, sizeof(view_id), &version) != 0 ||
+            view_id[0] == '\0') {
+            MMLLOG_ERROR(log->logger, "Runtime could not open %s fixture", fixtures[index].name);
+            (void)remove(path);
+            return -1;
+        }
+        returned_length = 0u;
+        memset(returned, 0, sizeof(returned));
+        if (cdin_frontend_session_request_lines(session, view_id, 0u, 16u, version) !=
+                CDIN_FRONTEND_PROTOCOL_OK ||
+            drain_frontend_batch(transport, session, "response",
+                                 NULL, 0u, NULL, returned, sizeof(returned),
+                                 &returned_length) != 0 ||
+            returned_length != fixtures[index].length ||
+            memcmp(returned, fixtures[index].bytes, fixtures[index].length) != 0) {
+            MMLLOG_ERROR(log->logger, "Byte-exact %s fixture read failed", fixtures[index].name);
+            (void)remove(path);
+            return -1;
+        }
+        if (send_key_and_drain(transport, session, "s",
+                               CDIN_FRONTEND_MOD_CTRL, &version) != 0 ||
+            !verify_saved_bytes(path, fixtures[index].bytes, fixtures[index].length)) {
+            MMLLOG_ERROR(log->logger, "Byte-exact %s fixture save failed", fixtures[index].name);
+            (void)remove(path);
+            return -1;
+        }
+        if (send_command_and_drain(transport, session, "document.close",
+                                   NULL, NULL, 0u, NULL) != 0) {
+            MMLLOG_ERROR(log->logger, "Could not close %s fixture document", fixtures[index].name);
+            (void)remove(path);
+            return -1;
+        }
+        (void)remove(path);
+    }
+    MMLLOG_INFO(log->logger,
+                "Frontend file fixture smoke passed: BOM, LF-only and mixed CRLF/LF/CR byte preservation");
+    return 0;
+}
+
+static int cdin_frontend_filesystem_failure_smoke(
+    cdin_inproc_transport *transport,
+    cdin_frontend_session *session,
+    cdin_log *log)
+{
+    static const uint8_t recovery_bytes[] = "recoverable";
+    uint8_t returned[64];
+    char missing_path[128];
+    char directory_path[128];
+    char recovery_path[128];
+    char view_id[64];
+    uint64_t version = 0u;
+    size_t returned_length = 0u;
+    unsigned long process_id = CDIN_SMOKE_PROCESS_ID();
+    int directory_created = 0;
+
+    (void)snprintf(missing_path, sizeof(missing_path),
+                   "cdin-smoke-missing-%lu.bin", process_id);
+    (void)snprintf(directory_path, sizeof(directory_path),
+                   "cdin-smoke-save-target-%lu", process_id);
+    (void)snprintf(recovery_path, sizeof(recovery_path),
+                   "cdin-smoke-recovered-%lu.bin", process_id);
+    (void)remove(missing_path);
+    (void)remove(recovery_path);
+    (void)CDIN_SMOKE_RMDIR(directory_path);
+
+    if (expect_protocol_error(transport, session, "document.open", missing_path) != 0) {
+        MMLLOG_ERROR(log->logger, "Missing-file open did not return a Protocol error");
+        goto fail;
+    }
+    if (CDIN_SMOKE_MKDIR(directory_path) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not create directory save-failure fixture");
+        goto fail;
+    }
+    directory_created = 1;
+    view_id[0] = '\0';
+    if (send_command_and_drain(transport, session, "document.new",
+                               directory_path, view_id, sizeof(view_id), &version) != 0 ||
+        view_id[0] == '\0' ||
+        cdin_frontend_session_send_text(session, recovery_bytes,
+                                        sizeof(recovery_bytes) - 1u) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "snapshot",
+                             NULL, 0u, &version, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not prepare a path-backed document for failed save");
+        goto fail;
+    }
+    if (expect_key_protocol_error(transport, session, "s",
+                                  CDIN_FRONTEND_MOD_CTRL) != 0) {
+        MMLLOG_ERROR(log->logger, "Saving to an existing directory did not return a Protocol error");
+        goto fail;
+    }
+
+    /* A failed atomic commit must not damage the canonical in-memory bytes. */
+    memset(returned, 0, sizeof(returned));
+    returned_length = 0u;
+    if (cdin_frontend_session_request_lines(session, view_id, 0u, 4u, version) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(transport, session, "response",
+                             NULL, 0u, NULL, returned, sizeof(returned),
+                             &returned_length) != 0 ||
+        returned_length != sizeof(recovery_bytes) - 1u ||
+        memcmp(returned, recovery_bytes, returned_length) != 0) {
+        MMLLOG_ERROR(log->logger, "Failed save changed or invalidated the canonical document");
+        goto fail;
+    }
+    if (send_command_and_drain(transport, session, "document.save",
+                               recovery_path, NULL, 0u, NULL) != 0 ||
+        !verify_saved_bytes(recovery_path, recovery_bytes, sizeof(recovery_bytes) - 1u)) {
+        MMLLOG_ERROR(log->logger, "Document could not recover with a subsequent valid atomic save");
+        goto fail;
+    }
+    if (send_command_and_drain(transport, session, "document.close",
+                               NULL, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not close document after recovering failed save");
+        goto fail;
+    }
+    (void)remove(recovery_path);
+    (void)CDIN_SMOKE_RMDIR(directory_path);
+    MMLLOG_INFO(log->logger,
+                "Frontend filesystem failure smoke passed: missing read, failed atomic commit, intact bytes and successful recovery");
+    return 0;
+
+fail:
+    (void)remove(recovery_path);
+    if (directory_created) (void)CDIN_SMOKE_RMDIR(directory_path);
+    return -1;
+}
+
 /*
  * Exercise the product path across Frontend Protocol -> Backend owner-thread
  * queue -> Runtime command/keymap dispatch -> Kernel document -> Backend
@@ -583,6 +809,11 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
 
     if (cdin_frontend_document_smoke(&transport, &session, log) != 0) {
         MMLLOG_ERROR(log->logger, "Frontend/Runtime/Kernel document workflow smoke failed");
+        goto cleanup;
+    }
+    if (cdin_frontend_file_fixture_smoke(&transport, &session, log) != 0 ||
+        cdin_frontend_filesystem_failure_smoke(&transport, &session, log) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend filesystem and byte-fixture smoke failed");
         goto cleanup;
     }
 
@@ -893,6 +1124,11 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
     if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
+#ifndef _WIN32
+    if (amount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
+    }
+#endif
     if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_FAILURE;
     if (cdin_frontend_input_parser_feed(&context->parser, bytes, (size_t)amount) ==
         CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
