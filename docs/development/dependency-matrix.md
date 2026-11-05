@@ -27,6 +27,6 @@ These checks are stronger than comparing repository SHAs alone, but they do not 
 
 ## Current verification note
 
-CI run [42023541244](https://github.com/cdin-editor/cdin/actions/runs/42023541244) passed the pinned stack and CDIN E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`. The nine CDIN CTest cases passed on each native platform. All three platforms generated the same reproducible source ZIP digest: `d7277ced2fd45c4028fd76535badcd63a90a2f2e2a492a12d2f15bfdc6b57341`.
+CI run [42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) passed the pinned stack and CDIN E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`. The nine CDIN CTest cases, pinned Backend and Frontend tests, reproducible source archive checks and artifact uploads all passed. All three platforms generated the same source ZIP digest: `c1b947567abc54a48e6b86449de4d36c110ed33e745c8b54a5cb6d251c732d5d`.
 
-CodeQL run [42023541330](https://github.com/cdin-editor/cdin/actions/runs/42023541330) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.
+CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.

@@ -1,6 +1,6 @@
 # Architecture audit
 
-**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`, component revisions in `deps.lock`, inspected on 2026-11-05.
+**Audit baseline:** CDIN branch `feature/complete-composition-root-rewrite`, candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`, component revisions in `deps.lock`, inspected on 2026-11-05.
 
 This audit distinguishes code that exists from behavior exercised by the current Composition Root. It is not a claim that the complete editor is implemented.
 
@@ -36,7 +36,7 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Capability | Status | Evidence / limitation |
 | --- | --- | --- |
 | Immutable component source pins | IMPLEMENTED | `deps.lock`. |
-| Full pinned stack build | PASS | CI run 42023541244 passed Linux, macOS and Windows jobs on candidate commit `9dfca4d...`. |
+| Full pinned stack build | PASS | CI run 42024750897 passed Linux, macOS and Windows jobs on candidate commit `167de187...`. |
 | Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.0 CMake package is consumed with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
 | Runtime version identity | VERIFIED for pinned revision | CI log reports Runtime `1.0.0-rc.1`, matching `deps.lock`; `build_stack.py` enforces this check. |
 | Runtime hosting | VERIFIED for lifecycle smoke | Backend creates/owns Runtime; CDIN supplies root and entry. |
@@ -46,21 +46,21 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Document create/open/edit/save/reopen | NOT IMPLEMENTED in CDIN | No connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | NOT VERIFIED | No real Frontend input path through the Composition Root. |
 | CLI fail-closed paths | PASS | Nine CDIN CTest cases passed on all three native platforms. |
-| ASan/UBSan/leak checks | PASS | Linux sanitizer job in run 42023541244 passed. |
-| C/C++ and Python CodeQL | PASS | Run 42023541330 completed both analyses successfully. |
+| ASan/UBSan/leak checks | PASS | Linux sanitizer job in run 42024750897 passed. |
+| C/C++ and Python CodeQL | PASS | Run 42024750919 completed both analyses successfully. |
 | Source snapshot integrity | PASS | Determinism, archive safety, CRC and SHA-256 verified on Linux, macOS and Windows. |
 | Product RSS/soak/latency benchmarks | NOT IMPLEMENTED | Existing benchmark material is a plan, not product measurements. |
 | Application installers | NOT IMPLEMENTED | Source archive is not a runnable application package. |
 
 ## 4. CI and security verification
 
-CI run [42023541244](https://github.com/cdin-editor/cdin/actions/runs/42023541244) completed successfully on candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353` for Linux, macOS, Windows and Linux ASan/UBSan/leak detection. The run also passed nine CDIN CTest cases on each platform, the pinned component suites, reproducible archive verification, SHA-256 comparison and source artifact upload.
+CI run [42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) completed successfully on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4` for Linux, macOS, Windows and Linux ASan/UBSan/leak detection. The run also passed nine CDIN CTest cases on each platform, the pinned component suites, reproducible archive verification, SHA-256 comparison and source artifact upload.
 
-CodeQL run [42023541330](https://github.com/cdin-editor/cdin/actions/runs/42023541330) completed successfully for traced C/C++ and Python analysis.
+CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) completed successfully for traced C/C++ and Python analysis.
 
-The GitHub-managed dynamic workflow [42023531270](https://github.com/cdin-editor/cdin/actions/runs/42023531270) passed Python but failed JavaScript/TypeScript because no processable JS/TS source exists. This Default Setup language selection is configured in GitHub repository settings, outside the committed workflows. The explicit C/C++ and Python workflow does not disable that separate configuration.
+The GitHub-managed dynamic workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) passed Python but failed JavaScript/TypeScript because no processable JS/TS source exists. This Default Setup language selection is configured in GitHub repository settings, outside the committed workflows. The explicit C/C++ and Python workflow does not disable that separate configuration.
 
-The preceding CI log emitted Node.js 20 deprecation warnings. The current action-pinned run emitted no matching Node.js 20 warning in the Linux, macOS or Windows logs inspected.
+The current action-pinned run emitted no Node.js 20 deprecation warning in the Linux, macOS or Windows logs inspected. OIDC and attestation permissions are isolated to a separate trusted-main job; PR build jobs receive only `contents: read`.
 
 ## 5. Compatibility findings
 
@@ -85,4 +85,4 @@ The preceding CI log emitted Node.js 20 deprecation warnings. The current action
 9. Add measured RSS, allocator peak, leaks, soak and latency benchmarks.
 10. Build platform installers and publish signed application release artifacts only after the live editing path is complete.
 
-A green component CI is necessary, but it is not proof that CDIN is already an interactive editor.
+The owner-visible epic and its acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). A green component CI is necessary, but it is not proof that CDIN is already an interactive editor.

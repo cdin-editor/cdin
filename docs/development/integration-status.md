@@ -2,6 +2,8 @@
 
 This document reports what the current CDIN branch actually connects. A component feature or configured CI job is not automatically a verified CDIN product feature.
 
+The remaining interactive-product and production-release work is tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
+
 ## 1. Implemented behavior
 
 | Area | Status | Evidence |
@@ -17,8 +19,8 @@ This document reports what the current CDIN branch actually connects. A componen
 | Shared logging | IMPLEMENTED for CDIN and Backend callbacks | CDIN owns a logger instance and routes Backend log callbacks into it. |
 | CLI fail-closed tests | PASS | Nine executable-level CDIN CTest cases pass on Linux, macOS and Windows, including missing values and gated launch paths. |
 | Source snapshot | PASS | Deterministic ZIP, path/CRC validation, reproducibility comparison and SHA-256 verification pass on all three native platforms. |
-| CI platform coverage | PASS | CI run 42023541244 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection on candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`. |
-| Explicit CodeQL | PASS | CodeQL run 42023541330 passed C/C++ traced-build analysis and Python analysis on the same candidate commit. |
+| CI platform coverage | PASS | CI run 42024750897 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`. |
+| Explicit CodeQL | PASS | CodeQL run 42024750919 passed C/C++ traced-build analysis and Python analysis on the same candidate commit. |
 
 ## 2. Not complete
 
@@ -40,27 +42,28 @@ This document reports what the current CDIN branch actually connects. A componen
 
 ### Explicit workflows
 
-- [CI run 42023541244](https://github.com/cdin-editor/cdin/actions/runs/42023541244) passed on candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`:
+- [CI run 42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) passed on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`:
   - Ubuntu pinned stack + E2E: PASS.
   - macOS pinned stack + E2E: PASS.
   - Windows pinned stack + E2E: PASS.
   - Linux ASan + UBSan + leak detection: PASS.
-  - Nine CDIN CTest cases and all pinned component test suites passed.
+  - Nine CDIN CTest cases passed on each native platform.
+  - Pinned Frontend suite passed 16/16 and Backend suite passed 10/10 on the inspected platform logs.
   - Source-snapshot ZIP validation, reproducibility comparison, SHA-256 verification and artifact upload: PASS on all three native platforms.
   - All pinned GitHub Actions completed without the previous Node.js 20 deprecation warning.
-- [CodeQL run 42023541330](https://github.com/cdin-editor/cdin/actions/runs/42023541330) passed both C/C++ traced-build analysis and Python analysis.
+- [CodeQL run 42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed both C/C++ traced-build analysis and Python analysis.
 
 These runs validate the composition/lifecycle and component tests. They do **not** prove view attachment, UI snapshot delivery, rendering, document editing, save/reopen, input dispatch or plugin behavior.
 
 ### GitHub Default Setup CodeQL
 
-The separate GitHub-managed dynamic workflow [42023531270](https://github.com/cdin-editor/cdin/actions/runs/42023531270) passed Python but failed its JavaScript/TypeScript job. Its log says CodeQL found only empty or syntactically invalid JavaScript/TypeScript files (the repository has no JS/TS source) and then reported that it could not process any JS/TS code.
+The separate GitHub-managed dynamic workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) passed Python but failed its JavaScript/TypeScript job. Its log says CodeQL found only empty or syntactically invalid JavaScript/TypeScript files (the repository has no JS/TS source) and then reported that it could not process any JS/TS code.
 
 This dynamic workflow is configured by GitHub repository security settings, not by `.github/workflows/codeql.yml`. The repository-owned workflow covers C/C++ and Python successfully, but cannot disable the unrelated Default Setup language selection. Set Default Setup to the languages actually present (C/C++ and Python), or disable its unsupported JS/TS selection in GitHub settings.
 
 ### Artifact provenance
 
-The provenance-attestation step is intentionally skipped on pull requests. It runs only for a trusted push to `main`, using GitHub artifact attestations. PR artifacts are short-lived CI evidence, not signed release artifacts. The source ZIP is not an application installer.
+The provenance-attestation job is intentionally skipped on pull requests. PR build jobs receive only `contents: read`. The separate job with OIDC and attestation permissions runs only on trusted pushes to `main`, after both the full native matrix and sanitizer job have passed. It recreates and validates the same reproducible source ZIP before attesting it. PR artifacts are short-lived CI evidence, not signed release artifacts. The source ZIP is not an application installer.
 
 ## 4. Compatibility findings
 
@@ -84,4 +87,4 @@ Before describing CDIN as an interactive editor:
 9. Add measured process RSS, allocator peak where available, leak checks, soak workloads and latency measurements.
 10. Produce reproducible platform packages/installers and signed application releases only after the interactive path is complete.
 
-Unrun checks must be reported as NOT RUN, not PASS.
+The epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). Unrun checks must be reported as NOT RUN, not PASS.

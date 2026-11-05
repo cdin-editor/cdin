@@ -22,19 +22,22 @@ The pinned stack builder also runs the test suites owned by the Kernel, Backend 
 
 ## 2. Latest inspected evidence
 
-On candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`:
+On candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`:
 
-- [CI run 42023541244](https://github.com/cdin-editor/cdin/actions/runs/42023541244) passed the Linux, macOS and Windows full-stack jobs.
+- [CI run 42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) passed the Linux, macOS and Windows full-stack jobs.
 - All nine CDIN CTest cases passed on each native platform.
 - The pinned Frontend component suite passed 16/16 tests on each native platform.
-- The Windows Backend component suite passed 10/10 tests.
+- The Backend component suite passed 10/10 tests on each native platform.
 - The Linux sanitizer job passed ASan, UBSan and leak detection.
 - The source snapshot matched across two independent builds, passed path/CRC validation and SHA-256 verification, and was uploaded for each native platform.
-- [CodeQL run 42023541330](https://github.com/cdin-editor/cdin/actions/runs/42023541330) passed C/C++ traced analysis and Python analysis.
+- The archive digest was identical on Linux, macOS and Windows: `c1b947567abc54a48e6b86449de4d36c110ed33e745c8b54a5cb6d251c732d5d`.
+- [CodeQL run 42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed C/C++ traced analysis and Python analysis.
 
-The separate GitHub-managed Default Setup workflow still fails JavaScript/TypeScript analysis because this repository has no processable JS/TS source. Its Python job passes. This is a repository security setting, not a failure of the explicit C/C++ and Python workflow.
+The PR provenance job is skipped by design: pull-request builds do not receive OIDC/attestation permissions. The main-only provenance job runs after both the complete native matrix and sanitizer job succeed on a trusted push to `main`.
 
-These tests are real executable/component checks, but they do not represent a complete user-visible editing workflow.
+The separate GitHub-managed Default Setup workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) still fails JavaScript/TypeScript analysis because this repository has no processable JS/TS source. Its Python job passes. This is a repository security setting, not a failure of the explicit C/C++ and Python workflow.
+
+These tests are real executable/component checks, but they do not represent a complete user-visible editing workflow. Product work remains tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
 
 ## 3. Product E2E still required
 

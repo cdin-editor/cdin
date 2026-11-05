@@ -33,11 +33,11 @@ CDIN is not a second editor engine. It must not copy document operations from Ke
 
 ## Current status
 
-This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack builds and its component tests and Backend/Runtime lifecycle smoke test pass on Linux, macOS and Windows at candidate commit `9dfca4d5ec8ad3ce5271d0ae59e591e4f03f2353`. Linux ASan/UBSan/leak detection and explicit C/C++ plus Python CodeQL also pass on that commit.
+This repository is in the Composition Root rewrite. The current application target is version `0.2.0`. The pinned stack builds and its component tests and Backend/Runtime lifecycle smoke test pass on Linux, macOS and Windows. Candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4` passed [CI run 42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897), including Linux ASan/UBSan/leak detection. [CodeQL run 42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed C/C++ traced analysis and Python analysis.
 
 The executable currently supports `--help`, `--version` and `--check`. The check path loads the pinned Runtime modules, exercises Backend create/start/pump/shutdown/destroy, and performs a headless Frontend Core HELLO/HELLO_ACK handshake against Backend over an in-process byte transport. Interactive TUI and GUI launch are deliberately disabled until the initial UI snapshot/flush path, a supported adapter package, Backend readiness/wakeup and the Frontend event loop are integrated under FE-019.
 
-This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and stable release process are still release gates. See [Integration status](docs/development/integration-status.md) for the current evidence. GitHub's separate Default Setup CodeQL workflow still needs its unsupported JavaScript/TypeScript language selection removed in repository settings; the repository-owned C/C++ and Python CodeQL workflow passes.
+This is **not yet a complete, interactive editor**. A real Frontend connection, end-to-end document editing and save/reopen workflow, measured memory/soak benchmarks, release packages and stable release process are still release gates. Track them in [issue #111](https://github.com/cdin-editor/cdin/issues/111) and see [Integration status](docs/development/integration-status.md) for current evidence. GitHub's separate Default Setup CodeQL workflow still needs its unsupported JavaScript/TypeScript language selection removed in repository settings; the repository-owned C/C++ and Python CodeQL workflow passes.
 
 The [CDIN Specification](https://github.com/cdin-editor/spec) defines the cross-component contracts. This README describes the implementation in this repository and does not override the Spec.
 
@@ -79,7 +79,7 @@ The `--check` command is a headless lifecycle and protocol-handshake check. It i
 - Runtime asset installation and Backend lifecycle composition.
 - A small CLI for help, version and lifecycle validation.
 - Pipeline tasks, PSX repository checks and Gix branch-flow configuration.
-- A deterministic source snapshot with SHA-256 verification; trusted pushes to `main` receive artifact provenance attestation.
+- A deterministic source snapshot with SHA-256 verification; trusted pushes to `main` receive artifact provenance attestation after all required CI jobs pass.
 
 ## Documentation
 
