@@ -17,10 +17,10 @@ import termios
 import time
 from pathlib import Path
 
-SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\\.cdin")
+SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
-RESTORE = (b"\\x1b[?25h", b"\\x1b[?2004l", b"\\x1b[?1049l")
-ENTER = (b"\\x1b[?25l", b"\\x1b[?2004h", b"\\x1b[?1049h")
+RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
+ENTER = (b"\x1b[?25l", b"\x1b[?2004h", b"\x1b[?1049h")
 
 
 def drain(master: int, output: bytearray) -> None:
@@ -55,6 +55,11 @@ def read_until(master: int, process: subprocess.Popen[bytes], output: bytearray,
             return
     raise TimeoutError(f"{what} not observed; output={bytes(output)!r}")
 
+
+
+def wait_for_title(master: int, process: subprocess.Popen[bytes], output: bytearray) -> None:
+    read_until(master, process, output,
+               lambda b: SCRATCH_RE.search(b) is not None, 10.0, "TUI title")
 
 def wait_exit(master: int, process: subprocess.Popen[bytes], output: bytearray,
               timeout: float) -> int:
@@ -112,7 +117,7 @@ def run_live_edit(executable: str) -> None:
 
             # Save and quit in one input batch. This leaves a UI update pending
             # at teardown while the save itself must finish atomically.
-            os.write(master, b"\\x13\\x11")
+            os.write(master, b"\x13\x11")
             code = wait_exit(master, process, output, 10.0)
             if code != 0:
                 raise RuntimeError(f"cdin exited with {code}; output={bytes(output)!r}")
