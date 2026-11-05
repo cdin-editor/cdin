@@ -35,11 +35,11 @@ The current top-level tree contains no legacy SDL renderer, embedded editor poli
 | Immutable component source pins | **IMPLEMENTED** | Revisions are recorded in `deps.lock`. |
 | Dependency source materialization | **IMPLEMENTED and VERIFIED in CI** | Linux, macOS and Windows reached the pinned component build using the immutable revisions in `deps.lock`; Windows later failed in a Backend-owned E2E test. |
 | Full stack build orchestration | **IMPLEMENTED; Linux/macOS VERIFIED; Windows PARTIAL** | `scripts/build_stack.py` builds and tests logger, Kernel, Backend, Frontend and CDIN. Linux and macOS pass; Windows stops at `backend_e2e_platform_file_workflow`. |
-| Protocol compatibility | **PARTIAL** | Backend/Frontend Protocol major/minor are checked at compile time. No live protocol transport connection is created by CDIN. |
+| Protocol compatibility | **PARTIAL** | Backend/Frontend Protocol major/minor are checked at compile time; `--check` performs Frontend Core HELLO/HELLO_ACK over an in-process byte transport. |
 | Backend version compatibility | **PARTIAL** | The executable compares `cdin_backend_version()` to the header version at startup. |
 | Kernel document integration | **EXISTS in Backend; not a CDIN product workflow** | Backend integration tests are built by the pinned stack. CDIN does not directly call the Kernel API. |
 | Runtime hosting | **IMPLEMENTED for lifecycle smoke test** | CDIN supplies Runtime root and entry to Backend; Backend creates and owns the Lua state and Host bridge. |
-| Live Frontend connection | **NOT IMPLEMENTED** | CDIN does not create a Frontend client or attach TUI/GUI to Backend. |
+| Frontend Core handshake | **IMPLEMENTED for headless smoke** | CDIN creates a Frontend Core client/session, sends HELLO and validates HELLO_ACK. View attachment and a user-facing adapter are not connected. |
 | Interactive TUI/GUI launch | **NOT IMPLEMENTED** | Launcher fails closed pending the FE-019 readiness/wakeup event-loop integration. |
 | Document create/open/edit/save/reopen product E2E | **NOT IMPLEMENTED** | There is no connected live Frontend product path. |
 | Runtime command/keymap/plugin E2E | **NOT VERIFIED** | CDIN has no live Frontend input route exercising these Runtime features. |
@@ -72,7 +72,7 @@ The CI-tested implementation baseline (before the audit-only documentation commi
 | CodeQL Python | **PASS** | Python analysis completed. |
 | CodeQL JavaScript/TypeScript | **CONFIGURATION FAILURE** | CodeQL found no JavaScript/TypeScript source in this repository and could not finalize that language database. This is not evidence of a source vulnerability; the language selection needs to match the repository's languages. |
 
-The passing Linux and macOS jobs verify the pinned component stack and the current CDIN executable's CLI/lifecycle smoke test. They do **not** verify a connected Frontend, document editing, persistence, keymap dispatch or plugin workflows. The sanitizer pass likewise covers the configured stack checks, not the missing interactive product path.
+The passing Linux and macOS jobs verify the pinned component stack, CLI/lifecycle smoke and (on the current head) Frontend Core HELLO/HELLO_ACK handshake. They do **not** verify view attachment, UI snapshot delivery, rendering, document editing, persistence, keymap dispatch or plugin workflows. The sanitizer pass likewise covers the configured stack checks, not the missing interactive product path.
 
 The CI log also reports Runtime startup with Host API `1.0.0` and Kernel ABI `1.1.0`, but the Runtime self-reported version is `0.2.1-beta.10.next.17+gc7b50b8`. This conflicts with the Spec status page and Runtime status document, which identify the package candidate as `1.0.0-rc.1`. Resolve the version-source discrepancy before publishing a component version matrix or release.
 
@@ -80,8 +80,9 @@ Historical runs `41985097875` and `41987494172` record earlier dependency checko
 
 ## 6. Main gaps before an interactive release
 
-1. Implement and verify Backend readiness/wakeup integration with the Frontend event loop.
-2. Start and attach the TUI through the public Frontend Core/Protocol boundary.
+1. Resolve why Backend initial Runtime UI snapshot publication returns `CDIN_BACKEND_LIMIT_EXCEEDED`; verify ATTACH, UI snapshot/flush/ACK and resize.
+2. Publish an installable Frontend TUI adapter package/target, or choose another supported adapter.
+3. Connect Backend worker-completion wakeup to the Frontend readiness-driven event loop.
 3. Add a real product E2E that creates or opens a document, edits it, saves it, reopens it and compares exact bytes.
 4. Verify keymaps, commands, plugin loading, capability denial and unload through real frontend input.
 5. Add multi-frontend, disconnect/reconnect and failure-recovery workflows.
