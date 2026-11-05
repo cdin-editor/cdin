@@ -4,10 +4,10 @@ The lock file is the source of truth for immutable source revisions. Version fie
 
 | Component | Pinned revision | Declared version/contract | Role and current limitation |
 | --- | --- | --- | --- |
-| Runtime | `762aba7d5674149cae3a8f736d93159360fff730` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Runtime policy and Lua assets loaded by Backend. The build verifies the Runtime-reported version equals the lock-file version. |
+| Runtime | `84379cb7f837d1df95edd296e7ccec838f664fba` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Runtime PR #2 head (Ready for review; not merged). Adds document lifecycle commands, keymaps, Host file integration and exact-byte persistence tests. Version is checked against `deps.lock`. |
 | Kernel | `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Package 1.2.1; ABI 1.1.0 | Backend's native document engine dependency. |
-| Backend | `7cf9fca7b4629deb428e741712e65d4b34dd03ae` | Version 1.0.0; Protocol 1.0.0 | Backend lifecycle and Runtime/Kernel host. Adds an optional owner-loop wakeup callback for worker completions; callback runs outside the pool mutex and is thread-safe/nonblocking by contract. Exports versioned `cdinBackend` CMake package targets, an explicit control-reply consume API for HELLO_ACK/DETACH_ACK, and a worker-completion wakeup callback. CDIN requires `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
-| Frontend | `a18ef423faf2fe3305c4c432063b431cb6ffca98` | Project version 1.0.0; Protocol header 1.0.0 | Core package and peer adapters. The pinned Frontend PR commit uses a bounded comparison for semantic document IDs to keep GCC 15's strict overread diagnostics clean. CDIN does not launch a live adapter yet. |
+| Backend | `f816b9cdbd6b97f7c70a4772a0d8f1e63c47eb9e` | Version 1.0.2; Protocol 1.0.0 | Merged Backend 1.0.2 plus post-merge filesystem regression-test fix on `main`. Includes bounded binary-safe optional `host.fs.read_file`, Backend lifecycle/protocol and worker wakeup API. CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. |
+| Frontend | `94643adada76cb3d056baf0b6ad475451d56ab0f` | Project version 1.0.0; Protocol 1.0.0 | Merged Frontend PR #2. Installs/exports `cdin::frontend_ui_tui` and typed `request.command` session API. CDIN consumes this public package but still does not launch an interactive adapter until FE-019 is complete. |
 | m-mdy-m/log.c | `c9b53e9901dc7103eb50be282ae055fe16e98f9a` | Version 0.1.0; ABI 1.0 | Shared diagnostics library. |
 | Pipeline | `79169afc4f9f74ee46c52be2bf6974f8544c7db1` | Immutable tool revision | Local and CI task execution. |
 | PSX | `e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df` | Immutable tool revision | Project structure validation. |
@@ -17,7 +17,7 @@ The CDIN executable target is version 0.2.0 in the root CMake project. This is t
 
 ## Compatibility checks
 
-- Root CMake requires logger 0.1.0, Frontend Core 1.0.0 and the versioned Backend package 1.0.0.
+- Root CMake requires logger 0.1.0, Frontend Core 1.0.0 and versioned Backend package 1.0.2.
 - The pinned component build checks PUC Lua 5.4.x and the Kernel package dependency used by Backend.
 - CDIN checks the Backend runtime version against the Backend header version.
 - CDIN checks Backend/Frontend Protocol major and minor values at compile time.
@@ -27,6 +27,6 @@ These checks are stronger than comparing repository SHAs alone, but they do not 
 
 ## Current verification note
 
-CI run [42024750897](https://github.com/cdin-editor/cdin/actions/runs/42024750897) passed the pinned stack and CDIN E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate commit `167de187af4f0d4df8a81c9afb86ba887eaf6cb4`. The nine CDIN CTest cases, pinned Backend and Frontend tests, reproducible source archive checks and artifact uploads all passed. All three platforms generated the same source ZIP digest: `c1b947567abc54a48e6b86449de4d36c110ed33e745c8b54a5cb6d251c732d5d`.
+CI run [42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322) passed the current pinned stack and expanded headless document E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate `006263f89f1c1c5352807b00544c8944e131a2dd`. Backend, Frontend and CDIN CTest suites passed; each platform log records exact-byte document save/close/open/readback.
 
 CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.
