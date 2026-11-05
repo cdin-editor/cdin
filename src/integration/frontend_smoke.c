@@ -266,12 +266,13 @@ static int send_key_and_drain(
     cdin_inproc_transport *transport,
     cdin_frontend_session *session,
     const char *key,
-    uint32_t modifiers)
+    uint32_t modifiers,
+    uint64_t *version)
 {
     if (cdin_frontend_session_send_key(session, key, modifiers, "press") !=
         CDIN_FRONTEND_PROTOCOL_OK) return -1;
     return drain_frontend_batch(transport, session, "snapshot",
-                                NULL, 0u, NULL, NULL, 0u, NULL);
+                                NULL, 0u, version, NULL, 0u, NULL);
 }
 
 static int verify_saved_bytes(const char *path, const uint8_t *expected,
@@ -325,24 +326,24 @@ static int cdin_frontend_document_smoke(
     if (cdin_frontend_session_send_text(session, (const uint8_t *)"A", 1u) !=
             CDIN_FRONTEND_PROTOCOL_OK ||
         drain_frontend_batch(transport, session, "snapshot",
-                             NULL, 0u, NULL, NULL, 0u, NULL) != 0) {
+                             NULL, 0u, &version, NULL, 0u, NULL) != 0) {
         MMLLOG_ERROR(log->logger, "Frontend input.text did not reach Runtime");
         goto cleanup;
     }
     if (cdin_frontend_session_send_paste(session, paste_bytes, sizeof(paste_bytes)) !=
             CDIN_FRONTEND_PROTOCOL_OK ||
         drain_frontend_batch(transport, session, "snapshot",
-                             NULL, 0u, NULL, NULL, 0u, NULL) != 0) {
+                             NULL, 0u, &version, NULL, 0u, NULL) != 0) {
         MMLLOG_ERROR(log->logger, "Frontend input.paste did not reach Runtime");
         goto cleanup;
     }
 
-    if (send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL) != 0 ||
-        send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL) != 0 ||
+    if (send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL, &version) != 0 ||
+        send_key_and_drain(transport, session, "z", CDIN_FRONTEND_MOD_CTRL, &version) != 0 ||
         send_key_and_drain(transport, session, "z",
-            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT) != 0 ||
+            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT, &version) != 0 ||
         send_key_and_drain(transport, session, "z",
-            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT) != 0) {
+            CDIN_FRONTEND_MOD_CTRL | CDIN_FRONTEND_MOD_SHIFT, &version) != 0) {
         MMLLOG_ERROR(log->logger, "Runtime undo/redo keymap dispatch failed");
         goto cleanup;
     }
@@ -360,7 +361,7 @@ static int cdin_frontend_document_smoke(
         goto cleanup;
     }
 
-    if (send_key_and_drain(transport, session, "s", CDIN_FRONTEND_MOD_CTRL) != 0 ||
+    if (send_key_and_drain(transport, session, "s", CDIN_FRONTEND_MOD_CTRL, &version) != 0 ||
         !verify_saved_bytes(path, expected_bytes, sizeof(expected_bytes))) {
         MMLLOG_ERROR(log->logger, "Runtime Ctrl+S did not atomically save exact document bytes");
         goto cleanup;
