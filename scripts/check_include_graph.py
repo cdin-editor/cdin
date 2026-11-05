@@ -100,7 +100,10 @@ def dependency_probe_command(arguments: list[str]) -> list[str]:
         if argument in takes_value:
             index += 2
             continue
-        if argument in no_compile:
+        if argument in no_compile or argument == "-w" or argument.startswith("-W"):
+            # Include tracing is an inspection pass, not a diagnostic build.
+            # GCC's -H may emit include-guard warnings; compiler warning flags
+            # (especially -Werror) must not turn those into trace failures.
             index += 1
             continue
         result.append(argument)
