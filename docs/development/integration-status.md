@@ -15,11 +15,11 @@ The remaining interactive-product and production-release work is tracked in [iss
 | Runtime version identity | VERIFIED | The stack smoke compares the Runtime-reported version with the version in `deps.lock`; CI log confirms Runtime `1.0.0-rc.1`. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
 | Backend package contract | IMPLEMENTED | Backend 1.0.2 exports versioned `cdinBackend` CMake package targets and the optional bounded/binary-safe Lua Host `fs.read_file`; CDIN now requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. |
-| Backend/Frontend protocol compatibility | VERIFIED on Linux/macOS/Windows | Protocol major/minor guards plus `--check` HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot delivery, UI flush/ACK, queue release and resize through the merged Frontend Core package. Existing baseline evidence is CI run 42051385717; the expanded live edit/save/reopen smoke is now added and awaits this branch's native CI. |
+| Backend/Frontend protocol compatibility | VERIFIED on Linux/macOS/Windows | Protocol guards plus `--check` HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot, `ui.flush`/ACK, queue release and resize through the merged Frontend Core package. The expanded document workflow also passes in CI run 42074655322. |
 | Shared logging | IMPLEMENTED for CDIN and Backend callbacks | CDIN owns a logger instance and routes Backend log callbacks into it. |
 | CLI fail-closed tests | PASS | Nine executable-level CDIN CTest cases pass on Linux, macOS and Windows, including missing values and gated launch paths. |
 | Source snapshot | PASS | Deterministic ZIP, path/CRC validation, reproducibility comparison and SHA-256 verification pass on all three native platforms. |
-| CI platform coverage | PASS | CI run 42051385717 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection on candidate `239b3ad69d573f8ca8b4b99e7825c15309c03553`. Current branch tip only removes the redundant advanced CodeQL workflow. |
+| CI platform coverage | PASS | CI run 42074655322 passed the pinned stack and expanded document smoke on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate `006263f89f1c1c5352807b00544c8944e131a2dd`. |
 | CodeQL scanning | DEFAULT SETUP ACTIVE | GitHub repository CodeQL Default Setup is enabled. The custom advanced workflow is not included in this branch because its SARIF uploads are rejected while Default Setup is enabled. |
 
 ## 2. Not complete
@@ -29,8 +29,8 @@ The remaining interactive-product and production-release work is tracked in [iss
 | Interactive TUI | PARTIAL / NOT LAUNCHABLE | Frontend PR #2 now installs and exports `cdin::frontend_ui_tui` and its public headers, with a clean-prefix consumer test. CDIN still does not run the TUI app: Backend worker wakeup wiring, native readiness bridge, FE-019 multiplexing and terminal restore/recovery remain. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
 | View attachment and UI state | VERIFIED on Linux/macOS/Windows | CDIN smoke performs ATTACH, verifies the ordered six-message initial snapshot including options/style/layout, validates snapshot flush, ACKs it, verifies queue release and sends resize. CI run 42051385717 passed on all three platforms plus Linux sanitizers. |
-| Real editing workflow | IMPLEMENTATION ADDED; CI PENDING | `src/integration/frontend_smoke.c` now sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel, then compares saved and reopened bytes. Do not mark the all-platform gate VERIFIED until the macOS job completes; Linux and Windows have passed. |
-| Keymaps and commands through input | IMPLEMENTATION ADDED; CI PENDING | The same expanded CDIN smoke exercises typed `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S over Frontend Protocol; Linux and Windows passed in run 42073455899; macOS remains queued. |
+| Real editing workflow | VERIFIED — HEADLESS / LINUX-MACOS-WINDOWS | `src/integration/frontend_smoke.c` sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and version-pinned `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel; it compares disk and reopened bytes. All three native jobs passed in CI run 42074655322. The 6-byte fixture covers NUL, invalid UTF-8 and CRLF; it does not yet constitute the full BOM/LF/mixed-EOL release matrix. |
+| Keymaps and commands through input | VERIFIED — HEADLESS / LINUX-MACOS-WINDOWS | Typed `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S are sent over the public Frontend session API and dispatched by Runtime. All three native jobs passed in run 42074655322. Physical terminal key parsing remains part of FE-019. |
 | Plugin lifecycle and isolation | NOT VERIFIED from CDIN | Exercise plugin load, capability denial, failure isolation and unload in a live session. |
 | Multi-frontend attach/detach | NOT VERIFIED from CDIN | Exercise driver/observer roles, detach and reconnect. |
 | Product memory and soak measurements | NOT IMPLEMENTED | Measure RSS, allocator peak, leaks, long-running sessions and latency. |
@@ -42,7 +42,7 @@ The remaining interactive-product and production-release work is tracked in [iss
 
 ### Explicit workflows
 
-- [CI run 42051385717](https://github.com/cdin-editor/cdin/actions/runs/42051385717) passed on candidate commit `239b3ad69d573f8ca8b4b99e7825c15309c03553`:
+- [CI run 42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322) passed on current candidate commit `006263f89f1c1c5352807b00544c8944e131a2dd`:
   - Ubuntu pinned stack + E2E: PASS.
   - macOS pinned stack + E2E: PASS.
   - Windows pinned stack + E2E: PASS.
@@ -51,7 +51,7 @@ The remaining interactive-product and production-release work is tracked in [iss
   - Pinned Frontend suite passed 16/16 and Backend suite passed 10/10 on the inspected platform logs.
   - Source-snapshot ZIP validation, reproducibility comparison, SHA-256 verification and artifact upload: PASS on all three native platforms.
   - All pinned GitHub Actions completed without the previous Node.js 20 deprecation warning.
-- The Linux log explicitly records `Frontend attach smoke passed: snapshot revision=0 messages=6 ordered flush/ACK and resize`; all nine CDIN tests passed on each platform. This verifies the protocol attach path only; it does not prove rendering, document editing, save/reopen, input dispatch or plugin behavior.
+- Linux, macOS and Windows logs each explicitly record `Frontend document smoke passed: text/paste, undo/redo, atomic save, close/open and 6 exact bytes`, followed by `Frontend attach smoke passed: snapshot revision=0 messages=6 ordered flush/ACK and resize`. All nine CDIN CTest cases passed on each platform; Backend and Frontend component suites passed 11 and 17 tests respectively. This verifies the headless protocol/document path, not rendering, terminal launch or plugin behavior.
 - The custom CodeQL advanced workflow failed in [run 42051385905](https://github.com/cdin-editor/cdin/actions/runs/42051385905) because GitHub CodeQL Default Setup is enabled. The custom workflow file has been removed from this branch to avoid the incompatible advanced upload; Default Setup remains the repository scanner.
 
 ### GitHub Code Quality language selection
@@ -64,11 +64,11 @@ This dynamic workflow is configured independently under repository Settings → 
 
 The provenance-attestation job is intentionally skipped on pull requests. PR build jobs receive only `contents: read`. The separate job with OIDC and attestation permissions runs only on trusted pushes to `main`, after both the full native matrix and sanitizer job have passed. It recreates and validates the same reproducible source ZIP before attesting it. PR artifacts are short-lived CI evidence, not signed release artifacts. The source ZIP is not an application installer.
 
-- [CI run 42073455899](https://github.com/cdin-editor/cdin/actions/runs/42073455899) passed the expanded headless document smoke on Linux and Windows, and Linux ASan/UBSan/leak detection passed. The log confirms `Frontend document smoke passed: text/paste, undo/redo, atomic save, close/open and 6 exact bytes`. The macOS job in this run is still queued. The previous attach-only all-platform matrix passed in run 42051385717.
+- [CI run 42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322) passed the expanded headless document smoke on Linux, macOS and Windows. The Linux ASan/UBSan/leak-detection job passed too. The log on each native platform confirms `Frontend document smoke passed: text/paste, undo/redo, atomic save, close/open and 6 exact bytes`. The PR provenance-attestation job was skipped as designed because this is a pull request.
 
 ## 4. Compatibility findings
 
-- Backend 1.0.2 package discovery is versioned; CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. The optional `host.fs.read_file` keeps file I/O Backend-owned and returns exact bytes with structured error identities.
+- Backend 1.0.2 package discovery is versioned; CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. CDIN pins post-merge test-fix commit `f816b9cdbd6b97f7c70a4772a0d8f1e63c47eb9e`; Backend CI including ASan/UBSan/TSan passed after that fix. The optional `host.fs.read_file` keeps file I/O Backend-owned and returns exact bytes with structured error identities.
 - Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
 - The initial ATTACH failure had three Backend integration causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) runtime version reporting remained hard-coded at 1.0.0 after the package bump, fixed in merged PR #8; (3) Backend required Runtime UI Model v1's optional `options` member and advertised the driver role too late for Frontend Core, fixed in merged PR #9 by encoding an empty CBOR map and reserving the first negotiated driver before HELLO_ACK. CDIN pins PR #9's immutable revision and the full ATTACH/snapshot/flush/ACK/resize smoke passes on Linux/macOS/Windows.
 - Frontend PR #2 is merged at `94643adada76cb3d056baf0b6ad475451d56ab0f`; `cdinFrontend` now installs/exports `cdin::frontend_ui_tui` when enabled and exposes a typed `request.command` session API. CDIN consumes the package; FE-019 remains the interactive launch gate.
@@ -81,8 +81,8 @@ Before describing CDIN as an interactive editor:
 1. Preserve the verified Backend and CDIN native CI for the aggregate snapshot budget and ATTACH/flush/ACK/resize smoke.
 2. Connect the already-published `cdin::frontend_ui_tui` package target to a supported launch path; complete its FE-019 readiness/wakeup/restore integration.
 3. Connect Backend worker-completion wakeup to the Frontend event loop and implement the FE-019 readiness multiplexer.
-4. Pass the expanded CDIN product smoke for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings; source implementation is present, CI proof is pending.
-5. Verify Runtime command/keymap execution through real input.
+4. Extend the verified headless document smoke with BOM, LF-only and mixed-EOL fixtures plus full-CDIN filesystem failure/interrupted-save injection; current smoke verifies NUL, invalid UTF-8 and CRLF across the real Frontend/Backend/Runtime/Kernel path.
+5. Complete terminal-originated key/text input verification after FE-019; headless protocol command/keymap dispatch is already verified.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify Frontend detach/reconnect, multi-frontend sessions and failure recovery.
 8. Maintain native Linux/macOS/Windows CI and sanitizer evidence; verify the CodeQL Default Setup language selection and remove JavaScript/TypeScript from the separate Code Quality settings.
