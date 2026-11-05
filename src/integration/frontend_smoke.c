@@ -1317,6 +1317,12 @@ static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
 
 int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
 {
+    const char *experimental_tui = getenv("CDIN_ENABLE_EXPERIMENTAL_TUI");
+    if (experimental_tui == NULL || strcmp(experimental_tui, "1") != 0) {
+        (void)fprintf(stderr,
+            "[CDIN] interactive TUI launch is gated until native readiness and PTY tests pass\\n");
+        return 3;
+    }
     cdin_tui_context context;
     cdin_backend_config config;
     cdin_backend_status backend_status;
