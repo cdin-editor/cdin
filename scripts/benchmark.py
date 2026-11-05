@@ -342,7 +342,7 @@ def main() -> int:
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_name(args.output.name + ".tmp")
-    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(args.output)
     print(f"Benchmark report: {args.output}")
     print(
