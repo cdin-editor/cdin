@@ -107,27 +107,36 @@ int main(int argc, char **argv)
         (void)fprintf(stderr, "cdin: invalid arguments\n%s", cdin_options_usage());
         return EXIT_FAILURE;
     }
-    if (strcmp(options.frontend, "headless") != 0) {
-        /*
-         * FE-019 requires the TUI loop to multiplex input and Backend readiness.
-         * Keep interactive launch disabled until that integration is implemented.
-         * https://github.com/cdin-editor/spec/blob/main/docs/components/frontend.md#L82-L82
-         */
-        (void)fprintf(stderr, "cdin: frontend '%s' is not launchable; readiness/wakeup integration FE-019 is required\n",
-                      options.frontend);
-        return 3;
-    }
-    if (!options.check_only) {
-        (void)fputs("cdin: interactive launch is not yet enabled; use --check for a lifecycle smoke test\n", stderr);
+    if (strcmp(options.frontend, "headless") == 0) {
+        if (!options.check_only) {
+            (void)fputs("cdin: headless mode is a validation target; use --check\n", stderr);
+            return 3;
+        }
+    } else if (strcmp(options.frontend, "tui") == 0) {
+        if (options.check_only) {
+            (void)fputs("cdin: --check is only supported by the headless frontend\n", stderr);
+            return 3;
+        }
+    } else {
+        (void)fprintf(stderr, "cdin: frontend '%s' is not launchable\n", options.frontend);
         return 3;
     }
     if (!cdin_log_open(&log)) {
         (void)fputs("cdin: failed to initialize m-mdy-m/log.c\n", stderr);
         return EXIT_FAILURE;
     }
-    MMLLOG_INFO(log.logger, "Composition Root startup validation begins");
-    result = run_check(&options, &log);
-    MMLLOG_INFO(log.logger, "Composition Root startup validation %s", result == EXIT_SUCCESS ? "passed" : "failed");
+    if (strcmp(options.frontend, "headless") == 0) {
+        MMLLOG_INFO(log.logger, "Composition Root startup validation begins");
+        result = run_check(&options, &log);
+        MMLLOG_INFO(log.logger, "Composition Root startup validation %s",
+                    result == EXIT_SUCCESS ? "passed" : "failed");
+    } else {
+        MMLLOG_INFO(log.logger, "Composition Root TUI startup begins");
+        result = cdin_frontend_tui_launch(&options, &log);
+        MMLLOG_INFO(log.logger, "Composition Root TUI session %s",
+                    result == EXIT_SUCCESS ? "stopped normally" :
+                    result == 3 ? "was not launched" : "failed");
+    }
     cdin_log_close(&log);
     return result;
 }
