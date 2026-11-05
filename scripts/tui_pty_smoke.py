@@ -89,10 +89,12 @@ def run_live_edit(executable: str) -> None:
     with tempfile.TemporaryDirectory(prefix="cdin-tui-pty-") as working:
         try:
             os.set_blocking(master, False)
+            env = os.environ.copy()
+            env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             process = subprocess.Popen(
                 [executable, "--frontend", "tui"],
                 stdin=slave, stdout=slave, stderr=slave,
-                cwd=working, env=os.environ.copy(), close_fds=True,
+                cwd=working, env=env, close_fds=True,
             )
             read_until(master, process, output,
                        lambda b: SCRATCH_RE.search(b) is not None, 10.0, "TUI title")
@@ -136,6 +138,7 @@ def run_startup_failure(executable: str) -> None:
         try:
             os.set_blocking(master, False)
             env = os.environ.copy()
+            env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             env["CDIN_RUNTIME_ROOT"] = str(Path(working) / "missing-runtime-root")
             process = subprocess.Popen(
                 [executable, "--frontend", "tui"],
