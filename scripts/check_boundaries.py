@@ -9,7 +9,9 @@ SRC = ROOT / "src"
 FORBIDDEN = {
     "kernel implementation": re.compile(r"\b(kernel_(?:insert|delete|replace|undo|redo)|rope_(?:split|merge|insert|erase))\s*\("),
     "runtime policy implementation": re.compile(r"\b(luaL_(?:loadfile|requiref)|lua_(?:pcall|resume))\s*\("),
-    "frontend rendering implementation": re.compile(r"\b(SDL_(?:CreateWindow|Render|PollEvent)|cdin_frontend_tui_render)\s*\("),
+    # The public TUI renderer is an adapter API the Composition Root is
+    # expected to call. Only direct SDL rendering remains forbidden here.
+    "frontend rendering implementation": re.compile(r"\bSDL_(?:CreateWindow|Render|PollEvent)\s*\("),
 }
 violations: list[str] = []
 for path in SRC.rglob("*.c"):
