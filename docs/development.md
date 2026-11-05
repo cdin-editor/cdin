@@ -17,7 +17,9 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `include/cdin/` | Private headers shared by launcher modules. |
 | `scripts/deps.py` | Pinned component checkout and materialization. |
 | `scripts/build_stack.py` | Build/test/install orchestration for the pinned stack. |
-| `scripts/check_boundaries.py` | Static guard against copied component implementation. |
+| `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
+| `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
+| `scripts/tui_pty_smoke.py` | Exercise the experimental POSIX TUI through a real pseudo-terminal. |
 | `scripts/assert_cli.py` | Executable-level CLI output and exit-status check. |
 | `scripts/package.py` | Source archive creation. |
 | `pipeline.toml` | Shared local/CI task graph. |
@@ -80,9 +82,10 @@ The stack builder checks out the revisions in `deps.lock` and runs the component
 1. Build and install `m-mdy-m/log.c`.
 2. Build, test and install Kernel.
 3. Build, test and install Backend, including its Kernel integration tests.
-4. Build and test Frontend Core, Headless and the experimental TUI target.
-5. Configure, build and test the CDIN executable.
-6. Install CDIN and run the installed `cdin --check` smoke test.
+4. Build and test Frontend Core, Headless and the TUI adapter target.
+5. Configure and build CDIN; export `compile_commands.json`.
+6. Run the CLI, headless document, POSIX PTY (where supported), architecture and compiler include-graph checks.
+7. Install CDIN and run the installed `cdin --check` smoke test.
 
 The command can take substantially longer than a normal single-project build because it builds the pinned components from source. It is the reproducible integration path for this repository; it is not a prebuilt production package manager.
 
@@ -131,17 +134,19 @@ This does not rebuild or retest the pinned component repositories. Use `make sta
 
 ## 5. What the tests cover
 
-The current CDIN executable-level tests cover help and version output, rejection of unknown CLI options, and Backend/Runtime create/start/pump/shutdown/destroy through the public Backend API.
+The root CTest suite checks CLI help/version, the advertised `headless|tui` choices, invalid/missing values and fail-closed modes. The headless integration test uses the public Frontend session API to negotiate, attach, verify the initial snapshot/flush/ACK and resize, then create/edit/paste/undo/redo/save/close/open and compare exact bytes through the real Backend/Runtime/Kernel stack.
 
-The pinned component stack additionally runs the test suites owned by Kernel, Backend and Frontend repositories. Backend owns the live Kernel document integration scenarios.
+The file-fixture smoke covers NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR data. The filesystem-failure smoke covers missing-file read, failed atomic save, preservation of in-memory bytes and successful recovery.
 
-This does not yet cover the user's full editor workflow through a connected Frontend. The missing product path is create/open/edit/save/reopen through the actual Runtime, Backend, Kernel and Frontend. See [E2E verification](../tests/e2e/README.md).
+POSIX builds also run `cdin_tui_live_pty_smoke`, which exercises the opt-in experimental TUI, rendered input, signal/resize handling and terminal restoration. That test currently fails because Frontend can clear a pending version-pinned `view.lines` request before its response arrives. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-state fix and regression tests; its macOS job must finish before the immutable pin is advanced.
+
+See [E2E verification](../tests/e2e/README.md) for per-platform evidence and remaining scenarios.
 
 ## 6. Sanitizers and resource testing
 
-The CI workflow has an Ubuntu full-stack ASan/UBSan job with leak detection. It must complete successfully before the sanitizer gate can be reported as passing.
+The CI workflow has an Ubuntu full-stack ASan/UBSan job with leak detection. In the latest fully completed CDIN candidate run inspected, this job failed on the same live TUI PTY acceptance test as the Linux native job. Do not call the current sanitizer gate green; rerun after the Frontend request-lifecycle fix is merged and pinned.
 
-A CDIN process memory benchmark and long-running soak test are not implemented yet. The requirements and fields to record are listed in [Resource and soak benchmarks](../tests/bench/README.md). Do not treat queue capacity or a successful lifecycle smoke test as memory measurement.
+A CDIN process memory benchmark and long-running soak test are not implemented. The real headless document workflow is integration coverage, not a performance measurement. See [Resource and soak benchmarks](../tests/bench/README.md). Do not treat queue capacity or a short smoke as memory measurement.
 
 ## 7. Changing a dependency pin
 
@@ -160,7 +165,7 @@ Do not use a floating branch, assume a version from a repository name or silentl
 
 New native code uses C11 and the warning set in the root CMake configuration: `-Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Wformat=2 -Wpedantic -Werror` (or the MSVC equivalent).
 
-Keep Composition Root code small. A resource created by CDIN must have one cleanup path. Preserve the logger callback's context until Backend has been destroyed. Do not add document, session, queue or rendering state here.
+Keep Composition Root code small. A resource created by CDIN must have one cleanup path. Preserve the logger callback's context until Backend has been destroyed. Do not add document, session, queue or rendering state here. Use the compiler-resolved include audit alongside source-level boundary checks; neither replaces component ownership review.
 
 ## 9. Git and pull requests
 
