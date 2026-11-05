@@ -112,8 +112,11 @@ def assert_restored(slave: int, before_termios, before_flags: int, output: bytea
         raise AssertionError(f"terminal restore sequences missing: {missing!r}")
     if termios.tcgetattr(slave) != before_termios:
         raise AssertionError("terminal mode was not restored")
-    if fcntl.fcntl(slave, fcntl.F_GETFL) != before_flags:
-        raise AssertionError("terminal descriptor flags were not restored")
+    after_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
+    if after_flags != before_flags:
+        raise AssertionError(
+            f"terminal descriptor flags were not restored: before=0x{before_flags:x}, after=0x{after_flags:x}"
+        )
 
 
 def run_live_edit(executable: str) -> None:
