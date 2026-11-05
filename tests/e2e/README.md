@@ -16,9 +16,9 @@ The root CTest suite runs the actual `cdin` executable for:
 | `cdin_cli_missing_frontend` | Exit 1 when `--frontend` has no value. |
 | `cdin_cli_unsupported_frontend_is_gated` | Exit 3 and an explicit message for unsupported TUI launch. |
 | `cdin_cli_interactive_launch_is_gated` | Exit 3 when asked to launch without `--check`. |
-| `cdin_headless_frontend_protocol_smoke` | Runtime/Backend lifecycle plus in-process Frontend Core HELLO/HELLO_ACK handshake. |
+| `cdin_headless_frontend_protocol_smoke` | In-process Frontend Core HELLO/HELLO_ACK, real ATTACH/snapshot/flush/ACK/resize, then document new/text/binary paste/undo/redo/save/close/open and byte-exact readback via `view.request_lines`. |
 
-The pinned stack builder also runs the test suites owned by the Kernel, Backend and Frontend repositories. Backend owns the current Kernel document integration scenarios.
+The pinned stack builder also runs the test suites owned by Kernel, Backend, Frontend and Runtime. The CDIN smoke uses their installed public interfaces; Kernel owns bytes/undo history, Runtime owns command/keymap policy, Backend owns file I/O and protocol queues, and Frontend owns the Protocol session.
 
 ## 2. Latest inspected evidence
 
@@ -37,23 +37,22 @@ The PR provenance job is skipped by design: pull-request builds do not receive O
 
 The separate GitHub-managed Default Setup workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) still fails JavaScript/TypeScript analysis because this repository has no processable JS/TS source. Its Python job passes. This is a repository security setting, not a failure of the explicit C/C++ and Python workflow.
 
-These tests are real executable/component checks, but they do not represent a complete user-visible editing workflow. Product work remains tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
+The current `cdin_headless_frontend_protocol_smoke` implementation now covers one complete byte-exact document cycle through the real in-process Frontend/Backend/Runtime/Kernel stack. It remains a headless protocol check, not an interactive terminal or GUI session. The expanded CI result is pending; product work for the FE-019 TUI loop, GUI, plugin isolation, multiple Frontends, reconnect and soak/latency gates remains tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111).
 
-## 3. Product E2E still required
+## 3. Remaining interactive product E2E
 
-Once readiness/wakeup and the live Frontend adapter are connected, add end-to-end scenarios through the real executable and public component interfaces:
+The headless document workflow is now implemented in `src/integration/frontend_smoke.c`: it uses the public Frontend session API and a real Backend/Runtime/Kernel instance to create a document, send text and binary paste, exercise Runtime undo/redo/save bindings, close and reopen the file, and compare exact bytes from both disk and `view.request_lines`. The current CI result is pending; do not mark it PASS until the run on the current commit completes.
 
-1. Start CDIN and attach a TUI frontend.
-2. Open or create a document through Runtime and Backend.
-3. Send text and key input through the Frontend Protocol.
-4. Verify Runtime command and keymap execution.
-5. Edit, undo and redo document content through Backend/Kernel.
-6. Save, close and reopen the document.
-7. Compare exact bytes, including NUL, invalid UTF-8, BOM and line endings.
-8. Detach and reattach a frontend without losing Backend-owned editor state.
-9. Exercise multiple frontends, driver/observer permissions and reconnect.
-10. Inject Runtime, Backend, transport and filesystem failures and verify cleanup/recovery.
-11. Load a plugin, verify capability restrictions, then unload it.
+Once the FE-019 readiness/wakeup path is connected, the remaining E2E scenarios must cover:
+
+1. Start CDIN and launch the installable TUI adapter in a real terminal.
+2. Verify rendering, scrolling, resize, signals, terminal restore and orderly shutdown.
+3. Verify Backend worker wakeups reach the native Frontend owner loop without polling-only regressions.
+4. Detach and reattach a Frontend without losing Backend-owned editor state.
+5. Exercise multiple Frontends, Driver/Observer permissions, promotion and reconnect.
+6. Inject Runtime, Backend, transport and filesystem failures and verify cleanup/recovery.
+7. Load a plugin, verify capability restrictions, failure isolation and unload.
+8. Add a separate GUI-SDL launch and input/render integration path before claiming GUI support.
 
 A mock transport or test-only editor implementation is not a substitute for these scenarios.
 
