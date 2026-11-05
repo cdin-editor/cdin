@@ -26,7 +26,8 @@ The remaining interactive-product and production-release work is tracked in [iss
 
 | Area | Status | Missing work |
 | --- | --- | --- |
-| Interactive TUI | PARTIAL / NOT LAUNCHABLE | Frontend PR #2 now installs and exports `cdin::frontend_ui_tui` and its public headers, with a clean-prefix consumer test. CDIN still does not run the TUI app: Backend worker wakeup wiring, native readiness bridge, FE-019 multiplexing and terminal restore/recovery remain. |
+| Interactive TUI | PARTIAL / NOT LAUNCHABLE | Frontend PR #2 installs `cdin::frontend_ui_tui`. [Frontend PR #5](https://github.com/cdin-editor/frontend/pull/5) corrects POSIX read readiness, stdout blocking semantics, preview EAGAIN behavior and multi-turn Backend draining during termination; its current native matrix is still pending. CDIN now latches signal termination and waits on the Backend wake source for the initial ATTACH snapshot. The combined wait bridge and PTY path remain unverified. |
+| TUI Unicode cell width | PARTIAL | [Frontend PR #6](https://github.com/cdin-editor/frontend/pull/6) adds cursor-cell calculations grouped by combining marks, variation selectors/modifiers, regional-indicator pairs and ZWJ emoji sequences. Full grapheme segmentation, bidi/shaping and terminal/font matrix remain open; PR #6 CI is pending. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
 | View attachment and UI state | VERIFIED on Linux/macOS/Windows | CDIN smoke performs ATTACH, verifies the ordered six-message initial snapshot including options/style/layout, validates snapshot flush, ACKs it, verifies queue release and sends resize. CI run 42051385717 passed on all three platforms plus Linux sanitizers. |
 | Real editing workflow | VERIFIED — HEADLESS / LINUX-MACOS-WINDOWS | `src/integration/frontend_smoke.c` sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and version-pinned `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel; it compares disk and reopened bytes. All three native jobs passed in CI run 42074655322. The 6-byte fixture covers NUL, invalid UTF-8 and CRLF; it does not yet constitute the full BOM/LF/mixed-EOL release matrix. |
@@ -97,8 +98,17 @@ The interactive TUI remains **fail-closed by default**. The product CLI requires
 `CDIN_ENABLE_EXPERIMENTAL_TUI=1` opt-in while the readiness and PTY acceptance tests are being
 validated. The CI-only PTY smoke sets that opt-in to exercise the real executable.
 
-The candidate test covers initial ATTACH snapshot delivery, rendered text input, SIGWINCH wakeup,
-save followed immediately by quit, and terminal restoration. A separate startup-failure run
-checks that terminal attributes and descriptor flags remain unchanged or are restored. Windows
-interactive launch remains fail-closed because a native Windows readiness adapter is not yet
-published. These tests are not considered passed until the current CDIN PR workflow is green.
+The current CDIN candidate extends the PTY path to cover initial ATTACH snapshot delivery,
+rendered text input, SIGWINCH wakeup, save followed by Ctrl+Q, a separate SIGTERM exit, startup
+failure and terminal restoration. The owner wait latches signal termination; when Backend work is
+also ready, the Frontend coordinator drains bounded Backend turns until the source reports
+`AGAIN`, without accepting more terminal input. The full-stack failure path now consumes an
+error's following `ui.flush` and ACKs the sequence decoded from its public Protocol payload.
+
+The newest CDIN candidate is `9e60b512f9af2df24c36bfc29a7e330612ed4099`; its earlier compile
+failure in run `42090079425` was caused by a test helper reading a nonexistent
+`message_view.flush_sequence` field. The helper now decodes `sequence` from the public
+`UI_FLUSH` payload; a fresh run for the latest commit is required. Do not treat PTY, snapshot
+bootstrap, error recovery or signal shutdown as PASS until that run's Linux/macOS/Windows and
+sanitizer jobs complete successfully. Windows interactive launch remains fail-closed pending a
+native Windows readiness adapter.
