@@ -54,8 +54,6 @@ static int run_check(const cdin_options *options, cdin_log *log)
     config.runtime_entry = options->runtime_entry;
     config.enable_lua = 1;
     config.enable_headless_protocol = 1;
-    /* The retained Runtime UI snapshot is a bounded batch, not one small event. */
-    config.max_message_bytes = 256u * 1024u;
     config.log_output = CDIN_BACKEND_LOG_OUTPUT_CALLBACK;
     config.log_level = CDIN_BACKEND_LOG_INFO;
     config.log_callback = cdin_log_backend_sink;
