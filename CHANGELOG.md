@@ -16,6 +16,7 @@
 - Pin the Windows toolchain to the Lua 5.4 UCRT64 package and pass explicit include/library paths to CMake.
 - Avoid duplicate full-stack builds for both push and pull-request events on the same feature branch.
 - Pin component-owned compiler and platform fixes from [Backend PR #1](https://github.com/cdin-editor/backend/pull/1) and [Frontend PR #1](https://github.com/cdin-editor/frontend/pull/1).
+- Keep the Windows path allocation overflow guard portable without a false-positive 64-bit type-limits warning.
 - Prepare a local main branch and Git identity before running Gix diagnostics.
 - Install Kernel's pkg-config metadata with the pinned package release version while preserving its separate ABI version.
 - Avoid running the same architecture-boundary check twice in the Pipeline task graph.
