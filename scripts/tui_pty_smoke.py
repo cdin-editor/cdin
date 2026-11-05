@@ -120,12 +120,15 @@ def run_live_edit(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
     before_termios = termios.tcgetattr(slave)
-    before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
     output = bytearray()
     process = None
     with tempfile.TemporaryDirectory(prefix="cdin-tui-pty-") as working:
         try:
             os.set_blocking(master, False)
+            # Capture the slave's baseline only after the harness has made
+            # its master nonblocking. Darwin PTYs may expose paired status
+            # flags; this keeps the assertion focused on changes made by CDIN.
+            before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
             env = os.environ.copy()
             env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             process = subprocess.Popen(
