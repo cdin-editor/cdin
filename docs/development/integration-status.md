@@ -69,7 +69,7 @@ The provenance-attestation job is intentionally skipped on pull requests. PR bui
 
 - Backend 1.0.0 package discovery is versioned; keep `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`.
 - Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
-- The initial ATTACH failure had two distinct Backend causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) Backend required Runtime UI Model v1's optional `options` member, although Runtime omits it, fixed in Backend PR #9 by encoding an empty CBOR map. CDIN pins PR #9's immutable candidate and tests attach/snapshot/flush/ACK/resize. This remains pending fresh CI.
+- The initial ATTACH failure had two distinct Backend causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) Backend required Runtime UI Model v1's optional `options` member, although Runtime omits it, fixed in Backend PR #9 by encoding an empty CBOR map and returns the first negotiated driver's role in HELLO_ACK for Frontend Core's local resize guard. CDIN pins PR #9's immutable candidate and tests attach/snapshot/flush/ACK/resize. This remains pending fresh CI.
 - Frontend TUI target remains experimental/unexported by Frontend Core 1.0.0. CDIN must consume a supported installable adapter, not copy its implementation.
 
 ## 5. Release gates
