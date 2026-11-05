@@ -66,7 +66,7 @@ def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
     print("+", str(executable), "--check", flush=True)
     result = subprocess.run(
         [str(executable), "--check"], cwd=ROOT, env=env,
-        text=True, capture_output=True, check=False
+        text=True, errors="replace", capture_output=True, check=False
     )
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
