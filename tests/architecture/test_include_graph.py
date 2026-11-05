@@ -102,7 +102,7 @@ class IncludeGraphTests(unittest.TestCase):
             header.parent.mkdir(parents=True)
             header.touch()
             result = traced_headers(
-                ". include/cdin.h\n.. /usr/include/stdint.h\nnote: compiler warning\n",
+                ". include/cdin.h\n.. definitely-not-present/system/header.h\nnote: compiler warning\n",
                 root,
             )
             self.assertEqual(result, [header.resolve()])
