@@ -55,11 +55,11 @@ The remaining interactive-product and production-release work is tracked in [iss
 
 These runs validate the composition/lifecycle and component tests. They do **not** prove view attachment, UI snapshot delivery, rendering, document editing, save/reopen, input dispatch or plugin behavior.
 
-### GitHub Default Setup CodeQL
+### GitHub Code Quality language selection
 
-The separate GitHub-managed dynamic workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) passed Python but failed its JavaScript/TypeScript job. Its log says CodeQL found only empty or syntactically invalid JavaScript/TypeScript files (the repository has no JS/TS source) and then reported that it could not process any JS/TS code.
+The GitHub Code Quality dynamic workflow [42025677183](https://github.com/cdin-editor/cdin/actions/runs/42025677183) passed Python but failed its JavaScript/TypeScript job. Its log shows that the extractor found only YAML configuration files and no JavaScript/TypeScript source, then failed with `CodeQL could not process any code written in JavaScript/TypeScript`.
 
-This dynamic workflow is configured by GitHub repository security settings, not by `.github/workflows/codeql.yml`. The repository-owned workflow covers C/C++ and Python successfully, but cannot disable the unrelated Default Setup language selection. Set Default Setup to the languages actually present (C/C++ and Python), or disable its unsupported JS/TS selection in GitHub settings.
+This dynamic workflow is configured independently under repository Settings → Security → Code quality, not by `.github/workflows/codeql.yml`. Deselect JavaScript/TypeScript there. The Python Code Quality job may remain enabled; the repository-owned CodeQL workflow separately covers C/C++ and Python. This is a settings change, not a source-code or workflow-file fix.
 
 ### Artifact provenance
 
