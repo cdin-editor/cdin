@@ -25,12 +25,12 @@ class BenchmarkTests(unittest.TestCase):
             percentile([1.0], 1.01)
 
     def test_linux_rss_parser_converts_kibibytes_to_bytes(self) -> None:
-        status = "Name:\\tcdin\nVmPeak:\\t12345 kB\nVmRSS:\\t2048 kB\n"
+        status = "Name: cdin\nVmPeak: 12345 kB\nVmRSS: 2048 kB\n"
         self.assertEqual(parse_linux_rss(status), 2 * 1024 * 1024)
 
     def test_linux_rss_parser_reports_missing_or_unknown_units(self) -> None:
-        self.assertIsNone(parse_linux_rss("Name:\\tcdin\nVmSize:\\t10 kB\n"))
-        self.assertIsNone(parse_linux_rss("VmRSS:\\t10 widgets\n"))
+        self.assertIsNone(parse_linux_rss("Name: cdin\nVmSize: 10 kB\n"))
+        self.assertIsNone(parse_linux_rss("VmRSS: 10 widgets\n"))
 
 
 if __name__ == "__main__":
