@@ -16,7 +16,7 @@ help:
 deps:
 	python3 scripts/deps.py
 
-stack:
+stack: deps
 	python3 scripts/build_stack.py
 
 configure:

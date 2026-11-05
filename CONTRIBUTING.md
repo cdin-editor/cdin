@@ -1,24 +1,28 @@
 # Contributing
 
-Changes in this repository must stay within the Composition Root boundary:
-dependency pins, build orchestration, packaging, process lifecycle, launch
-configuration and release tooling. Editor behavior belongs in Kernel, Runtime,
-Backend or Frontend.
+Changes in this repository must stay within the Composition Root boundary: dependency pins, build orchestration, packaging, process lifecycle, launch configuration and release tooling. Editor behavior belongs in Kernel, Runtime, Backend or Frontend.
+
+Before changing an interface, read [AGENTS.md](AGENTS.md), inspect the relevant component's public API and check the latest accepted Spec requirements. Record ownership or contract conflicts in the [architecture audit](docs/architecture/audit.md).
 
 ## Verify
 
+Install the native build prerequisites from the [Developer guide](docs/development.md), then run:
+
 ```sh
-python3 scripts/deps.py
-python3 scripts/check_boundaries.py
-python3 scripts/build_stack.py
-pipeline run check
 psx check
 gix doctor
+pipeline validate
+pipeline run check
 ```
 
-Submit process-level or cross-component E2E for observable behavior. Do not add
-unit-only tests as a substitute. For changes involving concurrent queues or
-transport, run sanitizer-enabled jobs. Do not claim product memory benchmarks
-until the real Kernel-backed edit/save workload is exercised.
+For a direct full-stack build without Pipeline:
 
-Use Conventional Commits, focused diffs and immutable dependency revisions.
+```sh
+make stack
+```
+
+Submit executable-level or cross-component E2E for observable behavior. Do not add isolated Composition Root tests as a substitute for real product workflows. For changes involving memory, queues, concurrency or transport, run the supported sanitizer jobs.
+
+Do not claim that interactive editing, memory benchmarks or platform support is complete unless the corresponding real workflow was executed. Record unavailable checks as NOT RUN, with the reason.
+
+Use focused commits, Conventional Commit subjects and immutable dependency revisions. Do not change the website here; it is maintained in https://github.com/cdin-editor/cdin-editor.github.io.

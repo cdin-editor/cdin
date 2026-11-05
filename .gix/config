@@ -6,12 +6,6 @@ branch:
     name: main
     type: base
     delete_on_finish: false
-  develop:
-    name: develop
-    type: base
-    parent: main
-    autosync: false
-    delete_on_finish: false
   feature:
     type: topic
     prefix: feature/

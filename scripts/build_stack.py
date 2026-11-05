@@ -25,7 +25,9 @@ def pkg_env() -> dict[str, str]:
     if current:
         entries.append(current)
     result["PKG_CONFIG_PATH"] = os.pathsep.join(entries)
-    result["CMAKE_PREFIX_PATH"] = os.pathsep.join([str(PREFIX), result.get("CMAKE_PREFIX_PATH", "")]).rstrip(os.pathsep)
+    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(
+        [str(PREFIX), result.get("CMAKE_PREFIX_PATH", "")]
+    ).rstrip(os.pathsep)
     return result
 
 
@@ -43,13 +45,14 @@ def main() -> int:
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
             return 2
-    run([sys.executable, "scripts/deps.py"])
+
+    # Pipeline and make both materialize dependencies before entering this
+    # script. Verify every tracked file is present before invoking a compiler.
+    run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     env = pkg_env()
 
-    # The logger is built once from the top-level immutable pin and installed
-    # into the prefix consumed by Kernel, Backend, Frontend and cdin.
     logger = DEPS / "logger"
     logger_build = BUILD / "logger"
     run(["cmake", "-S", str(logger), "-B", str(logger_build),
@@ -60,9 +63,6 @@ def main() -> int:
     run(["cmake", "--build", str(logger_build), "--parallel"], env=env)
     run(["cmake", "--install", str(logger_build)], env=env)
 
-    # Kernel is Make-based. Point its logger build variables at the pinned
-    # source/build just installed above; its pkg-config lookup still uses the
-    # shared prefix, and it never fetches a floating logger branch.
     kernel = DEPS / "kernel"
     logger_args = [f"DEPS_PREFIX={PREFIX}", f"LOG_SOURCE_DIR={logger}",
                    f"LOG_BUILD_DIR={logger_build}"]
@@ -78,7 +78,8 @@ def main() -> int:
     frontend = DEPS / "frontend"
     cmake_component("frontend", frontend, options=["-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
         "-DCDIN_FRONTEND_BUILD_UI_TUI=ON", "-DCDIN_FRONTEND_BUILD_UI_SDL=OFF",
-        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON", "-DCDIN_FRONTEND_BUILD_APPS=OFF", "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF"], env=env)
+        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON", "-DCDIN_FRONTEND_BUILD_APPS=OFF",
+        "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF"], env=env)
 
     root_build = BUILD / "cdin"
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),

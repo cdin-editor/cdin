@@ -1,4 +1,4 @@
-/* ARCH-013: CDIN-owned diagnostics using m-mdy-m/log.c. */
+/* CDIN diagnostic adapter using the pinned m-mdy-m/log.c library. */
 #include "cdin/log.h"
 
 int cdin_log_open(cdin_log *log)

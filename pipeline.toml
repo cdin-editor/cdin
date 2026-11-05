@@ -9,14 +9,9 @@ timeout_seconds = 3600
 fail_fast = true
 
 [tasks.dependencies]
-description = "Resolve every immutable source and tooling pin"
+description = "Resolve and materialize every immutable source pin"
 command = ["python3", "scripts/deps.py"]
 timeout_seconds = 1200
-
-[tasks.boundaries]
-description = "Reject copied Kernel, Runtime or Frontend implementation"
-command = ["python3", "scripts/check_boundaries.py"]
-timeout_seconds = 60
 
 [tasks.stack]
 description = "Build, test, install and smoke-test the full pinned component stack"
@@ -25,12 +20,12 @@ depends_on = ["dependencies"]
 timeout_seconds = 3600
 
 [tasks.check]
-description = "Run full component integration, CDIN lifecycle E2E and architecture boundaries"
+description = "Run the full pinned stack and architecture boundary checks"
 command = ["python3", "scripts/check_boundaries.py"]
-depends_on = ["stack", "boundaries"]
+depends_on = ["stack"]
 timeout_seconds = 120
 
 [tasks.package]
-description = "Create a reproducible source archive"
+description = "Create a source archive for review"
 command = ["python3", "scripts/package.py"]
 timeout_seconds = 120
