@@ -1517,7 +1517,7 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
                      cdin_frontend_protocol_status_name(protocol_status));
         goto cleanup;
     }
-    cdin_frontend_session_init(&context.session, &context.client, NULL, "cdin-tui");
+    cdin_frontend_session_init(&context.session, &context.client, log->logger, "cdin-tui");
     context.session_initialized = 1;
     protocol_status = cdin_frontend_session_set_capabilities(&context.session, 0u);
     if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
@@ -1537,7 +1537,7 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     protocol_status = cdin_frontend_session_attach(&context.session, "view-1", "cells",
         context.columns, context.rows);
     if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
-    context.model = cdin_frontend_tui_model_create("view-1", 32u, NULL);
+    context.model = cdin_frontend_tui_model_create("view-1", 32u, log->logger);
     if (context.model == NULL) {
         MMLLOG_ERROR(log->logger, "Could not create Frontend TUI semantic model");
         goto cleanup;
