@@ -26,9 +26,9 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Build, test and install pinned components; verify Runtime-reported package version. |
 | Boundary checks | `scripts/check_boundaries.py`, `psx.yml` | Mechanical architecture/repository-shape checks; include-graph coverage is partial. |
 | CLI E2E | `scripts/assert_cli.py`, root CTest entries | CLI success, invalid arguments and fail-closed launch paths. |
-| Frontend smoke | `src/integration/frontend_smoke.c` | In-process HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot, `ui.flush`/ACK and resize. |
+| Frontend smoke | `src/integration/frontend_smoke.c` | In-process HELLO/HELLO_ACK/ATTACH, ordered UI snapshot/flush/ACK/resize plus document new, text/binary paste, Runtime undo/redo/save keymaps, close/open and byte-exact `view.request_lines` readback. Current native CI validation is pending. |
 | Source snapshot | `scripts/package.py` | Reproducible source ZIP, archive safety/CRC checks and SHA-256 sidecar. |
-| Product E2E | `tests/e2e/README.md` | Documents live edit/save E2E still required. |
+| Product E2E | `src/integration/frontend_smoke.c`, `tests/e2e/README.md` | A headless end-to-end document cycle is implemented through the public Frontend/Backend/Runtime/Kernel APIs; current CI validation is pending. Interactive TUI and multi-frontend product E2E remain. |
 | Benchmarks | `tests/bench/README.md` | Measurement plan; no verified product RSS/soak benchmark. |
 
 ## 3. Verified versus incomplete
@@ -37,14 +37,14 @@ CDIN must not duplicate document, keymap, plugin, protocol or rendering implemen
 | --- | --- | --- |
 | Immutable component source pins | IMPLEMENTED | `deps.lock`. |
 | Full pinned stack build | PASS | CI run 42024750897 passed Linux, macOS and Windows jobs on candidate commit `167de187...`. |
-| Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.1 CMake package is consumed with `find_package(cdinBackend 1.0.1 CONFIG REQUIRED)`. |
+| Backend package compatibility | IMPLEMENTED | Versioned Backend 1.0.2 CMake package is consumed with `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`; it includes the optional bounded binary-safe Host file reader. |
 | Runtime version identity | VERIFIED for pinned revision | CI log reports Runtime `1.0.0-rc.1`, matching `deps.lock`; `build_stack.py` enforces this check. |
 | Runtime hosting | VERIFIED for lifecycle smoke | Backend creates/owns Runtime; CDIN supplies root and entry. |
 | Frontend Core protocol path | VERIFIED on Linux/macOS/Windows | HELLO/HELLO_ACK, real ATTACH, initial snapshot delivery, ordered `ui.flush`/ACK, queue release and resize through Frontend Core over in-process byte transport; CI run 42051385717 passed. |
-| Interactive TUI/GUI launch | NOT IMPLEMENTED | No supported installed adapter/readiness event loop is connected. |
+| Interactive TUI/GUI launch | PARTIAL / NOT LAUNCHABLE | Frontend now installs/exports `cdin::frontend_ui_tui`, but CDIN has not connected it to a native FE-019 readiness/wakeup/terminal-restore loop. GUI-SDL is not launched. |
 | View attach and UI snapshot | VERIFIED on Linux/macOS/Windows | Backend PRs #7–#9 are merged. The smoke validates the six-message initial snapshot, snapshot-scoped `ui.flush`, ACK-based queue release and resize. Linux, macOS and Windows E2E plus Linux sanitizers pass in CI run 42051385717. |
-| Document create/open/edit/save/reopen | NOT IMPLEMENTED in CDIN | No connected live Frontend product path. |
-| Runtime command/keymap/plugin E2E | NOT VERIFIED | No real Frontend input path through the Composition Root. |
+| Document create/open/edit/save/reopen | IMPLEMENTED IN HEADLESS SMOKE; CI PENDING | The new CDIN smoke runs commands and input over a real Frontend Protocol session, saves through Backend Host I/O and compares reopened Kernel line bytes with the saved file. Awaiting current native CI. |
+| Runtime command/keymap E2E | IMPLEMENTED IN HEADLESS SMOKE; CI PENDING | `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S are sent over the public session API; plugin lifecycle remains NOT VERIFIED in CDIN. |
 | CLI fail-closed paths | PASS | Nine CDIN CTest cases passed on all three native platforms. |
 | ASan/UBSan/leak checks | PASS | Linux sanitizer job in run 42024750897 passed. |
 | CodeQL scanning | DEFAULT SETUP ACTIVE | The repository CodeQL Default Setup is enabled. The branch no longer adds a competing advanced-mode `.github/workflows/codeql.yml`; run 42051385905 showed that advanced SARIF uploads are rejected while Default Setup is enabled. |
@@ -74,10 +74,10 @@ The current action-pinned run emitted no Node.js 20 deprecation warning in the L
 
 ## 6. Remaining release gates
 
-1. Keep the now-verified Backend ATTACH/snapshot/flush/ACK/resize path covered by native CI and prevent regressions.
-2. Obtain an installable Frontend TUI adapter or another supported Frontend adapter.
+1. Keep Backend ATTACH/snapshot/flush/ACK/resize and the expanded headless document workflow covered by native CI; current expanded smoke validation is pending.
+2. Connect the published Frontend TUI package to an interactive launch path.
 3. Implement the FE-019 readiness multiplexer and connect Backend wakeups.
-4. Add live product E2E for create/open/edit/save/reopen and exact-byte preservation.
+4. Complete interactive TUI E2E for rendering, input, resize, terminal restoration and shutdown.
 5. Verify Runtime command/keymap dispatch through actual Frontend input.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify detach/reconnect, multiple Frontends and failure recovery.
