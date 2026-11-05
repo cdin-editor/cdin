@@ -2,7 +2,11 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "fda2db69d8e0ab90c854c3a74efa1dd80d9714cc"
+revision = "762aba7d5674149cae3a8f736d93159360fff730"
+version = "1.0.0-rc.1"
+host_api = "1.0.0"
+protocol = "1.0.0"
+kernel_abi = "1.1.0"
 role = "Lua runtime assets"
 
 [dependencies.kernel]
