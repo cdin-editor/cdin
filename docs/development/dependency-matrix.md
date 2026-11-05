@@ -4,7 +4,7 @@ The lock file is the source of truth for immutable source revisions. Version fie
 
 | Component | Pinned revision | Declared version/contract | Role and current limitation |
 | --- | --- | --- | --- |
-| Runtime | `84379cb7f837d1df95edd296e7ccec838f664fba` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Runtime PR #2 head (Ready for review; not merged). Adds document lifecycle commands, keymaps, Host file integration and exact-byte persistence tests. Version is checked against `deps.lock`. |
+| Runtime | `dddebe07e7a773c7d8f3cb83321c2cbb5d259c52` | Package `1.0.0-rc.1`; Host API `1.0.0`; Protocol `1.0.0`; Kernel ABI `1.1.0` | Merged Runtime PR #2. Adds document lifecycle commands, Runtime-owned keymaps, Backend Host file access and exact-byte persistence tests. Main-branch CI run 42077125147 passed Linux, macOS and Windows plus Pipeline quality/docs checks. |
 | Kernel | `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Package 1.2.1; ABI 1.1.0 | Backend's native document engine dependency. |
 | Backend | `f816b9cdbd6b97f7c70a4772a0d8f1e63c47eb9e` | Version 1.0.2; Protocol 1.0.0 | Merged Backend 1.0.2 plus post-merge filesystem regression-test fix on `main`. Includes bounded binary-safe optional `host.fs.read_file`, Backend lifecycle/protocol and worker wakeup API. CDIN requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. |
 | Frontend | `94643adada76cb3d056baf0b6ad475451d56ab0f` | Project version 1.0.0; Protocol 1.0.0 | Merged Frontend PR #2. Installs/exports `cdin::frontend_ui_tui` and typed `request.command` session API. CDIN consumes this public package but still does not launch an interactive adapter until FE-019 is complete. |
@@ -29,4 +29,4 @@ These checks are stronger than comparing repository SHAs alone, but they do not 
 
 CI run [42074655322](https://github.com/cdin-editor/cdin/actions/runs/42074655322) passed the current pinned stack and expanded headless document E2E on Linux, macOS and Windows, plus Linux ASan/UBSan/leak detection, on candidate `006263f89f1c1c5352807b00544c8944e131a2dd`. Backend, Frontend and CDIN CTest suites passed; each platform log records exact-byte document save/close/open/readback.
 
-CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed both C/C++ traced-build analysis and Python analysis. These results do not verify a connected Frontend or a product editing workflow.
+Runtime PR #2 was merged at `dddebe07e7a773c7d8f3cb83321c2cbb5d259c52`; [Runtime CI run 42077125147](https://github.com/cdin-editor/runtime/actions/runs/42077125147) passed Linux Lua 5.5, macOS Lua 5.4, Windows Lua 5.4, Pipeline quality and docs/workflow validation. The CDIN candidate still requires its own pin/build/E2E run after the Runtime pin moves to the merge commit.
