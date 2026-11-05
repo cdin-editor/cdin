@@ -20,7 +20,7 @@ CDIN must not duplicate document, keymap, plugin, protocol, session, input or re
 | --- | --- | --- |
 | CLI and launch | `src/main.c`, `src/cli/options.c` | Headless `--check` and opt-in experimental POSIX `--frontend tui`; Windows TUI remains fail-closed. |
 | Diagnostics | `src/diagnostics/log.c`, `include/cdin/log.h` | CDIN logger setup and Backend callback adapter; TUI logger is passed into Frontend Session/Model. |
-| Dependency pins | `deps.lock`, `scripts/deps.py` | Immutable component/tool revisions. Frontend request-lifecycle fix still awaits PR #11 verification/merge and a new CDIN pin. |
+| Dependency pins | `deps.lock`, `scripts/deps.py` | Immutable component/tool revisions. Frontend PR #11 is merged and CDIN pins its merge commit `e29df5118e7b822912724b15c0c963b0b99f2f8a`. |
 | Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Builds, tests and installs the pinned component stack; exports `compile_commands.json` for include auditing. |
 | Architecture checks | `scripts/check_boundaries.py`, `scripts/check_include_graph.py` | Selected source-boundary checks plus compiler-resolved include traces and six policy unit tests. |
 | Headless integration | `src/integration/frontend_smoke.c` | HELLO/HELLO_ACK/ATTACH, six-message snapshot/flush/ACK/resize, document new/edit/paste/undo/redo/save/close/open and exact byte readback. |
@@ -39,7 +39,7 @@ CDIN must not duplicate document, keymap, plugin, protocol, session, input or re
 | Byte preservation and file failures | PASS in inspected Windows run | BOM, LF-only and mixed CRLF/LF/CR fixtures; missing-file read, failed atomic commit, intact in-memory bytes and successful recovery. Linux/macOS headless CTest also passed in the same run, though the later PTY test failed. |
 | CLI validation | PASS in inspected native jobs | Help/version, invalid/missing option values and fail-closed modes; a newer help regression now checks the advertised `headless|tui` choices and requires its own current-HEAD CI result. |
 | Compiler-resolved include graph | PASS on Windows | Six Python architecture tests and compiler trace for all four CDIN translation units passed; the trace reported no private component source/build headers. Linux/macOS have not yet completed the task because the earlier PTY failure stops their stack pipeline first. |
-| Experimental POSIX TUI | PARTIAL / NOT RELEASE-READY | Terminal setup, wake pipe, signal handling, attach/bootstrap and Frontend event-loop adapter exist. The live PTY test fails when the model loses `request_pending` before the matching `view.lines` response arrives. Frontend PR #11 contains the fix and regression coverage; macOS CI is still pending at the latest inspection. |
+| Experimental POSIX TUI | PARTIAL / NOT RELEASE-READY | Terminal setup, wake pipe, signal handling, attach/bootstrap and Frontend event-loop adapter exist. Frontend PR #11 has merged the pending-request lifecycle fix and regression coverage. CDIN's current Linux/macOS PTY result on the merged pin is pending; do not call the TUI accepted until it passes. |
 | Windows TUI | NOT IMPLEMENTED | Native Console readiness/input/restore bridge is absent; launcher fails closed. |
 | GUI-SDL | NOT IMPLEMENTED | No GUI launch path in CDIN. |
 | Plugin isolation and lifecycle | NOT VERIFIED FROM CDIN | Live load/unload, capability denial and failure isolation remain. |
