@@ -61,7 +61,7 @@ Potential compatibility improvement still needed: the lock file records the Back
 
 ## 5. CI evidence for the current HEAD
 
-The current branch HEAD is `c7b50b87034968a083c6fa2d52bee05babdea337`. Workflow run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690) completed on 2026-11-05:
+The CI-tested implementation baseline (before the audit-only documentation commits) was `c7b50b87034968a083c6fa2d52bee05babdea337`. Workflow run [41991189690](https://github.com/cdin-editor/cdin/actions/runs/41991189690) completed on 2026-11-05:
 
 | Job | Result | Evidence |
 | --- | --- | --- |
