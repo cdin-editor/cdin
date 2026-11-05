@@ -60,6 +60,25 @@ def pinned_package_version(name: str) -> str:
     return value
 
 
+def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
+    expected = pinned_package_version("runtime")
+    print("+", str(executable), "--check", flush=True)
+    result = subprocess.run(
+        [str(executable), "--check"], cwd=ROOT, env=env,
+        text=True, capture_output=True, check=False
+    )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(result.returncode, [str(executable), "--check"])
+    marker = f"runtime started version={expected} "
+    if marker not in result.stdout + result.stderr:
+        raise RuntimeError(
+            f"Backend did not report the pinned Runtime version {expected!r} "
+            "during the lifecycle smoke test"
+        )
+
+
 def main() -> int:
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
@@ -124,7 +143,7 @@ def main() -> int:
     run(["ctest", "--test-dir", str(root_build), "--output-on-failure"], env=env)
     run(["cmake", "--install", str(root_build)], env=env)
     executable = PREFIX / "bin" / ("cdin.exe" if os.name == "nt" else "cdin")
-    run([str(executable), "--check"], env=env)
+    verify_runtime_version(executable, env)
     print("\nCDIN pinned stack: BUILD + COMPONENT TESTS + CLI E2E + LIFECYCLE SMOKE PASSED")
     return 0
 
