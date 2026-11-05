@@ -3,7 +3,6 @@
 #include "cdin/log.h"
 #include "cdin/frontend/core/protocol/client.h"
 #include "cdin/frontend/core/session/session.h"
-#include "cdin/frontend/ui/tui/session.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -184,7 +183,6 @@ static int cdin_inproc_has_message(const cdin_inproc_transport *transport)
 
 static int cdin_frontend_receive_snapshot(
     cdin_frontend_session *session,
-    cdin_frontend_tui_model *model,
     cdin_inproc_transport *transport,
     cdin_log *log,
     size_t *out_flush_count)
@@ -193,9 +191,6 @@ static int cdin_frontend_receive_snapshot(
     for (iterations = 0u; iterations < CDIN_SMOKE_MAX_MESSAGES; iterations++) {
         cdin_frontend_protocol_message_view message;
         cdin_frontend_protocol_status protocol_status;
-        cdin_frontend_tui_model_status model_status;
-        int committed = 0;
-
         if (!cdin_inproc_has_message(transport)) return 0;
         protocol_status = cdin_frontend_session_receive(session, &message);
         if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
@@ -208,14 +203,21 @@ static int cdin_frontend_receive_snapshot(
             MMLLOG_ERROR(log->logger, "Unexpected control reply during UI snapshot");
             return -1;
         }
-
-        model_status = cdin_frontend_tui_receive(session, model, &message, &committed);
-        if (model_status != CDIN_FRONTEND_TUI_MODEL_OK) {
-            MMLLOG_ERROR(log->logger, "TUI model rejected Backend message: %d",
-                         (int)model_status);
+        protocol_status = cdin_frontend_protocol_validate_payload(
+            message.type, message.payload, message.payload_length);
+        if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+            MMLLOG_ERROR(log->logger, "Frontend rejected Backend payload: %s",
+                         cdin_frontend_protocol_status_name(protocol_status));
             return -1;
         }
-        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH && committed) {
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            protocol_status = cdin_frontend_session_ack(
+                session, session->last_flush_sequence);
+            if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+                MMLLOG_ERROR(log->logger, "Frontend flush ACK failed: %s",
+                             cdin_frontend_protocol_status_name(protocol_status));
+                return -1;
+            }
             (*out_flush_count)++;
         }
     }
@@ -229,7 +231,6 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
     cdin_frontend_protocol_io io;
     cdin_frontend_client client;
     cdin_frontend_session session;
-    cdin_frontend_tui_model *model = NULL;
     uint8_t *client_buffer = NULL;
     size_t flush_count = 0u;
     size_t processed = 0u;
@@ -296,11 +297,6 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
         }
     }
 
-    model = cdin_frontend_tui_model_create("main", 24u, NULL);
-    if (model == NULL) {
-        MMLLOG_ERROR(log->logger, "TUI model creation failed");
-        goto cleanup;
-    }
     protocol_status = cdin_frontend_session_attach(&session, "main", "cells", 80u, 24u);
     if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
         MMLLOG_ERROR(log->logger, "Frontend ATTACH failed: %s",
@@ -308,12 +304,12 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
         goto cleanup;
     }
 
-    if (cdin_frontend_receive_snapshot(&session, model, &transport, log, &flush_count) != 0) {
+    if (cdin_frontend_receive_snapshot(&session, &transport, log, &flush_count) != 0) {
         goto cleanup;
     }
     if (session.state != CDIN_FRONTEND_SESSION_ATTACHED ||
         flush_count == 0u ||
-        cdin_frontend_tui_model_last_flush(model) == 0u) {
+        session.last_flush_sequence == 0u) {
         MMLLOG_ERROR(log->logger,
                      "Frontend attach did not commit a versioned UI snapshot");
         goto cleanup;
@@ -370,7 +366,6 @@ cleanup:
             result = -1;
         }
     }
-    if (model != NULL) cdin_frontend_tui_model_destroy(model);
     free(client_buffer);
     free(transport.outgoing);
     free(transport.incoming);
