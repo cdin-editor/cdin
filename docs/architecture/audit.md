@@ -58,7 +58,7 @@ CI run [42024750897](https://github.com/cdin-editor/cdin/actions/runs/4202475089
 
 CodeQL run [42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) completed successfully for traced C/C++ and Python analysis.
 
-The GitHub-managed dynamic workflow [42024744686](https://github.com/cdin-editor/cdin/actions/runs/42024744686) passed Python but failed JavaScript/TypeScript because no processable JS/TS source exists. This Default Setup language selection is configured in GitHub repository settings, outside the committed workflows. The explicit C/C++ and Python workflow does not disable that separate configuration.
+The GitHub Code Quality dynamic workflow [42025677183](https://github.com/cdin-editor/cdin/actions/runs/42025677183) passed Python but failed JavaScript/TypeScript because the extractor found only YAML configuration files and no JS/TS source. This language selection belongs to the repository's Settings → Security → Code quality configuration, not to `.github/workflows/codeql.yml`. The repository-owned C/C++ and Python CodeQL workflow is independent and passed.
 
 The current action-pinned run emitted no Node.js 20 deprecation warning in the Linux, macOS or Windows logs inspected. OIDC and attestation permissions are isolated to a separate trusted-main job; PR build jobs receive only `contents: read`.
 
@@ -70,7 +70,7 @@ The current action-pinned run emitted no Node.js 20 deprecation warning in the L
 - **Snapshot limits:** initial Runtime UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`. The current handshake smoke does not bypass this by increasing message limits or claim snapshot delivery.
 - **Readiness integration:** Backend exposes a worker-completion wakeup callback, but CDIN still needs a real readiness-driven event loop that combines terminal readiness, Backend wakeups, resize and termination.
 - **Static include boundaries:** the current boundary script catches selected copied implementation calls but does not parse the compiler's full include graph. It is a guardrail, not a proof of all architectural include rules.
-- **GitHub Default Setup:** its JavaScript/TypeScript selection remains a settings-level failure; the repository-owned CodeQL workflow covers the actual C/C++ and Python languages.
+- **GitHub Code Quality:** deselect JavaScript/TypeScript in Settings → Security → Code quality; keep the repository-owned CodeQL workflow for C/C++ and Python.
 
 ## 6. Remaining release gates
 
