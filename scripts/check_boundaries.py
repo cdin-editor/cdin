@@ -2,6 +2,7 @@
 """Static guard: Composition Root may orchestrate APIs, not copy component logic."""
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,4 +24,21 @@ if violations:
     print("Composition Root boundary violations:", file=sys.stderr)
     print("\n".join(violations), file=sys.stderr)
     raise SystemExit(1)
-print("Composition Root boundaries: OK")
+print("Composition Root source boundaries: OK")
+
+unit_tests = subprocess.run(
+    [sys.executable, "-m", "unittest", "discover",
+     "-s", str(ROOT / "tests" / "architecture"), "-p", "test_*.py"],
+    cwd=ROOT,
+    check=False,
+)
+if unit_tests.returncode != 0:
+    raise SystemExit(unit_tests.returncode)
+
+include_graph = subprocess.run(
+    [sys.executable, str(ROOT / "scripts" / "check_include_graph.py")],
+    cwd=ROOT,
+    check=False,
+)
+if include_graph.returncode != 0:
+    raise SystemExit(include_graph.returncode)
