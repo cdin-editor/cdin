@@ -1,6 +1,5 @@
 /* ARCH-013: CDIN-owned diagnostics using m-mdy-m/log.c. */
 #include "cdin/log.h"
-#include <string.h>
 
 int cdin_log_open(cdin_log *log)
 {
@@ -39,11 +38,15 @@ void cdin_log_write(cdin_log *log, int32_t level, const char *component,
 
 void cdin_log_backend_sink(void *context, int level, const char *message, size_t length)
 {
-    int32_t mapped = MMLLOG_LEVEL_INFO;
-    if (level == 0) mapped = MMLLOG_LEVEL_ERROR;
-    else if (level == 1) mapped = MMLLOG_LEVEL_WARN;
-    else if (level == 3) mapped = MMLLOG_LEVEL_DEBUG;
-    else if (level == 4) mapped = MMLLOG_LEVEL_TRACE;
-    else if (level == 5) mapped = MMLLOG_LEVEL_FATAL;
+    int32_t mapped;
+    switch (level) {
+    case 0: mapped = MMLLOG_LEVEL_ERROR; break;
+    case 1: mapped = MMLLOG_LEVEL_WARN; break;
+    case 2: mapped = MMLLOG_LEVEL_INFO; break;
+    case 3: mapped = MMLLOG_LEVEL_DEBUG; break;
+    case 4: mapped = MMLLOG_LEVEL_TRACE; break;
+    case 5: mapped = MMLLOG_LEVEL_FATAL; break;
+    default: mapped = MMLLOG_LEVEL_WARN; break;
+    }
     cdin_log_write((cdin_log *)context, mapped, "BACKEND", "backend", message, length);
 }

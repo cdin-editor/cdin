@@ -70,10 +70,16 @@ if(CDIN_INSTALL_RUNTIME)
 endif()
 
 if(BUILD_TESTING)
-    add_test(NAME cdin_cli_help COMMAND cdin --help)
-    add_test(NAME cdin_cli_version COMMAND cdin --version)
-    add_test(NAME cdin_cli_unknown_option COMMAND cdin --not-a-cdin-option)
-    set_tests_properties(cdin_cli_unknown_option PROPERTIES WILL_FAIL TRUE)
+    find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME cdin_cli_help
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 0 "Usage:" "-" --help)
+    add_test(NAME cdin_cli_version
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 0 "cdin 0.2.0" "-" --version)
+    add_test(NAME cdin_cli_unknown_option
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --not-a-cdin-option)
     add_test(NAME cdin_backend_runtime_lifecycle COMMAND cdin --check)
     set_tests_properties(cdin_backend_runtime_lifecycle PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
