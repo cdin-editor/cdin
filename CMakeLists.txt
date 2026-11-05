@@ -77,6 +77,9 @@ if(BUILD_TESTING)
     add_test(NAME cdin_cli_version
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 0 "cdin 0.2.0" "-" --version)
+    add_test(NAME cdin_cli_help_describes_frontend_modes
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 0 "headless|tui" "-" --help)
     add_test(NAME cdin_cli_unknown_option
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --not-a-cdin-option)
