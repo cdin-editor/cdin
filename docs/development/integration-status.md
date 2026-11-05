@@ -15,7 +15,7 @@ The remaining interactive-product and production-release work is tracked in [iss
 | Runtime version identity | VERIFIED | The stack smoke compares the Runtime-reported version with the version in `deps.lock`; CI log confirms Runtime `1.0.0-rc.1`. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
 | Backend package contract | IMPLEMENTED | Backend 1.0.0 exports versioned `cdinBackend` CMake package targets; CDIN consumes them with `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`. |
-| Backend/Frontend protocol compatibility | PARTIAL | Protocol major/minor header constants are compared at compile time; `--check` sends Frontend Core HELLO through an in-process byte transport and validates Backend HELLO_ACK. |
+| Backend/Frontend protocol compatibility | IMPLEMENTED; CI verification pending | Protocol major/minor guards plus `--check` HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot delivery, UI flush/ACK and resize through Frontend Core. |
 | Shared logging | IMPLEMENTED for CDIN and Backend callbacks | CDIN owns a logger instance and routes Backend log callbacks into it. |
 | CLI fail-closed tests | PASS | Nine executable-level CDIN CTest cases pass on Linux, macOS and Windows, including missing values and gated launch paths. |
 | Source snapshot | PASS | Deterministic ZIP, path/CRC validation, reproducibility comparison and SHA-256 verification pass on all three native platforms. |
@@ -26,9 +26,9 @@ The remaining interactive-product and production-release work is tracked in [iss
 
 | Area | Status | Missing work |
 | --- | --- | --- |
-| Interactive TUI | NOT IMPLEMENTED | Frontend TUI adapter is not exported as an installable supported target; initial UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`; Backend wakeup and FE-019 event-loop integration remain. |
+| Interactive TUI | NOT IMPLEMENTED | Frontend TUI adapter is not exported as an installable supported target; Backend wakeup and FE-019 event-loop integration remain. The initial snapshot size-budget defect has a fix in Backend PR #7 and an end-to-end smoke in this branch, pending CI. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
-| View attachment and UI state | NOT VERIFIED | HELLO/HELLO_ACK is tested, but ATTACH, initial UI snapshot publication, UI flush/ACK and resize have not passed through CDIN. |
+| View attachment and UI state | IMPLEMENTED; CI verification pending | CDIN smoke performs ATTACH, verifies ordered options/style/layout and snapshot flush, ACKs the flush and sends resize. The test must pass on native CI before marking VERIFIED. |
 | Real editing workflow | NOT IMPLEMENTED | Create/open/edit/save/close/reopen through real Runtime, Backend, Kernel and Frontend interfaces. |
 | Keymaps and commands through input | NOT VERIFIED | Feed real Frontend input into Backend and verify Runtime dispatch. |
 | Plugin lifecycle and isolation | NOT VERIFIED from CDIN | Exercise plugin load, capability denial, failure isolation and unload in a live session. |
@@ -53,7 +53,7 @@ The remaining interactive-product and production-release work is tracked in [iss
   - All pinned GitHub Actions completed without the previous Node.js 20 deprecation warning.
 - [CodeQL run 42024750919](https://github.com/cdin-editor/cdin/actions/runs/42024750919) passed both C/C++ traced-build analysis and Python analysis.
 
-These runs validate the composition/lifecycle and component tests. They do **not** prove view attachment, UI snapshot delivery, rendering, document editing, save/reopen, input dispatch or plugin behavior.
+The previous runs validate the earlier composition/lifecycle candidate only. The new ATTACH/snapshot/ACK/resize path is added after those runs and is **not yet verified** until fresh native CI passes. Neither path proves rendering, document editing, save/reopen, input dispatch or plugin behavior.
 
 ### GitHub Code Quality language selection
 
@@ -69,14 +69,14 @@ The provenance-attestation job is intentionally skipped on pull requests. PR bui
 
 - Backend 1.0.0 package discovery is versioned; keep `find_package(cdinBackend 1.0.0 CONFIG REQUIRED)`.
 - Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
-- Initial UI snapshot publication previously returned `CDIN_BACKEND_LIMIT_EXCEEDED`; the headless handshake was intentionally kept narrow instead of increasing message limits or claiming snapshot coverage.
+- The earlier `CDIN_BACKEND_LIMIT_EXCEEDED` was caused by using the 16 KiB per-frame limit as an aggregate snapshot budget. Backend PR #7 separates those limits; CDIN now pins that Backend candidate and tests attach/snapshot/flush/ACK/resize. This remains pending fresh CI.
 - Frontend TUI target remains experimental/unexported by Frontend Core 1.0.0. CDIN must consume a supported installable adapter, not copy its implementation.
 
 ## 5. Release gates
 
 Before describing CDIN as an interactive editor:
 
-1. Resolve Backend initial Runtime UI snapshot publication and verify ATTACH, UI flush/ACK and resize end-to-end.
+1. Pass fresh Backend and CDIN native CI for the corrected aggregate snapshot budget and ATTACH/flush/ACK/resize smoke.
 2. Publish an installable Frontend TUI adapter package/target or select another supported adapter.
 3. Connect Backend worker-completion wakeup to the Frontend event loop and implement the FE-019 readiness multiplexer.
 4. Add product E2E for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings.
