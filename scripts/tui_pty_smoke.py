@@ -20,6 +20,7 @@ from pathlib import Path
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
 RESTORE = (b"\\x1b[?25h", b"\\x1b[?2004l", b"\\x1b[?1049l")
+ENTER = (b"\\x1b[?25l", b"\\x1b[?2004h", b"\\x1b[?1049h")
 
 
 def drain(master: int, output: bytearray) -> None:
@@ -148,8 +149,14 @@ def run_startup_failure(executable: str) -> None:
             code = wait_exit(master, process, output, 10.0)
             if code == 0:
                 raise AssertionError("TUI unexpectedly started with a missing Runtime root")
-            assert_restored(slave, before_termios, before_flags, output)
-            print("CDIN TUI startup-failure smoke passed: terminal mode, flags, cursor and screen restored")
+            if any(token in output for token in ENTER):
+                assert_restored(slave, before_termios, before_flags, output)
+            else:
+                if termios.tcgetattr(slave) != before_termios:
+                    raise AssertionError("startup failure changed terminal mode without restoring it")
+                if fcntl.fcntl(slave, fcntl.F_GETFL) != before_flags:
+                    raise AssertionError("startup failure changed terminal flags without restoring them")
+            print("CDIN TUI startup-failure smoke passed: terminal state remained unchanged or was restored")
         finally:
             if process is not None and process.poll() is None:
                 process.kill()
