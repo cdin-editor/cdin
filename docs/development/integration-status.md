@@ -14,8 +14,8 @@ The remaining interactive-product and production-release work is tracked in [iss
 | Runtime module installation | IMPLEMENTED | CMake installs the pinned Lua module tree under `share/cdin/lua`. |
 | Runtime version identity | VERIFIED | The stack smoke compares the Runtime-reported version with the version in `deps.lock`; CI log confirms Runtime `1.0.0-rc.1`. |
 | Backend lifecycle | IMPLEMENTED for smoke test | CDIN calls Backend create/start/pump/shutdown/destroy. |
-| Backend package contract | IMPLEMENTED | Backend 1.0.1 exports versioned `cdinBackend` CMake package targets; CDIN consumes them with `find_package(cdinBackend 1.0.1 CONFIG REQUIRED)`. |
-| Backend/Frontend protocol compatibility | VERIFIED on Linux/macOS/Windows | Protocol major/minor guards plus `--check` HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot delivery, UI flush/ACK, queue release and resize through Frontend Core. CI run 42051385717 passed. |
+| Backend package contract | IMPLEMENTED | Backend 1.0.2 exports versioned `cdinBackend` CMake package targets and the optional bounded/binary-safe Lua Host `fs.read_file`; CDIN now requires `find_package(cdinBackend 1.0.2 CONFIG REQUIRED)`. |
+| Backend/Frontend protocol compatibility | VERIFIED on Linux/macOS/Windows | Protocol major/minor guards plus `--check` HELLO/HELLO_ACK, real ATTACH, ordered initial UI snapshot delivery, UI flush/ACK, queue release and resize through the merged Frontend Core package. Existing baseline evidence is CI run 42051385717; the expanded live edit/save/reopen smoke is now added and awaits this branch's native CI. |
 | Shared logging | IMPLEMENTED for CDIN and Backend callbacks | CDIN owns a logger instance and routes Backend log callbacks into it. |
 | CLI fail-closed tests | PASS | Nine executable-level CDIN CTest cases pass on Linux, macOS and Windows, including missing values and gated launch paths. |
 | Source snapshot | PASS | Deterministic ZIP, path/CRC validation, reproducibility comparison and SHA-256 verification pass on all three native platforms. |
@@ -26,11 +26,11 @@ The remaining interactive-product and production-release work is tracked in [iss
 
 | Area | Status | Missing work |
 | --- | --- | --- |
-| Interactive TUI | NOT IMPLEMENTED | Frontend TUI adapter is not exported as an installable supported target; Backend wakeup and FE-019 event-loop integration remain. The lower-level ATTACH/snapshot/flush/ACK/resize protocol path is verified on all three native platforms. |
+| Interactive TUI | PARTIAL / NOT LAUNCHABLE | Frontend PR #2 now installs and exports `cdin::frontend_ui_tui` and its public headers, with a clean-prefix consumer test. CDIN still does not run the TUI app: Backend worker wakeup wiring, native readiness bridge, FE-019 multiplexing and terminal restore/recovery remain. |
 | GUI-SDL | NOT IMPLEMENTED in CDIN | GUI adapter is not launched by the current Composition Root. |
 | View attachment and UI state | VERIFIED on Linux/macOS/Windows | CDIN smoke performs ATTACH, verifies the ordered six-message initial snapshot including options/style/layout, validates snapshot flush, ACKs it, verifies queue release and sends resize. CI run 42051385717 passed on all three platforms plus Linux sanitizers. |
-| Real editing workflow | NOT IMPLEMENTED | Create/open/edit/save/close/reopen through real Runtime, Backend, Kernel and Frontend interfaces. |
-| Keymaps and commands through input | NOT VERIFIED | Feed real Frontend input into Backend and verify Runtime dispatch. |
+| Real editing workflow | IMPLEMENTATION ADDED; CI PENDING | `src/integration/frontend_smoke.c` now sends `document.new/open/close`, `input.text`, binary `input.paste`, Runtime undo/redo/save keymaps and `view.request_lines` through a real Frontend session into Backend/Runtime/Kernel, then compares saved and reopened bytes. Do not mark VERIFIED until the pinned-stack Linux/macOS/Windows CI run passes. |
+| Keymaps and commands through input | IMPLEMENTATION ADDED; CI PENDING | The same expanded CDIN smoke exercises typed `request.command`, text/paste and Ctrl+Z/Ctrl+Shift+Z/Ctrl+S over Frontend Protocol; native CI evidence is pending. |
 | Plugin lifecycle and isolation | NOT VERIFIED from CDIN | Exercise plugin load, capability denial, failure isolation and unload in a live session. |
 | Multi-frontend attach/detach | NOT VERIFIED from CDIN | Exercise driver/observer roles, detach and reconnect. |
 | Product memory and soak measurements | NOT IMPLEMENTED | Measure RSS, allocator peak, leaks, long-running sessions and latency. |
@@ -69,16 +69,17 @@ The provenance-attestation job is intentionally skipped on pull requests. PR bui
 - Backend 1.0.1 package discovery is versioned; keep `find_package(cdinBackend 1.0.1 CONFIG REQUIRED)`.
 - Runtime's version identity is verified for the pinned revision: the startup log reports `1.0.0-rc.1`, matching `deps.lock`.
 - The initial ATTACH failure had three Backend integration causes: (1) the 16 KiB per-frame cap was reused as the aggregate snapshot budget, fixed in merged Backend PR #7; (2) runtime version reporting remained hard-coded at 1.0.0 after the package bump, fixed in merged PR #8; (3) Backend required Runtime UI Model v1's optional `options` member and advertised the driver role too late for Frontend Core, fixed in merged PR #9 by encoding an empty CBOR map and reserving the first negotiated driver before HELLO_ACK. CDIN pins PR #9's immutable revision and the full ATTACH/snapshot/flush/ACK/resize smoke passes on Linux/macOS/Windows.
-- Frontend TUI target remains experimental/unexported by Frontend Core 1.0.0. CDIN must consume a supported installable adapter, not copy its implementation.
+- Frontend PR #2 is merged at `94643adada76cb3d056baf0b6ad475451d56ab0f`; `cdinFrontend` now installs/exports `cdin::frontend_ui_tui` when enabled and exposes a typed `request.command` session API. CDIN consumes the package; FE-019 remains the interactive launch gate.
+- Runtime PR #2 is Ready for review at tested head `84379cb7f837d1df95edd296e7ccec838f664fba`; it starts from the exact prior CDIN Runtime pin and adds lifecycle commands/keymaps plus FakeHost persistence tests. It is not merged yet.
 
 ## 5. Release gates
 
 Before describing CDIN as an interactive editor:
 
 1. Preserve the verified Backend and CDIN native CI for the aggregate snapshot budget and ATTACH/flush/ACK/resize smoke.
-2. Publish an installable Frontend TUI adapter package/target or select another supported adapter.
+2. Connect the already-published `cdin::frontend_ui_tui` package target to a supported launch path; complete its FE-019 readiness/wakeup/restore integration.
 3. Connect Backend worker-completion wakeup to the Frontend event loop and implement the FE-019 readiness multiplexer.
-4. Add product E2E for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings.
+4. Pass the expanded CDIN product smoke for create/open/edit/save/close/reopen, with exact-byte comparisons for NUL, invalid UTF-8, BOM and line endings; source implementation is present, CI proof is pending.
 5. Verify Runtime command/keymap execution through real input.
 6. Verify plugin loading, capability isolation, failure handling and unload.
 7. Verify Frontend detach/reconnect, multi-frontend sessions and failure recovery.
