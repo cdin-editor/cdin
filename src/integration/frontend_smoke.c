@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "cdin/backend.h"
 #include "cdin/backend_protocol.h"
 #include "cdin/log.h"
@@ -29,6 +31,10 @@
 #else
 #include <unistd.h>
 #define CDIN_SMOKE_PROCESS_ID() ((unsigned long)getpid())
+#endif
+
+#ifndef CDIN_DEFAULT_RUNTIME_ROOT
+#define CDIN_DEFAULT_RUNTIME_ROOT "./lua"
 #endif
 
 #define CDIN_SMOKE_FRAME_BYTES CDIN_FRONTEND_PROTOCOL_DEFAULT_MAX_FRAME_BYTES
@@ -622,7 +628,6 @@ typedef struct cdin_tui_context {
     int shutdown_called;
     int backend_ready;
     int terminate_pending;
-    int resize_pending;
     int flush_escape;
     uint32_t columns;
     uint32_t rows;
@@ -1055,7 +1060,6 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     size_t processed = 0u;
     int result = EXIT_FAILURE;
     int backend_created = 0;
-    int terminal_error = 0;
     const char *runtime_root;
     const char *runtime_entry;
 
@@ -1241,7 +1245,6 @@ cleanup:
     free(context.client_buffer);
     free(context.transport.outgoing);
     free(context.transport.incoming);
-    (void)terminal_error;
     return result;
 }
 
