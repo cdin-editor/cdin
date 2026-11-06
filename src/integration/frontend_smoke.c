@@ -1253,8 +1253,6 @@ typedef struct cdin_tui_context {
 #ifdef _WIN32
     HANDLE wake_event;
     HANDLE resize_timer;
-    HANDLE redirected_input_pipe;
-    int conpty_input_pipe;
     int control_handler_installed;
 #else
     int wake_read;
@@ -1309,12 +1307,9 @@ static int cdin_tui_create_wakeup_source(cdin_tui_context *context)
     context->wake_event = CreateEventW(NULL, TRUE, FALSE, NULL);
     context->resize_timer = CreateWaitableTimerW(NULL, FALSE, NULL);
     if (context->wake_event == NULL || context->resize_timer == NULL) return -1;
-    {
-        LONG period_ms = context->conpty_input_pipe ? 16L : 250L;
-        due.QuadPart = -(LONGLONG)period_ms * 10000LL; /* 100 ns units. */
-        if (!SetWaitableTimer(context->resize_timer, &due, period_ms,
-                              NULL, NULL, FALSE)) return -1;
-    }
+    due.QuadPart = -2500000LL; /* 250 ms, in 100 ns units. */
+    if (!SetWaitableTimer(context->resize_timer, &due, 250,
+                          NULL, NULL, FALSE)) return -1;
     return 0;
 }
 
@@ -1360,10 +1355,9 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
     ULONGLONG deadline = 0u;
     uint32_t ready = 0u;
     DWORD base_timeout = INFINITE;
-    DWORD handle_count;
-    DWORD wake_index;
-    DWORD timer_index;
-    DWORD input_index = MAXDWORD;
+    DWORD wait_status;
+    DWORD timeout;
+    HANDLE input;
     if (context == NULL || out_ready_events == NULL ||
         (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL ||
         context->wake_event == NULL || context->resize_timer == NULL) return -1;
@@ -1380,124 +1374,86 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         return 0;
     }
 
-    if (context->conpty_input_pipe) {
-        /* Anonymous ConPTY input pipes are not waitable kernel objects.
-         * Poll their byte availability on the short timer while continuing
-         * to wait atomically for Backend wakeups and resize changes. */
-        if (context->redirected_input_pipe == NULL ||
-            context->redirected_input_pipe == INVALID_HANDLE_VALUE) return -1;
-        handles[0] = context->wake_event;
-        handles[1] = context->resize_timer;
-        handle_count = 2u;
-        wake_index = 0u;
-        timer_index = 1u;
-    } else {
-        HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-        if (input == NULL || input == INVALID_HANDLE_VALUE) return -1;
-        handles[0] = input;
-        handles[1] = context->wake_event;
-        handles[2] = context->resize_timer;
-        handle_count = 3u;
-        input_index = 0u;
-        wake_index = 1u;
-        timer_index = 2u;
+    /* The terminal adapter switches STD_INPUT_HANDLE to its owned CONIN$
+     * handle for both native consoles and ConPTY. Console input handles are
+     * waitable, unlike the redirected stdio pipes used by the ConPTY host. */
+    input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input == NULL || input == INVALID_HANDLE_VALUE) {
+        MMLLOG_ERROR(context->log->logger,
+                     "TUI standard input handle is invalid: win32_error=%lu",
+                     (unsigned long)GetLastError());
+        return -1;
     }
+    handles[0] = input;
+    handles[1] = context->wake_event;
+    handles[2] = context->resize_timer;
 
     if (timeout_ms >= 0) {
         deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
         base_timeout = (DWORD)timeout_ms;
     }
-    for (;;) {
-        DWORD timeout = base_timeout;
-        DWORD wait_status;
-        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
-            (timeout == INFINITE || timeout > 30u)) timeout = 30u;
-        wait_status = WaitForMultipleObjects(handle_count, handles, FALSE, timeout);
-        if (wait_status == WAIT_FAILED) {
+    timeout = base_timeout;
+    if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
+        (timeout == INFINITE || timeout > 30u)) timeout = 30u;
+    wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
+    if (wait_status == WAIT_OBJECT_0) {
+        *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+        return 0;
+    }
+    if (wait_status == WAIT_OBJECT_0 + 1u) {
+        uint32_t wake_ready = 0u;
+        if (!ResetEvent(context->wake_event)) {
             MMLLOG_ERROR(context->log->logger,
-                         "TUI wait failed: win32_error=%lu conpty_pipe=%d",
-                         (unsigned long)GetLastError(), context->conpty_input_pipe);
+                         "TUI wake event reset failed: win32_error=%lu",
+                         (unsigned long)GetLastError());
             return -1;
         }
-        if (input_index != MAXDWORD && wait_status == WAIT_OBJECT_0 + input_index) {
+        if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+            wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
+        if (context->terminate_pending)
+            wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+        *out_ready_events = wake_ready;
+        return 0;
+    }
+    if (wait_status == WAIT_OBJECT_0 + 2u) {
+        uint32_t columns = 0u;
+        uint32_t rows = 0u;
+        if (context->terminal.size(context->terminal.context, &columns, &rows) != 0) {
+            MMLLOG_ERROR(context->log->logger,
+                         "TUI terminal size query failed in wait loop: win32_error=%lu",
+                         (unsigned long)GetLastError());
+            return -1;
+        }
+        if (columns != context->columns || rows != context->rows) {
+            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
+            return 0;
+        }
+        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+            context->flush_escape = 1;
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
             return 0;
         }
-        if (wait_status == WAIT_OBJECT_0 + wake_index) {
-            uint32_t wake_ready = 0u;
-            if (!ResetEvent(context->wake_event)) {
-                MMLLOG_ERROR(context->log->logger, "TUI wake event reset failed: win32_error=%lu",
-                             (unsigned long)GetLastError());
-                return -1;
-            }
-            if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
-                wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
-            if (context->terminate_pending)
-                wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
-            if (wake_ready != 0u) {
-                *out_ready_events = wake_ready;
-                return 0;
-            }
-        } else if (wait_status == WAIT_OBJECT_0 + timer_index) {
-            if (context->conpty_input_pipe) {
-                DWORD available = 0u;
-                if (!PeekNamedPipe(context->redirected_input_pipe, NULL, 0u,
-                                   NULL, &available, NULL)) {
-                    DWORD error = GetLastError();
-                    if (error == ERROR_BROKEN_PIPE) {
-                        *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-                        return 0;
-                    }
-                    if (error != ERROR_NO_DATA) {
-                        MMLLOG_ERROR(context->log->logger,
-                                     "ConPTY PeekNamedPipe failed: win32_error=%lu",
-                                     (unsigned long)error);
-                        return -1;
-                    }
-                    /* ERROR_NO_DATA means the pipe is currently empty; it is
-                     * not EOF and must not authorize a blocking ReadFile. */
-                }
-                if (available != 0u) {
-                    *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-                    return 0;
-                }
-            }
-            {
-                uint32_t columns = 0u;
-                uint32_t rows = 0u;
-                if (context->terminal.size(context->terminal.context, &columns, &rows) != 0) {
-                    MMLLOG_ERROR(context->log->logger,
-                                 "TUI terminal size query failed in wait loop: win32_error=%lu",
-                                 (unsigned long)GetLastError());
-                    return -1;
-                }
-                if (columns != context->columns || rows != context->rows) {
-                    *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
-                    return 0;
-                }
-            }
-        } else if (wait_status == WAIT_TIMEOUT) {
-            if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
-                context->flush_escape = 1;
-                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-                return 0;
-            }
-            if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
-                *out_ready_events = 0u;
-                return 0;
-            }
-        } else {
-            return -1;
+        if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
+            *out_ready_events = 0u;
+            return 0;
         }
-        if (timeout_ms >= 0) {
-            ULONGLONG now = GetTickCount64();
-            if (now >= deadline) {
-                *out_ready_events = 0u;
-                return 0;
-            }
-            base_timeout = (DWORD)(deadline - now);
-        }
+        /* A timer tick is only a size poll; do not report input readiness. */
+        *out_ready_events = 0u;
+        return 0;
     }
+    if (wait_status == WAIT_TIMEOUT) {
+        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+            context->flush_escape = 1;
+            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+            return 0;
+        }
+        *out_ready_events = 0u;
+        return 0;
+    }
+    MMLLOG_ERROR(context->log->logger,
+                 "TUI wait failed: win32_error=%lu",
+                 (unsigned long)GetLastError());
+    return -1;
 }
 
 static void cdin_tui_backend_wakeup(void *opaque)
@@ -1789,8 +1745,8 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     if (amount < 0 || (size_t)amount > sizeof(bytes)) {
 #ifdef _WIN32
         MMLLOG_ERROR(context->log->logger,
-                     "TUI terminal read failed: win32_error=%lu conpty_pipe=%d",
-                     (unsigned long)GetLastError(), context->conpty_input_pipe);
+                     "TUI terminal read failed: win32_error=%lu",
+                     (unsigned long)GetLastError());
 #endif
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
@@ -2075,21 +2031,6 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
 #endif
     context.transport.backend = NULL;
     cdin_frontend_input_parser_init(&context.parser);
-#ifdef _WIN32
-    {
-        HANDLE standard_input = GetStdHandle(STD_INPUT_HANDLE);
-        HANDLE standard_output = GetStdHandle(STD_OUTPUT_HANDLE);
-        if (GetConsoleWindow() != NULL &&
-            standard_input != NULL && standard_input != INVALID_HANDLE_VALUE &&
-            standard_output != NULL && standard_output != INVALID_HANDLE_VALUE &&
-            GetFileType(standard_input) == FILE_TYPE_PIPE &&
-            GetFileType(standard_output) == FILE_TYPE_PIPE) {
-            context.redirected_input_pipe = standard_input;
-            context.conpty_input_pipe = 1;
-        }
-    }
-#endif
-
     terminal_status = cdin_frontend_terminal_open(&context.terminal);
     if (terminal_status != CDIN_FRONTEND_TERMINAL_OK) {
 #ifdef _WIN32
