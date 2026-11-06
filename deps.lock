@@ -25,9 +25,9 @@ role = "Merged Backend PR #12 and PR #13; immutable merge commit with validated 
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "eaadc442e04020b0dd209f89c1b94cdb1d3aa7b3"
+revision = "8b4714d6e3501bc0e9387bd8c7cd233806ab18cc"
 version = "1.0.0"
-role = "Merged Frontend PR #14 detach/reattach role lifecycle; Windows TUI remains fail-closed"
+role = "Frontend PR #16 candidate: ConPTY console buffer fallback for redirected stdio; awaiting CDIN Windows ConPTY integration verification"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
