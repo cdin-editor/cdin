@@ -252,12 +252,14 @@ static int cdin_gui_drain(
 
 static int cdin_gui_inject_test_input(void)
 {
+    /* SDL3's SDL_TextInputEvent owns a const pointer, not an inline buffer.
+     * Keep the smoke payload alive while the queued event is dispatched. */
+    static const char smoke_text[] = CDIN_GUI_SMOKE_PAYLOAD;
     SDL_Event event;
     memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_TEXT_INPUT;
     event.text.type = SDL_EVENT_TEXT_INPUT;
-    (void)snprintf(event.text.text, sizeof(event.text.text), "%s",
-                   CDIN_GUI_SMOKE_PAYLOAD);
+    event.text.text = smoke_text;
     if (!SDL_PushEvent(&event)) return -1;
     memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_KEY_DOWN;
