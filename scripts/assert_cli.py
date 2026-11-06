@@ -18,6 +18,7 @@ VALID_INVOCATIONS = {
     ("--runtime-entry",),
     ("--frontend",),
     ("--frontend", "gui-sdl"),
+    ("--frontend", "unknown"),
     ("--frontend", "tui"),
     ("--extension-root",),
     ("--load-extension",),
