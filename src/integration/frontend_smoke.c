@@ -1456,7 +1456,7 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
                              (unsigned long)GetLastError());
                 return -1;
             }
-            if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+            if (cdin_tui_backend_ready_take(context))
                 wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
             if (cdin_tui_termination_requested(context))
                 wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
