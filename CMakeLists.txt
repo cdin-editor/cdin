@@ -5,6 +5,7 @@ include(GNUInstallDirs)
 include(CTest)
 
 option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
+option(CDIN_ENABLE_GUI_SDL "Compose and test the installable Frontend GUI-SDL adapter" OFF)
 
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
@@ -35,6 +36,17 @@ target_link_libraries(cdin PRIVATE
     m-mdy-m::log
     cdin::frontend_core
     cdin::frontend_ui_tui)
+
+if(CDIN_ENABLE_GUI_SDL)
+    if(NOT TARGET cdin::frontend_ui_gui_sdl)
+        message(FATAL_ERROR
+            "CDIN_ENABLE_GUI_SDL requires the pinned Frontend package built with CDIN_FRONTEND_BUILD_UI_SDL=ON")
+    endif()
+    find_package(SDL3 3.2 CONFIG REQUIRED)
+    target_sources(cdin PRIVATE src/integration/gui_sdl.c)
+    target_link_libraries(cdin PRIVATE cdin::frontend_ui_gui_sdl SDL3::SDL3)
+    target_compile_definitions(cdin PRIVATE CDIN_ENABLE_GUI_SDL=1)
+endif()
 
 # Resolve installed shared component libraries relative to the executable so
 # the packaged tree runs without a developer-specific loader environment.
@@ -104,12 +116,23 @@ if(BUILD_TESTING)
     add_test(NAME cdin_cli_extension_requires_root
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --load-extension demo)
-    add_test(NAME cdin_cli_unsupported_frontend_is_gated
+    add_test(NAME cdin_cli_unknown_frontend_is_rejected
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend gui-sdl)
+                "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend unknown)
     add_test(NAME cdin_cli_interactive_launch_is_gated
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 3 "-" "launch" --frontend tui)
+
+    if(CDIN_ENABLE_GUI_SDL)
+        add_test(NAME cdin_cli_gui_sdl_launch_is_gated
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                    "$<TARGET_FILE:cdin>" 3 "-" "experimental" --frontend gui-sdl)
+        add_test(NAME cdin_gui_sdl_live_session_smoke
+            COMMAND cdin --frontend gui-sdl --check)
+        set_tests_properties(cdin_gui_sdl_live_session_smoke PROPERTIES
+            ENVIRONMENT "SDL_VIDEODRIVER=dummy;CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
+            TIMEOUT 90)
+    endif()
     add_test(NAME cdin_headless_frontend_protocol_smoke COMMAND cdin --check)
     set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")

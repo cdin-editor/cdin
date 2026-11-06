@@ -86,12 +86,14 @@ const char *cdin_options_usage(void)
 {
     return "Usage: cdin [--check] [--runtime-root PATH] [--runtime-entry MODULE] "
            "[--extension-root TRUSTED_DIR] [--load-extension NAME ...] "
-           "[--frontend headless|tui] [--help] [--version]\n"
+           "[--frontend headless|tui|gui-sdl] [--help] [--version]\n"
            "\nExtensions are opt-in trusted local code. --load-extension requires an "
            "administrator-controlled --extension-root; CDIN never discovers or loads "
            "extension directories automatically, and extension administration is not "
            "exposed over Frontend Protocol.\n"
            "\nThe headless frontend is selected by --check. The POSIX TUI is experimental "
-           "and requires CDIN_ENABLE_EXPERIMENTAL_TUI=1. Windows TUI remains gated by "
+           "and requires CDIN_ENABLE_EXPERIMENTAL_TUI=1. GUI-SDL uses the optional "
+           "installable SDL3 peer and requires CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1. "
+           "Windows TUI remains gated by "
            "native Console/ConPTY acceptance.\n";
 }

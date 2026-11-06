@@ -6,6 +6,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
+import hashlib
+import urllib.request
 import tomllib
 from pathlib import Path
 
@@ -51,6 +54,57 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--build", str(build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(build), "--output-on-failure"], env=env)
     run(["cmake", "--install", str(build)], env=env)
+
+
+def install_sdl3(env: dict[str, str]) -> None:
+    """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
+    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
+    spec = lock["tooling"]["sdl3"]
+    version = spec["version"]
+    archive = ROOT / ".deps" / "archives" / f"SDL3-{version}.tar.gz"
+    source_root = DEPS / "sdl3"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    if not archive.is_file():
+        print(f"Downloading SDL3 {version}", flush=True)
+        urllib.request.urlretrieve(spec["archive"], archive)
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    if digest != spec["sha256"]:
+        raise RuntimeError(
+            f"SDL3 SHA-256 mismatch: expected {spec['sha256']}, found {digest}"
+        )
+
+    source = source_root / f"SDL3-{version}"
+    if not (source / "CMakeLists.txt").is_file():
+        # The source archive is authenticated by the immutable SHA-256 above.
+        with tarfile.open(archive, "r:gz") as bundle:
+            bundle.extractall(source_root)
+    if not (source / "CMakeLists.txt").is_file():
+        raise RuntimeError(f"SDL3 source tree is missing: {source}")
+
+    options = [
+        "-DCMAKE_BUILD_TYPE=Release",
+        f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
+        "-DSDL_SHARED=OFF", "-DSDL_STATIC=ON",
+        "-DSDL_TEST_LIBRARY=OFF", "-DSDL_TESTS=OFF",
+        "-DSDL_EXAMPLES=OFF", "-DSDL_AUDIO=OFF",
+        "-DSDL_CAMERA=OFF", "-DSDL_JOYSTICK=OFF",
+        "-DSDL_HAPTIC=OFF", "-DSDL_HIDAPI=OFF",
+        "-DSDL_POWER=OFF", "-DSDL_SENSOR=OFF",
+        "-DSDL_VIDEO=ON", "-DSDL_RENDER=ON",
+        "-DSDL_DUMMYVIDEO=ON",
+    ]
+    if sys.platform.startswith("linux"):
+        options.extend([
+            "-DSDL_UNIX_CONSOLE_BUILD=ON", "-DSDL_X11=OFF",
+            "-DSDL_WAYLAND=OFF", "-DSDL_KMSDRM=OFF",
+            "-DSDL_OPENGL=OFF", "-DSDL_OPENGLES=OFF",
+            "-DSDL_VULKAN=OFF",
+        ])
+    build_dir = BUILD / "sdl3"
+    run(["cmake", "-S", str(source), "-B", str(build_dir), *options], env=env)
+    run(["cmake", "--build", str(build_dir), "--parallel"], env=env)
+    run(["cmake", "--install", str(build_dir)], env=env)
 
 
 def pinned_package_version(name: str) -> str:
@@ -130,9 +184,10 @@ def main() -> int:
         "-DCDIN_BUILD_BACKEND=ON", "-DCDIN_BUILD_INTEGRATION_TESTS=ON",
         "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
 
+    install_sdl3(env)
     frontend = DEPS / "frontend"
     cmake_component("frontend", frontend, options=["-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
-        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON", "-DCDIN_FRONTEND_BUILD_UI_SDL=OFF",
+        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON", "-DCDIN_FRONTEND_BUILD_UI_SDL=ON",
         "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON", "-DCDIN_FRONTEND_BUILD_APPS=OFF",
         "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF"], env=env)
 
@@ -140,7 +195,7 @@ def main() -> int:
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
-         "-DCDIN_INSTALL_RUNTIME=ON", "-DBUILD_TESTING=ON",
+         "-DCDIN_INSTALL_RUNTIME=ON", "-DCDIN_ENABLE_GUI_SDL=ON", "-DBUILD_TESTING=ON",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(root_build), "--output-on-failure"], env=env)

@@ -15,5 +15,8 @@ int cdin_frontend_extensions_unload(cdin_backend *backend,
                                     cdin_log *log,
                                     size_t loaded);
 int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log);
+#ifdef CDIN_ENABLE_GUI_SDL
+int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log);
+#endif
 
 #endif

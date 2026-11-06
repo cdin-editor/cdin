@@ -9,6 +9,9 @@
 #include "cdin/options.h"
 #include "cdin/frontend/core/protocol/wire.h"
 #include "integration/frontend_smoke.h"
+#ifdef CDIN_ENABLE_GUI_SDL
+#include "cdin/frontend/ui/gui_sdl/gui_sdl.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +133,14 @@ int main(int argc, char **argv)
             (void)fputs("cdin: --check is only supported by the headless frontend\n", stderr);
             return 3;
         }
+#ifdef CDIN_ENABLE_GUI_SDL
+    } else if (strcmp(options.frontend, "gui-sdl") == 0) {
+        /* --check runs a live Backend/Runtime session against SDL dummy video. */
+#else
+    } else if (strcmp(options.frontend, "gui-sdl") == 0) {
+        (void)fputs("cdin: frontend 'gui-sdl' was not built with SDL3 support\n", stderr);
+        return 3;
+#endif
     } else {
         (void)fprintf(stderr, "cdin: frontend '%s' is not launchable\n", options.frontend);
         return 3;
@@ -143,12 +154,20 @@ int main(int argc, char **argv)
         result = run_check(&options, &log);
         MMLLOG_INFO(log.logger, "Composition Root startup validation %s",
                     result == EXIT_SUCCESS ? "passed" : "failed");
-    } else {
+    } else if (strcmp(options.frontend, "tui") == 0) {
         MMLLOG_INFO(log.logger, "Composition Root TUI startup begins");
         result = cdin_frontend_tui_launch(&options, &log);
         MMLLOG_INFO(log.logger, "Composition Root TUI session %s",
                     result == EXIT_SUCCESS ? "stopped normally" :
                     result == 3 ? "was not launched" : "failed");
+#ifdef CDIN_ENABLE_GUI_SDL
+    } else {
+        MMLLOG_INFO(log.logger, "Composition Root GUI-SDL startup begins");
+        result = cdin_frontend_gui_sdl_launch(&options, &log);
+        MMLLOG_INFO(log.logger, "Composition Root GUI-SDL session %s",
+                    result == EXIT_SUCCESS ? "stopped normally" :
+                    result == 3 ? "was not launched" : "failed");
+#endif
     }
     cdin_log_close(&log);
     return result;

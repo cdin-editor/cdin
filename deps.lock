@@ -25,9 +25,9 @@ role = "Merged Backend PR #17: Windows GCC -Wtype-limits fix for resolver alloca
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "35ae996b904764a78d100655cffe7ee721a576e0"
+revision = "552eedd14e3971e2b39d706804d4af57f8b2dc38"
 version = "1.0.0"
-role = "Frontend PR #16 candidate: nonblocking CONIN$ reads with ERROR_NO_DATA readiness plus bounded UTF-8 text batching; awaiting CDIN ConPTY verification"
+role = "Frontend PR #17 GUI-SDL adapter candidate: installable SDL3 peer target pinned for CDIN live integration validation; pending merge"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
@@ -46,3 +46,9 @@ revision = "e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df"
 [tooling.gix]
 repository = "https://github.com/m-mdy-m/gix.git"
 revision = "9f0867923177cef3cd36d980cc2b356a35bee507"
+
+
+[tooling.sdl3]
+version = "3.4.16"
+archive = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz"
+sha256 = "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68"
