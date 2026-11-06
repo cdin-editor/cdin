@@ -1328,23 +1328,31 @@ static int cdin_tui_termination_requested(cdin_tui_context *context)
 
 #ifdef _WIN32
 static cdin_tui_context *cdin_tui_active_context;
+static SRWLOCK cdin_tui_control_lock = SRWLOCK_INIT;
 
 static BOOL WINAPI cdin_tui_console_handler(DWORD control_type)
 {
-    cdin_tui_context *context = cdin_tui_active_context;
+    cdin_tui_context *context;
+    BOOL handled = FALSE;
+    AcquireSRWLockShared(&cdin_tui_control_lock);
+    context = cdin_tui_active_context;
     switch (control_type) {
         case CTRL_C_EVENT:
         case CTRL_BREAK_EVENT:
         case CTRL_CLOSE_EVENT:
         case CTRL_LOGOFF_EVENT:
         case CTRL_SHUTDOWN_EVENT:
-            if (context == NULL || context->wake_event == NULL) return FALSE;
-            cdin_tui_request_termination(context);
-            (void)SetEvent(context->wake_event);
-            return TRUE;
+            if (context != NULL && context->wake_event != NULL) {
+                cdin_tui_request_termination(context);
+                (void)SetEvent(context->wake_event);
+                handled = TRUE;
+            }
+            break;
         default:
-            return FALSE;
+            break;
     }
+    ReleaseSRWLockShared(&cdin_tui_control_lock);
+    return handled;
 }
 
 static int cdin_tui_create_wakeup_source(cdin_tui_context *context)
@@ -1363,9 +1371,13 @@ static int cdin_tui_create_wakeup_source(cdin_tui_context *context)
 static int cdin_tui_install_termination_handler(cdin_tui_context *context)
 {
     if (context == NULL || context->wake_event == NULL) return -1;
+    AcquireSRWLockExclusive(&cdin_tui_control_lock);
     cdin_tui_active_context = context;
+    ReleaseSRWLockExclusive(&cdin_tui_control_lock);
     if (!SetConsoleCtrlHandler(cdin_tui_console_handler, TRUE)) {
+        AcquireSRWLockExclusive(&cdin_tui_control_lock);
         cdin_tui_active_context = NULL;
+        ReleaseSRWLockExclusive(&cdin_tui_control_lock);
         return -1;
     }
     context->control_handler_installed = 1;
@@ -1376,7 +1388,11 @@ static void cdin_tui_restore_termination_handler(cdin_tui_context *context)
 {
     if (context == NULL || !context->control_handler_installed) return;
     (void)SetConsoleCtrlHandler(cdin_tui_console_handler, FALSE);
+    /* Wait for any already-entered console callback before its event handle
+     * can be closed. A callback arriving after unregister sees a NULL owner. */
+    AcquireSRWLockExclusive(&cdin_tui_control_lock);
     if (cdin_tui_active_context == context) cdin_tui_active_context = NULL;
+    ReleaseSRWLockExclusive(&cdin_tui_control_lock);
     context->control_handler_installed = 0;
 }
 
