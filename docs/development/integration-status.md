@@ -69,9 +69,9 @@ The reproducible source snapshot and trusted-main provenance flow are source-dis
 | Area | Status | Remaining work |
 | --- | --- | --- |
 | Live experimental TUI on POSIX | PASS on Linux/macOS | The current PTY smoke passes initial render, input, SIGWINCH, save/quit, signal shutdown, startup failure and terminal restoration. Launch remains opt-in with `CDIN_ENABLE_EXPERIMENTAL_TUI=1`; this is not a supported release-mode launch. |
-| Windows TUI | NOT IMPLEMENTED | Native Console readiness, input/resize multiplexer and restoration. |
+| Windows TUI | PARTIAL / BLOCKED | Frontend PR #16 adds the ConPTY console-buffer fallback. CDIN can enter the initial screen, but the current ConPTY smoke still fails to observe edited text; input delivery, Protocol ACK/redraw and terminal restoration must pass before launch can be enabled. |
 | GUI-SDL | NOT IMPLEMENTED | Adapter composition, lifecycle and GUI E2E. |
-| Runtime/plugin lifecycle | NOT VERIFIED FROM CDIN | Live plugin load/unload, capability grant/deny, failure isolation and configuration/command error propagation. |
+| Runtime/plugin lifecycle | IMPLEMENTATION CANDIDATE / TEST PENDING | Backend PR #16 exposes trusted owner-thread load/unload C APIs over the secure resolver; CDIN now accepts --extension-root and repeated --load-extension in headless and TUI paths, with a real Lua init/unload CTest. The current Backend 1.2.0 pin is a Draft PR candidate; live native validation, capability allow/deny, failed-init rollback and cleanup still need green evidence. |
 | Multiple Frontends and recovery | PARTIALLY VERIFIED | Two concurrent Frontend sessions, Driver/Observer permissions, negotiated promotion, detach/reattach lease reacquisition and input pass on Linux/macOS/Windows. Transport disconnect/reconnect while work is pending, document/session continuity under transport loss, process failure recovery, partial startup and repeated shutdown remain open. |
 | Performance | PARTIAL / NOT A BASELINE | Short headless smoke reports per-platform sampled RSS and p50/p95/p99; allocator peak, defined editing workloads, input-to-visible/save latency, budgets and soak/leak workload remain open. |
 | Application installers | NOT IMPLEMENTED | Native Linux/macOS/Windows packages, runtime discovery, clean-machine install/upgrade/uninstall and checksums/provenance. |
@@ -81,9 +81,9 @@ Registry handoff is deliberately not a blocker for this epic; it is a later, pro
 
 ## 5. Ordered release gates
 
-1. Implement and validate the native Windows Console TUI adapter; keep interactive launch fail-closed until that adapter is ready.
+1. Complete the Windows ConPTY path: deliver terminal bytes through the opened CONIN$ handle, verify Frontend Protocol mutations and UI ACK/redraw, then assert exact save bytes and restoration. Keep Windows launch fail-closed until that test passes.
 2. Implement GUI-SDL composition, launch, rendering, input and lifecycle tests.
-3. Add a live Runtime extension/plugin loading path with a reviewed module resolver and capability-grant contract; verify allow/deny, init/runtime/unload failure and resource cleanup. Runtime's current sandbox manager alone is not proof of CDIN integration.
+3. Finish and verify the explicit trusted-extension lifecycle: run the real Lua init/unload smoke on all native platforms, test unknown/denied names and initialization/runtime/unload failure cleanup, and document the administrator-controlled extension root. Backend PR #16 must merge before this becomes a supported dependency.
 4. Exercise transport disconnect/reconnect with work pending, Backend/Runtime failure recovery, partial startup and repeated start/stop.
 5. Define named editing workloads; collect allocator peak where available, input-to-visible/save latency, p50/p95/p99, raw per-platform results and a documented soak/leak run. The current benchmark is only a short headless smoke.
 6. Produce Linux/macOS/Windows application installers and validate clean-machine dependency discovery, launch, basic editing, upgrade and uninstall; sign artifacts and verify embedded licenses/assets.
