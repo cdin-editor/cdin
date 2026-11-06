@@ -18,16 +18,16 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "872a467d2485258f8e6379cca37aec23174bba30"
+revision = "60ccca7254ba6907f2c99f21adf45355966f2238"
 version = "1.0.2"
 protocol = "1.0.0"
-role = "Integration candidate: Backend PR #12 (driver-role reattach); includes PR #11 negotiated events and binary-safe Host reads"
+role = "Integration candidate: Backend PR #12 plus PR #13 sequence-test correction; immutable validated PR revision"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "c17dd2ef84a3599a1964fed49960e9f33b05a6f7"
+revision = "eaadc442e04020b0dd209f89c1b94cdb1d3aa7b3"
 version = "1.0.0"
-role = "Integration candidate: Frontend PR #14 (detach/reattach role lifecycle); Windows TUI remains fail-closed"
+role = "Merged Frontend PR #14 detach/reattach role lifecycle; Windows TUI remains fail-closed"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
