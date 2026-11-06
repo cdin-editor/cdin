@@ -25,9 +25,9 @@ role = "Merged Backend PR #17: Windows GCC -Wtype-limits fix for resolver alloca
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "258e93d5033e74a7830aad6aba52b0b7290ebbea"
+revision = "bb22901e82f4b0f3a6aa0eefdd22265465564cd3"
 version = "1.0.0"
-role = "Frontend PR #18 candidate: GUI-SDL review fixes and Windows ConPTY handle fallback, pinned for CDIN live validation; CI pending"
+role = "Frontend PR #18 candidate: GUI-SDL review fixes and Windows ConPTY handle fallback, pinned for CDIN live validation; latest SDL unit-validation test fix included"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
