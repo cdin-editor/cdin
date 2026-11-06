@@ -22,28 +22,24 @@
 #include <string.h>
 #ifdef _WIN32
 #include <direct.h>
+#include <process.h>
+#include <windows.h>
 #define CDIN_SMOKE_MKDIR(path) _mkdir(path)
 #define CDIN_SMOKE_RMDIR(path) _rmdir(path)
+#define CDIN_SMOKE_PROCESS_ID() ((unsigned long)_getpid())
 #else
-#include <sys/stat.h>
-#define CDIN_SMOKE_MKDIR(path) mkdir((path), 0700)
-#define CDIN_SMOKE_RMDIR(path) rmdir(path)
-#endif
-#ifndef _WIN32
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#endif
-#ifdef _WIN32
-#include <process.h>
-#define CDIN_SMOKE_PROCESS_ID() ((unsigned long)_getpid())
-#else
-#include <unistd.h>
+#define CDIN_SMOKE_MKDIR(path) mkdir((path), 0700)
+#define CDIN_SMOKE_RMDIR(path) rmdir(path)
 #define CDIN_SMOKE_PROCESS_ID() ((unsigned long)getpid())
 #endif
+#include <time.h>
 
 #ifndef CDIN_DEFAULT_RUNTIME_ROOT
 #define CDIN_DEFAULT_RUNTIME_ROOT "./lua"
@@ -1194,8 +1190,6 @@ cleanup:
 }
 
 
-#ifndef _WIN32
-
 typedef struct cdin_tui_context {
     cdin_backend *backend;
     cdin_inproc_transport transport;
@@ -1206,14 +1200,23 @@ typedef struct cdin_tui_context {
     cdin_frontend_input_parser parser;
     cdin_frontend_tui_model *model;
     cdin_log *log;
+#ifdef _WIN32
+    HANDLE wake_event;
+    HANDLE resize_timer;
+    int control_handler_installed;
+#else
     int wake_read;
     int wake_write;
+    int signals_installed;
+    struct sigaction previous_winch;
+    struct sigaction previous_term;
+    struct sigaction previous_int;
+#endif
     int terminal_opened;
     int session_initialized;
-    int signals_installed;
     int shutdown_called;
-    int backend_ready;
-    int terminate_pending;
+    volatile long backend_ready;
+    volatile long terminate_pending;
     int flush_escape;
     int parser_ready_pending;
     int terminal_buffer_only;
@@ -1223,12 +1226,172 @@ typedef struct cdin_tui_context {
     char scratch_path[160];
     char title[192];
     char help_status[192];
-    struct sigaction previous_winch;
-    struct sigaction previous_term;
-    struct sigaction previous_int;
     uint8_t *client_buffer;
 } cdin_tui_context;
 
+#ifdef _WIN32
+static cdin_tui_context *cdin_tui_active_context;
+
+static BOOL WINAPI cdin_tui_console_handler(DWORD control_type)
+{
+    cdin_tui_context *context = cdin_tui_active_context;
+    switch (control_type) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_LOGOFF_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            if (context == NULL || context->wake_event == NULL) return FALSE;
+            InterlockedExchange((volatile LONG *)&context->terminate_pending, 1L);
+            (void)SetEvent(context->wake_event);
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+static int cdin_tui_create_wakeup_source(cdin_tui_context *context)
+{
+    LARGE_INTEGER due;
+    if (context == NULL) return -1;
+    context->wake_event = CreateEventW(NULL, TRUE, FALSE, NULL);
+    context->resize_timer = CreateWaitableTimerW(NULL, FALSE, NULL);
+    if (context->wake_event == NULL || context->resize_timer == NULL) return -1;
+    due.QuadPart = -2500000LL; /* 250 ms, in 100 ns units. */
+    if (!SetWaitableTimer(context->resize_timer, &due, 250, NULL, NULL, FALSE)) return -1;
+    return 0;
+}
+
+static int cdin_tui_install_termination_handler(cdin_tui_context *context)
+{
+    if (context == NULL || context->wake_event == NULL) return -1;
+    cdin_tui_active_context = context;
+    if (!SetConsoleCtrlHandler(cdin_tui_console_handler, TRUE)) {
+        cdin_tui_active_context = NULL;
+        return -1;
+    }
+    context->control_handler_installed = 1;
+    return 0;
+}
+
+static void cdin_tui_restore_termination_handler(cdin_tui_context *context)
+{
+    if (context == NULL || !context->control_handler_installed) return;
+    (void)SetConsoleCtrlHandler(cdin_tui_console_handler, FALSE);
+    if (cdin_tui_active_context == context) cdin_tui_active_context = NULL;
+    context->control_handler_installed = 0;
+}
+
+static void cdin_tui_destroy_wakeup_source(cdin_tui_context *context)
+{
+    if (context == NULL) return;
+    if (context->resize_timer != NULL) {
+        (void)CancelWaitableTimer(context->resize_timer);
+        (void)CloseHandle(context->resize_timer);
+        context->resize_timer = NULL;
+    }
+    if (context->wake_event != NULL) {
+        (void)CloseHandle(context->wake_event);
+        context->wake_event = NULL;
+    }
+}
+
+static int cdin_tui_wait(void *opaque, uint32_t requested_events,
+                         int timeout_ms, uint32_t *out_ready_events)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    HANDLE handles[3];
+    HANDLE input;
+    ULONGLONG deadline = 0u;
+    uint32_t ready = 0u;
+    DWORD base_timeout = INFINITE;
+    if (context == NULL || out_ready_events == NULL ||
+        (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL ||
+        context->wake_event == NULL || context->resize_timer == NULL) return -1;
+    if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+        ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
+    if (context->parser_ready_pending) {
+        context->parser_ready_pending = 0;
+        context->terminal_buffer_only = 1;
+        ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+    }
+    if (context->terminate_pending) ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+    if (ready != 0u) {
+        *out_ready_events = ready;
+        return 0;
+    }
+    input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input == NULL || input == INVALID_HANDLE_VALUE) return -1;
+    handles[0] = input;
+    handles[1] = context->wake_event;
+    handles[2] = context->resize_timer;
+    if (timeout_ms >= 0) {
+        deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
+        base_timeout = (DWORD)timeout_ms;
+    }
+    for (;;) {
+        DWORD timeout = base_timeout;
+        DWORD wait_status;
+        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
+            (timeout == INFINITE || timeout > 30u)) timeout = 30u;
+        wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
+        if (wait_status == WAIT_OBJECT_0) {
+            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+            return 0;
+        }
+        if (wait_status == WAIT_OBJECT_0 + 1u) {
+            uint32_t wake_ready = 0u;
+            if (!ResetEvent(context->wake_event)) return -1;
+            if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+                wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
+            if (context->terminate_pending)
+                wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+            if (wake_ready != 0u) {
+                *out_ready_events = wake_ready;
+                return 0;
+            }
+        } else if (wait_status == WAIT_OBJECT_0 + 2u) {
+            uint32_t columns = 0u;
+            uint32_t rows = 0u;
+            if (context->terminal.size(context->terminal.context, &columns, &rows) != 0)
+                return -1;
+            if (columns != context->columns || rows != context->rows) {
+                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
+                return 0;
+            }
+        } else if (wait_status == WAIT_TIMEOUT) {
+            if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+                context->flush_escape = 1;
+                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+                return 0;
+            }
+            if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
+                *out_ready_events = 0u;
+                return 0;
+            }
+        } else {
+            return -1;
+        }
+        if (timeout_ms >= 0) {
+            ULONGLONG now = GetTickCount64();
+            if (now >= deadline) {
+                *out_ready_events = 0u;
+                return 0;
+            }
+            base_timeout = (DWORD)(deadline - now);
+        }
+    }
+}
+
+static void cdin_tui_backend_wakeup(void *opaque)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    if (context == NULL || context->wake_event == NULL) return;
+    InterlockedExchange((volatile LONG *)&context->backend_ready, 1L);
+    (void)SetEvent(context->wake_event);
+}
+
+#else
 static volatile sig_atomic_t cdin_tui_signal_write_fd = -1;
 
 static void cdin_tui_signal_handler(int signal_number)
@@ -1252,7 +1415,7 @@ static int cdin_tui_set_nonblocking(int descriptor)
     return 0;
 }
 
-static int cdin_tui_create_wakeup_pipe(cdin_tui_context *context)
+static int cdin_tui_create_wakeup_source(cdin_tui_context *context)
 {
     int descriptors[2];
     if (context == NULL || pipe(descriptors) != 0) return -1;
@@ -1274,16 +1437,9 @@ static void cdin_tui_signal_write(cdin_tui_context *context, uint8_t code)
     do {
         result = write(context->wake_write, &code, 1u);
     } while (result < 0 && errno == EINTR);
-    /* EAGAIN means the pipe already contains a wakeup and is readable. */
 }
 
-static void cdin_tui_backend_wakeup(void *opaque)
-{
-    cdin_tui_context *context = (cdin_tui_context *)opaque;
-    cdin_tui_signal_write(context, (uint8_t)'B');
-}
-
-static int cdin_tui_install_signal_handlers(cdin_tui_context *context)
+static int cdin_tui_install_termination_handler(cdin_tui_context *context)
 {
     struct sigaction action;
     if (context == NULL || context->wake_write < 0) return -1;
@@ -1308,7 +1464,7 @@ fail:
     return -1;
 }
 
-static void cdin_tui_restore_signal_handlers(cdin_tui_context *context)
+static void cdin_tui_restore_termination_handler(cdin_tui_context *context)
 {
     if (context == NULL || !context->signals_installed) return;
     cdin_tui_signal_write_fd = -1;
@@ -1316,6 +1472,26 @@ static void cdin_tui_restore_signal_handlers(cdin_tui_context *context)
     (void)sigaction(SIGTERM, &context->previous_term, NULL);
     (void)sigaction(SIGWINCH, &context->previous_winch, NULL);
     context->signals_installed = 0;
+}
+
+static void cdin_tui_destroy_wakeup_source(cdin_tui_context *context)
+{
+    if (context == NULL) return;
+    if (context->wake_read >= 0) {
+        (void)close(context->wake_read);
+        context->wake_read = -1;
+    }
+    if (context->wake_write >= 0) {
+        (void)close(context->wake_write);
+        context->wake_write = -1;
+    }
+}
+
+static void cdin_tui_backend_wakeup(void *opaque)
+{
+    cdin_tui_context *context = (cdin_tui_context *)opaque;
+    if (context != NULL && context->wake_write >= 0)
+        cdin_tui_signal_write(context, (uint8_t)'B');
 }
 
 static int cdin_tui_wait(void *opaque, uint32_t requested_events,
@@ -1347,9 +1523,6 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         *out_ready_events = ready;
         return 0;
     }
-
-    /* The Frontend parser needs one short ESC disambiguation window. All other
-     * waits block indefinitely; there is no periodic polling or busy-wait. */
     if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) timeout = 30;
     descriptors[0].fd = STDIN_FILENO;
     descriptors[0].events = POLLIN;
@@ -1365,14 +1538,11 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
             context->flush_escape = 1;
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-        } else {
-            *out_ready_events = 0u;
-        }
+        } else *out_ready_events = 0u;
         return 0;
     }
-    if ((descriptors[0].revents & (POLLIN | POLLHUP)) != 0) {
+    if ((descriptors[0].revents & (POLLIN | POLLHUP)) != 0)
         ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-    }
     if ((descriptors[0].revents & (POLLERR | POLLNVAL)) != 0) return -1;
     if ((descriptors[1].revents & POLLIN) != 0) {
         uint8_t bytes[128];
@@ -1404,6 +1574,7 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
     *out_ready_events = ready;
     return ready != 0u ? 0 : -1;
 }
+#endif
 
 static int cdin_tui_dispatch_input(cdin_tui_context *context,
                                    const cdin_frontend_input_event *event)
@@ -1756,8 +1927,10 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     if (options == NULL || log == NULL || log->logger == NULL) return EXIT_FAILURE;
     memset(&context, 0, sizeof(context));
     context.log = log;
+#ifndef _WIN32
     context.wake_read = -1;
     context.wake_write = -1;
+#endif
     context.transport.backend = NULL;
     cdin_frontend_input_parser_init(&context.parser);
 
@@ -1769,8 +1942,8 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
         return 3;
     }
     context.terminal_opened = 1;
-    if (cdin_tui_create_wakeup_pipe(&context) != 0 ||
-        cdin_tui_install_signal_handlers(&context) != 0) {
+    if (cdin_tui_create_wakeup_source(&context) != 0 ||
+        cdin_tui_install_termination_handler(&context) != 0) {
         MMLLOG_ERROR(log->logger, "Could not initialize TUI wakeup and signal sources");
         goto cleanup;
     }
@@ -1934,27 +2107,11 @@ cleanup:
         cdin_backend_destroy(context.backend);
         context.backend = NULL;
     }
-    cdin_tui_restore_signal_handlers(&context);
-    if (context.wake_read >= 0) (void)close(context.wake_read);
-    if (context.wake_write >= 0) (void)close(context.wake_write);
+    cdin_tui_restore_termination_handler(&context);
+    cdin_tui_destroy_wakeup_source(&context);
     free(context.client_buffer);
     free(context.transport.outgoing);
     free(context.transport.incoming);
     return result;
 }
-
-#else
-
-int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
-{
-    (void)options;
-    if (log != NULL && log->logger != NULL) {
-        MMLLOG_WARN(log->logger, "Windows TUI launch remains gated until the Console readiness bridge is implemented");
-    }
-    (void)fputs("cdin: frontend 'tui' is not launchable: Windows Console readiness integration is not available yet\n",
-                stderr);
-    return 3;
-}
-
-#endif
 
