@@ -23,6 +23,22 @@ INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
+LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_7391"
+LIVE_PLUGIN_UNLOAD = b"CDIN_TUI_EXTENSION_UNLOAD_7391"
+LIVE_PLUGIN_SOURCE = """\\
+local logger
+return {
+  init = function(core)
+    logger = core
+    core:log("info", "CDIN_TUI_EXTENSION_INIT_7391")
+  end,
+  unload = function()
+    if logger ~= nil then
+      logger:log("info", "CDIN_TUI_EXTENSION_UNLOAD_7391")
+    end
+  end,
+}
+"""
 RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
 ENTER = (b"\x1b[?25l", b"\x1b[?2004h", b"\x1b[?1049h")
 
@@ -140,6 +156,14 @@ def resolve_runtime_root(raw: str) -> Path:
     return runtime_root
 
 
+
+def prepare_live_extension(working: Path) -> Path:
+    extension_root = working / "extensions"
+    extension_dir = extension_root / "smoke"
+    extension_dir.mkdir(parents=True)
+    (extension_dir / "init.lua").write_text(LIVE_PLUGIN_SOURCE, encoding="utf-8")
+    return extension_root
+
 def run_live_edit(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
@@ -148,6 +172,7 @@ def run_live_edit(executable: str) -> None:
     process = None
     with tempfile.TemporaryDirectory(prefix="cdin-tui-pty-") as working:
         try:
+            extension_root = prepare_live_extension(Path(working))
             os.set_blocking(master, False)
             # Capture the slave's baseline only after the harness has made
             # its master nonblocking. Darwin PTYs may expose paired status
@@ -156,7 +181,8 @@ def run_live_edit(executable: str) -> None:
             env = os.environ.copy()
             env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             process = subprocess.Popen(
-                [executable, "--frontend", "tui"],
+                [executable, "--frontend", "tui", "--extension-root", str(extension_root),
+                 "--load-extension", "smoke"],
                 stdin=slave, stdout=slave, stderr=slave,
                 cwd=working, env=env, close_fds=True,
             )
@@ -196,7 +222,9 @@ def run_live_edit(executable: str) -> None:
             if not scratch_path.is_file() or scratch_path.read_bytes() != PAYLOAD:
                 raise AssertionError("shutdown lost the completed Ctrl+S save")
             assert_restored(slave, before_termios, before_flags, output)
-            print("CDIN TUI PTY smoke passed: render, SIGWINCH interruption, save+quit with pending UI work, terminal restore")
+            if LIVE_PLUGIN_INIT not in output or LIVE_PLUGIN_UNLOAD not in output:
+                raise AssertionError("live TUI extension init/unload lifecycle was not observed")
+            print("CDIN TUI PTY smoke passed: render, SIGWINCH, edit/save/quit, live extension init/unload and terminal restore")
         finally:
             if process is not None and process.poll() is None:
                 process.kill()
@@ -213,12 +241,14 @@ def run_signal_shutdown(executable: str) -> None:
     process = None
     with tempfile.TemporaryDirectory(prefix="cdin-tui-sigterm-") as working:
         try:
+            extension_root = prepare_live_extension(Path(working))
             os.set_blocking(master, False)
             before_flags = fcntl.fcntl(slave, fcntl.F_GETFL)
             env = os.environ.copy()
             env["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
             process = subprocess.Popen(
-                [executable, "--frontend", "tui"],
+                [executable, "--frontend", "tui", "--extension-root", str(extension_root),
+                 "--load-extension", "smoke"],
                 stdin=slave, stdout=slave, stderr=slave,
                 cwd=working, env=env, close_fds=True,
             )
@@ -228,7 +258,9 @@ def run_signal_shutdown(executable: str) -> None:
             if code != 0:
                 raise RuntimeError(f"SIGTERM shutdown exited with {code}; output={bytes(output)!r}")
             assert_restored(slave, before_termios, before_flags, output)
-            print("CDIN TUI SIGTERM smoke passed: wake-pipe latch, orderly shutdown and terminal restoration")
+            if LIVE_PLUGIN_INIT not in output or LIVE_PLUGIN_UNLOAD not in output:
+                raise AssertionError("SIGTERM TUI extension init/unload lifecycle was not observed")
+            print("CDIN TUI SIGTERM smoke passed: wake-pipe latch, live extension unload and terminal restoration")
         finally:
             if process is not None and process.poll() is None:
                 process.kill()
