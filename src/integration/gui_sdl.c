@@ -206,11 +206,28 @@ static int cdin_gui_wait_for_attach(
     for (attempt = 0u; attempt < CDIN_GUI_WAIT_ATTEMPTS; ++attempt) {
         size_t processed = 0u;
         if (cdin_backend_pump(backend, 64u, &processed) != CDIN_BACKEND_OK) return -1;
+        if (attempt == 0u || attempt % 100u == 99u) {
+            MMLLOG_INFO(log->logger,
+                        "GUI-SDL attach wait attempt=%u processed=%llu pending=%llu state=%d driver=%d",
+                        attempt,
+                        (unsigned long long)processed,
+                        (unsigned long long)cdin_backend_frontend_pending(frontend),
+                        (int)session->state, session->driver);
+        }
         while (cdin_backend_frontend_pending(frontend) != 0u) {
             cdin_frontend_protocol_message_view message;
             if (cdin_frontend_session_receive(session, &message) !=
                 CDIN_FRONTEND_PROTOCOL_OK ||
-                message.type == CDIN_FRONTEND_PROTOCOL_ERROR) return -1;
+                message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+                MMLLOG_ERROR(log->logger,
+                             "GUI-SDL attach wait receive failed pending=%llu state=%d",
+                             (unsigned long long)cdin_backend_frontend_pending(frontend),
+                             (int)session->state);
+                return -1;
+            }
+            MMLLOG_INFO(log->logger, "GUI-SDL attach wait received %s sequence=%llu",
+                        cdin_frontend_protocol_message_name(message.type),
+                        (unsigned long long)message.sequence);
             if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
                 char scope[16];
                 size_t scope_length = 0u;
@@ -235,7 +252,10 @@ static int cdin_gui_wait_for_attach(
         }
         SDL_Delay(5u);
     }
-    MMLLOG_ERROR(log->logger, "GUI-SDL timed out waiting for ATTACH snapshot");
+    MMLLOG_ERROR(log->logger,
+                 "GUI-SDL timed out waiting for ATTACH snapshot pending=%llu state=%d driver=%d",
+                 (unsigned long long)cdin_backend_frontend_pending(frontend),
+                 (int)session->state, session->driver);
     return -1;
 }
 
