@@ -695,6 +695,8 @@ cleanup:
     return result;
 }
 
+static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log);
+
 int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
 {
     cdin_inproc_transport transport;
@@ -713,6 +715,10 @@ int cdin_frontend_backend_smoke(cdin_backend *backend, cdin_log *log)
     int result = -1;
 
     if (backend == NULL || log == NULL || log->logger == NULL) return -1;
+    if (cdin_frontend_multisession_smoke(backend, log) != 0) {
+        MMLLOG_ERROR(log->logger, "Frontend multi-session lifecycle smoke failed");
+        return -1;
+    }
     memset(&transport, 0, sizeof(transport));
     transport.backend = backend;
     transport.incoming = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
@@ -870,6 +876,259 @@ cleanup:
     free(client_buffer);
     free(transport.outgoing);
     free(transport.incoming);
+    return result;
+}
+
+
+
+typedef struct cdin_multisession_peer {
+    cdin_inproc_transport transport;
+    cdin_frontend_protocol_io io;
+    cdin_frontend_client client;
+    cdin_frontend_session session;
+    uint8_t *client_buffer;
+} cdin_multisession_peer;
+
+static int cdin_multisession_peer_open(cdin_backend *backend,
+                                       cdin_multisession_peer *peer,
+                                       const char *name)
+{
+    cdin_frontend_protocol_message_view message;
+    cdin_frontend_protocol_status protocol_status;
+    cdin_backend_status backend_status;
+    cdin_frontend_capability_mask role_capability =
+        CDIN_FRONTEND_CAP_BIT(CDIN_FRONTEND_CAP_DRIVER_ROLE_EVENTS);
+
+    if (backend == NULL || peer == NULL || name == NULL) return -1;
+    memset(peer, 0, sizeof(*peer));
+    peer->transport.backend = backend;
+    peer->transport.incoming = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    peer->transport.outgoing = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    peer->client_buffer = (uint8_t *)malloc(CDIN_SMOKE_FRAME_CAPACITY);
+    if (peer->transport.incoming == NULL || peer->transport.outgoing == NULL ||
+        peer->client_buffer == NULL) return -1;
+
+    backend_status = cdin_backend_frontend_open(backend, &peer->transport.frontend);
+    if (backend_status != CDIN_BACKEND_OK) return -1;
+    peer->io.context = &peer->transport;
+    peer->io.read = cdin_inproc_read;
+    peer->io.write = cdin_inproc_write;
+    protocol_status = cdin_frontend_client_init(
+        &peer->client, &peer->io, peer->client_buffer,
+        CDIN_SMOKE_FRAME_CAPACITY, CDIN_SMOKE_FRAME_BYTES);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) return -1;
+
+    cdin_frontend_session_init(&peer->session, &peer->client, NULL, name);
+    protocol_status = cdin_frontend_session_set_capabilities(&peer->session, role_capability);
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_session_hello(&peer->session) != CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_session_receive(&peer->session, &message) != CDIN_FRONTEND_PROTOCOL_OK ||
+        message.type != CDIN_FRONTEND_PROTOCOL_HELLO_ACK ||
+        peer->session.state != CDIN_FRONTEND_SESSION_NEGOTIATED ||
+        peer->session.session_id == 0u ||
+        (cdin_frontend_session_accepted_capabilities(&peer->session) & role_capability) == 0u) {
+        return -1;
+    }
+    return 0;
+}
+
+static int cdin_multisession_peer_close(cdin_multisession_peer *peer)
+{
+    int result = 0;
+    if (peer == NULL) return -1;
+    if (peer->transport.frontend != NULL) {
+        cdin_backend_status status =
+            cdin_backend_frontend_close(peer->transport.frontend);
+        if (status != CDIN_BACKEND_OK) result = -1;
+        peer->transport.frontend = NULL;
+    }
+    free(peer->client_buffer);
+    free(peer->transport.outgoing);
+    free(peer->transport.incoming);
+    memset(peer, 0, sizeof(*peer));
+    return result;
+}
+
+static int cdin_multisession_drain(cdin_multisession_peer *peer)
+{
+    size_t attempt;
+    if (peer == NULL || peer->transport.frontend == NULL) return -1;
+    for (attempt = 0u; attempt < 256u &&
+         cdin_backend_frontend_pending(peer->transport.frontend) != 0u; attempt++) {
+        cdin_frontend_protocol_message_view message;
+        if (cdin_frontend_session_receive(&peer->session, &message) !=
+            CDIN_FRONTEND_PROTOCOL_OK) return -1;
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) return -1;
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            char scope[16];
+            size_t scope_length = 0u;
+            uint64_t sequence = 0u;
+            if (cdin_frontend_protocol_payload_get_text(
+                    message.payload, message.payload_length, "scope",
+                    scope, sizeof(scope), &scope_length) != CDIN_FRONTEND_PROTOCOL_OK ||
+                scope_length == 0u ||
+                cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "sequence", &sequence) !=
+                    CDIN_FRONTEND_PROTOCOL_OK ||
+                sequence == 0u ||
+                cdin_frontend_session_ack(&peer->session, sequence) !=
+                    CDIN_FRONTEND_PROTOCOL_OK) return -1;
+        }
+    }
+    return cdin_backend_frontend_pending(peer->transport.frontend) == 0u ? 0 : -1;
+}
+
+static int cdin_multisession_peer_attach(cdin_multisession_peer *peer,
+                                         const char *view_id,
+                                         int expect_role_event,
+                                         int expect_driver)
+{
+    size_t attempt;
+    int saw_role_event = 0;
+    if (peer == NULL || view_id == NULL ||
+        cdin_frontend_session_attach(&peer->session, view_id, "cells", 80u, 24u) !=
+            CDIN_FRONTEND_PROTOCOL_OK) return -1;
+
+    for (attempt = 0u; attempt < 256u &&
+         peer->session.state != CDIN_FRONTEND_SESSION_ATTACHED; attempt++) {
+        cdin_frontend_protocol_message_view message;
+        if (cdin_frontend_session_receive(&peer->session, &message) !=
+            CDIN_FRONTEND_PROTOCOL_OK) return -1;
+        if (message.type == CDIN_FRONTEND_PROTOCOL_DRIVER_ROLE_CHANGED) {
+            int driver = 0;
+            uint64_t epoch = 0u;
+            if (saw_role_event ||
+                cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "epoch", &epoch) !=
+                    CDIN_FRONTEND_PROTOCOL_OK ||
+                cdin_frontend_protocol_payload_get_bool(
+                    message.payload, message.payload_length, "driver", &driver) !=
+                    CDIN_FRONTEND_PROTOCOL_OK ||
+                epoch != message.sequence || driver == 0 ||
+                peer->session.state != CDIN_FRONTEND_SESSION_ATTACH_SENT ||
+                !cdin_frontend_session_is_driver(&peer->session)) return -1;
+            saw_role_event = 1;
+        } else if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            char scope[16];
+            size_t scope_length = 0u;
+            uint64_t sequence = 0u;
+            if (cdin_frontend_protocol_payload_get_text(
+                    message.payload, message.payload_length, "scope",
+                    scope, sizeof(scope), &scope_length) != CDIN_FRONTEND_PROTOCOL_OK ||
+                scope_length != 8u || memcmp(scope, "snapshot", 8u) != 0 ||
+                cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "sequence", &sequence) !=
+                    CDIN_FRONTEND_PROTOCOL_OK ||
+                sequence == 0u ||
+                cdin_frontend_session_ack(&peer->session, sequence) !=
+                    CDIN_FRONTEND_PROTOCOL_OK) return -1;
+        } else if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+            return -1;
+        }
+    }
+    if (peer->session.state != CDIN_FRONTEND_SESSION_ATTACHED ||
+        saw_role_event != (expect_role_event != 0) ||
+        cdin_frontend_session_is_driver(&peer->session) != (expect_driver != 0) ||
+        cdin_backend_frontend_pending(peer->transport.frontend) != 0u) return -1;
+    return 0;
+}
+
+static int cdin_multisession_peer_expect_role(cdin_multisession_peer *peer,
+                                              int expected_driver)
+{
+    cdin_frontend_protocol_message_view message;
+    int driver = 0;
+    uint64_t epoch = 0u;
+    if (peer == NULL ||
+        cdin_frontend_session_receive(&peer->session, &message) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        message.type != CDIN_FRONTEND_PROTOCOL_DRIVER_ROLE_CHANGED ||
+        cdin_frontend_protocol_payload_get_uint(
+            message.payload, message.payload_length, "epoch", &epoch) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_protocol_payload_get_bool(
+            message.payload, message.payload_length, "driver", &driver) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        epoch != message.sequence || driver != (expected_driver != 0) ||
+        cdin_frontend_session_is_driver(&peer->session) != (expected_driver != 0)) {
+        return -1;
+    }
+    return 0;
+}
+
+static int cdin_multisession_peer_detach(cdin_multisession_peer *peer)
+{
+    cdin_frontend_protocol_message_view message;
+    if (peer == NULL ||
+        cdin_frontend_session_detach(&peer->session) != CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_frontend_session_receive(&peer->session, &message) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        message.type != CDIN_FRONTEND_PROTOCOL_DETACH_ACK ||
+        peer->session.state != CDIN_FRONTEND_SESSION_DETACHED ||
+        peer->session.driver != 0) return -1;
+    return 0;
+}
+
+/* Verify two live public Frontend sessions against one Backend. The second
+ * session begins as Observer, receives the negotiated promotion event when
+ * the Driver detaches, then the original client reacquires the free lease
+ * during a later attach before its replacement snapshot is committed. */
+static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log)
+{
+    cdin_multisession_peer first;
+    cdin_multisession_peer second;
+    int first_open = 0;
+    int second_open = 0;
+    int result = -1;
+
+    memset(&first, 0, sizeof(first));
+    memset(&second, 0, sizeof(second));
+    if (cdin_multisession_peer_open(backend, &first, "cdin-multisession-driver") != 0) {
+        MMLLOG_ERROR(log->logger, "Could not negotiate first multi-session Frontend");
+        goto cleanup;
+    }
+    first_open = 1;
+    if (cdin_multisession_peer_open(backend, &second, "cdin-multisession-observer") != 0) {
+        MMLLOG_ERROR(log->logger, "Could not negotiate second multi-session Frontend");
+        goto cleanup;
+    }
+    second_open = 1;
+
+    if (!first.session.driver || second.session.driver ||
+        cdin_multisession_peer_attach(&first, "cdin-multisession-view-1", 0, 1) != 0 ||
+        cdin_multisession_peer_attach(&second, "cdin-multisession-view-2", 0, 0) != 0 ||
+        cdin_frontend_session_send_key(&second.session, "left", 0u, "press") !=
+            CDIN_FRONTEND_PROTOCOL_INVALID_ARGUMENT) {
+        MMLLOG_ERROR(log->logger, "Initial Driver/Observer assignment or permission gate failed");
+        goto cleanup;
+    }
+
+    if (cdin_multisession_peer_detach(&first) != 0 ||
+        cdin_multisession_peer_expect_role(&second, 1) != 0 ||
+        cdin_multisession_peer_detach(&second) != 0) {
+        MMLLOG_ERROR(log->logger, "Driver detach and Observer promotion failed");
+        goto cleanup;
+    }
+
+    if (cdin_multisession_peer_attach(&first, "cdin-multisession-view-1", 1, 1) != 0) {
+        MMLLOG_ERROR(log->logger, "Detached Frontend did not reacquire the Driver lease before snapshot");
+        goto cleanup;
+    }
+    if (cdin_frontend_session_send_key(&first.session, "left", 0u, "press") !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_multisession_drain(&first) != 0 ||
+        cdin_multisession_peer_detach(&first) != 0) {
+        MMLLOG_ERROR(log->logger, "Reattached Driver could not process and drain a real input event");
+        goto cleanup;
+    }
+
+    MMLLOG_INFO(log->logger,
+                "Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach lease reacquisition and input");
+    result = 0;
+
+cleanup:
+    if (second_open && cdin_multisession_peer_close(&second) != 0) result = -1;
+    if (first_open && cdin_multisession_peer_close(&first) != 0) result = -1;
     return result;
 }
 
