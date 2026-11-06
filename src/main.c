@@ -33,6 +33,7 @@ static int run_check(const cdin_options *options, cdin_log *log)
     cdin_backend *backend = NULL;
     cdin_backend_status status;
     size_t processed = 0u;
+    size_t loaded_extensions = 0u;
     int result = EXIT_FAILURE;
     const char *runtime_root = options->runtime_root;
     if (runtime_root == NULL || runtime_root[0] == '\0') runtime_root = getenv("CDIN_RUNTIME_ROOT");
@@ -52,6 +53,7 @@ static int run_check(const cdin_options *options, cdin_log *log)
     cdin_backend_config_init(&config);
     config.runtime_root = runtime_root;
     config.runtime_entry = options->runtime_entry;
+    config.extension_source_root = options->extension_root;
     config.enable_lua = 1;
     config.enable_headless_protocol = 1;
     config.log_output = CDIN_BACKEND_LOG_OUTPUT_CALLBACK;
@@ -69,6 +71,11 @@ static int run_check(const cdin_options *options, cdin_log *log)
         MMLLOG_ERROR(log->logger, "Backend start failed: %s", cdin_backend_status_name(status));
         goto cleanup;
     }
+    if (cdin_frontend_extensions_load(
+            backend, options, log, &loaded_extensions) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not load the requested trusted Runtime extensions");
+        goto cleanup;
+    }
     status = cdin_backend_pump(backend, 64u, &processed);
     if (status != CDIN_BACKEND_OK) {
         MMLLOG_ERROR(log->logger, "Backend pump failed: %s", cdin_backend_status_name(status));
@@ -81,6 +88,12 @@ static int run_check(const cdin_options *options, cdin_log *log)
     result = EXIT_SUCCESS;
 cleanup:
     if (backend != NULL) {
+        if (loaded_extensions != 0u &&
+            cdin_frontend_extensions_unload(
+                backend, options, log, loaded_extensions) != 0) {
+            MMLLOG_ERROR(log->logger, "One or more trusted Runtime extensions failed to unload");
+            result = EXIT_FAILURE;
+        }
         status = cdin_backend_shutdown(backend, 0);
         if (status != CDIN_BACKEND_OK) {
             MMLLOG_ERROR(log->logger, "Backend shutdown failed: %s", cdin_backend_status_name(status));
