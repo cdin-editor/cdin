@@ -1757,11 +1757,17 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
     if (amount == 0) {
 #ifdef _WIN32
-        MMLLOG_WARN(context->log->logger, "TUI terminal read returned EOF");
-#endif
+        MMLLOG_WARN(context->log->logger, "TUI terminal read returned zero bytes");
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
+#else
         return CDIN_FRONTEND_TUI_IO_EOF;
+#endif
     }
-#ifndef _WIN32
+#ifdef _WIN32
+    if (amount < 0 && GetLastError() == ERROR_NO_DATA) {
+        return CDIN_FRONTEND_TUI_IO_AGAIN;
+    }
+#else
     if (amount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
