@@ -273,14 +273,15 @@ static int cdin_gui_inject_test_input(void)
 static int cdin_gui_saved_bytes_match(const char *path)
 {
     static const uint8_t expected[] = CDIN_GUI_SMOKE_PAYLOAD;
-    uint8_t actual[sizeof(expected)];
+    const size_t expected_length = sizeof(expected) - 1u;
+    uint8_t actual[sizeof(expected) - 1u];
     FILE *file = fopen(path, "rb");
     size_t count;
     int matches;
     if (file == NULL) return 0;
-    count = fread(actual, 1u, sizeof(actual), file);
-    matches = count == sizeof(expected) &&
-        memcmp(actual, expected, sizeof(expected)) == 0 &&
+    count = fread(actual, 1u, expected_length, file);
+    matches = count == expected_length &&
+        memcmp(actual, expected, expected_length) == 0 &&
         fgetc(file) == EOF && !ferror(file);
     if (fclose(file) != 0) matches = 0;
     return matches;
@@ -320,7 +321,7 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
     if (!smoke_mode &&
         (experimental == NULL || strcmp(experimental, "1") != 0)) {
         (void)fprintf(stderr,
-            "cdin: GUI-SDL launch is gated; set CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1\n");
+            "cdin: GUI-SDL is experimental; set CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1 to launch it\n");
         return 3;
     }
 
