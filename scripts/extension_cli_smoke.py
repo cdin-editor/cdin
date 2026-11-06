@@ -51,14 +51,18 @@ return {
 """
 
 BROKEN_PLUGIN_SOURCE = """\\
+local logger
 return {
   init = function(core)
+    logger = core
     core:commands:register("cdin.smoke.rollback", function() return true end)
     core:log("info", "CDIN_EXTENSION_INIT_FAILURE_SENTINEL_8427")
     error("intentional extension init failure")
   end,
   unload = function()
-    core:log("error", "CDIN_EXTENSION_FAILED_INIT_UNLOAD_SENTINEL_8427")
+    if logger ~= nil then
+      logger:log("error", "CDIN_EXTENSION_FAILED_INIT_UNLOAD_SENTINEL_8427")
+    end
   end,
 }
 """
