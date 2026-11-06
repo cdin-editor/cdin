@@ -18,10 +18,10 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "bdb3d17e1330b3fc5d2a4906ec212b3aa32905c1"
+revision = "c0a88090460929796bd7cd731966f04115256910"
 version = "1.2.0"
 protocol = "1.0.0"
-role = "Merged Backend PR #16: trusted lifecycle API, Lua test-target fix, and case-insensitive filesystem test portability fix"
+role = "Merged Backend PR #17: Windows GCC -Wtype-limits fix for resolver allocation guards"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
