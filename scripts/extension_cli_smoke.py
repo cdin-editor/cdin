@@ -50,6 +50,19 @@ return {
 }
 """
 
+BROKEN_PLUGIN_SOURCE = """\\
+return {
+  init = function(core)
+    core:commands:register("cdin.smoke.rollback", function() return true end)
+    core:log("info", "CDIN_EXTENSION_INIT_FAILURE_SENTINEL_8427")
+    error("intentional extension init failure")
+  end,
+  unload = function()
+    core:log("error", "CDIN_EXTENSION_FAILED_INIT_UNLOAD_SENTINEL_8427")
+  end,
+}
+"""
+
 
 def is_within(path: Path, root: Path) -> bool:
     try:
@@ -151,7 +164,45 @@ def main() -> int:
             print("--- CDIN stderr ---", file=sys.stderr)
             print(completed.stderr, file=sys.stderr)
             return 1
-    print("PASS: trusted extension lifecycle and denied ambient capabilities")
+    # A failed init must fail the CDIN startup check and must not invoke
+    # the explicit-unload hook for an extension that never became active.
+    broken_dir = root / "broken"
+    broken_dir.mkdir()
+    (broken_dir / "init.lua").write_text(BROKEN_PLUGIN_SOURCE, encoding="utf-8")
+    failed = subprocess.run(
+        [
+            str(executable),
+            "--check",
+            "--extension-root",
+            str(root),
+            "--load-extension",
+            "broken",
+        ],
+        cwd=working,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+        check=False,
+        shell=False,
+    )
+    failed_output = failed.stdout + "\\n" + failed.stderr
+    if failed.returncode == 0:
+        print("extension init failure unexpectedly succeeded", file=sys.stderr)
+        return 1
+    if "CDIN_EXTENSION_INIT_FAILURE_SENTINEL_8427" not in failed_output:
+        print("extension init failure sentinel missing", file=sys.stderr)
+        print(failed_output, file=sys.stderr)
+        return 1
+    if "CDIN_EXTENSION_FAILED_INIT_UNLOAD_SENTINEL_8427" in failed_output:
+        print("Runtime incorrectly invoked unload after failed init", file=sys.stderr)
+        return 1
+
+    print("PASS: trusted extension lifecycle, capability denials, and failed-init semantics")
     return 0
 
 
