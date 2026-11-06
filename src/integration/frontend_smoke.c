@@ -1069,10 +1069,14 @@ static int cdin_multisession_peer_detach(cdin_multisession_peer *peer)
     return 0;
 }
 
-/* Verify two live public Frontend sessions against one Backend. The second
- * session begins as Observer, receives the negotiated promotion event when
- * the Driver detaches, then the original client reacquires the free lease
- * during a later attach before its replacement snapshot is committed. */
+/* Implements the accepted multi-Frontend and Driver/Observer contract:
+ * https://github.com/cdin-editor/spec/blob/main/docs/architecture/frontend-protocol.md#L86-L87
+ * Implements the negotiated role-event sequence/epoch contract:
+ * https://github.com/cdin-editor/spec/blob/main/docs/architecture/protocol-wire.md#L107-L109
+ *
+ * Verify two live public Frontend sessions against one Backend. The second
+ * session begins as Observer, receives the promotion event when the Driver
+ * detaches, then the original client reacquires the free lease on reattach. */
 static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log)
 {
     cdin_multisession_peer first;
