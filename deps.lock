@@ -18,16 +18,16 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "f816b9cdbd6b97f7c70a4772a0d8f1e63c47eb9e"
+revision = "bf6312c95e4840033aaecdc79c14463f2c6a782e"
 version = "1.0.2"
 protocol = "1.0.0"
-role = "Backend lifecycle, bounded UI snapshot publication, protocol server and optional binary-safe Host file reads"
+role = "Backend lifecycle and protocol server with negotiated driver-role lifecycle events and binary-safe Host file reads"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "e29df5118e7b822912724b15c0c963b0b99f2f8a"
+revision = "0305b3eeccd949117f2620bd31cd14b27579a7f8"
 version = "1.0.0"
-role = "Merged Frontend TUI request-lifecycle fix with pending/duplicate response regression coverage; Windows TUI remains fail-closed"
+role = "Merged Frontend TUI request-lifecycle fix and negotiated driver-role Session lifecycle support; Windows TUI remains fail-closed"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
