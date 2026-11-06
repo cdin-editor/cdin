@@ -1398,9 +1398,6 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
             (timeout == INFINITE || timeout > 30u)) timeout = 30u;
         wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
         if (wait_status == WAIT_OBJECT_0) {
-            MMLLOG_INFO(context->log->logger,
-                        "TUI terminal input handle signaled: win32_input=%p",
-                        (void *)input);
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
             return 0;
         }
@@ -1674,17 +1671,7 @@ static int cdin_tui_dispatch_input(cdin_tui_context *context,
         context->terminate_pending = 1;
         return 0;
     }
-    MMLLOG_INFO(context->log->logger,
-                "TUI input parsed: kind=%d key=%s bytes=%llu",
-                (int)event->kind, event->key,
-                (unsigned long long)event->text_length);
     status = cdin_frontend_tui_send_input(&context->session, event);
-    if (status == CDIN_FRONTEND_PROTOCOL_OK) {
-        MMLLOG_INFO(context->log->logger,
-                    "TUI input forwarded: inbound_events=%llu outbound_messages=%llu",
-                    (unsigned long long)cdin_backend_frontend_pending_events(context->transport.frontend),
-                    (unsigned long long)cdin_backend_frontend_pending(context->transport.frontend));
-    }
     if (status != CDIN_FRONTEND_PROTOCOL_OK) {
         MMLLOG_ERROR(context->log->logger, "TUI input forwarding failed: %s",
                      cdin_frontend_protocol_status_name(status));
@@ -1780,11 +1767,6 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
 #endif
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
-    MMLLOG_INFO(context->log->logger,
-                "TUI terminal bytes received: count=%lld first=%02x second=%02x",
-                (long long)amount,
-                (unsigned)bytes[0],
-                (unsigned)(amount > 1 ? bytes[1] : 0u));
     if (cdin_frontend_input_parser_feed(&context->parser, bytes, (size_t)amount) ==
         CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
         cdin_frontend_input_parser_init(&context->parser);
@@ -1832,11 +1814,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
                          cdin_frontend_protocol_status_name(protocol_status));
             return CDIN_FRONTEND_TUI_IO_FAILURE;
         }
-        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
-            MMLLOG_INFO(context->log->logger,
-                        "TUI received ui.flush: sequence=%llu",
-                        (unsigned long long)context->session.last_flush_sequence);
-        } else if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
             char code[64] = { 0 };
             char detail[256] = { 0 };
             size_t code_length = 0u;
