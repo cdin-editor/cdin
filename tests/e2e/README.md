@@ -35,16 +35,18 @@ The verified headless workflow exercises:
 7. File fixtures containing NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR data.
 8. Missing-file read, failed atomic commit, preservation of in-memory bytes and successful recovery save.
 
-### Latest completed native evidence
+### Current multi-platform evidence
 
-[CDIN CI run 42117574266](https://github.com/cdin-editor/cdin/actions/runs/42117574266), candidate `dd1f5896c27756948750a1adc1770b16b4207b66):
+[CDIN CI run 42182694691](https://github.com/cdin-editor/cdin/actions/runs/42182694691) passed on exact candidate SHA `6166fd2034194c3a8b5b13d4baa1d81adce3b14d`.
 
-- Windows completed the full stack and all 9/9 CDIN CTest tests. Its log explicitly confirms the document smoke, byte-fixture smoke, filesystem-failure recovery, 6 architecture unit tests and the compiler-resolved include graph over all 4 CDIN translation units.
-- Linux and macOS passed the headless CDIN CTest and Frontend component suite (19/19), but failed the separate live PTY test (9/10 root CTest tests passed).
-- Linux ASan/UBSan/leak job failed on the same live PTY test; no separate sanitizer issue was identified.
-- The Linux/macOS include-graph task was not reached because the earlier TUI test failure stopped the stack task.
+- Linux and macOS each passed 19/19 Frontend tests and 11/11 root CDIN CTest cases, including `cdin_tui_live_pty_smoke`. Windows passed 18/18 Frontend tests and 11/11 root CDIN CTest cases; the POSIX-only PTY test is not run on Windows.
+- All three native logs confirmed the two-session scenario: `Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach lease reacquisition and input`.
+- All three platforms passed the document edit/save/reopen path, exact-byte fixtures (NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR), and missing-file/failed-atomic-save recovery.
+- Compiler-resolved include audit passed on all three platforms for all four CDIN translation units, with no private component source/build headers. The architecture policy tests passed.
+- Linux ASan/UBSan/leak-detection job passed. Backend's pinned integration candidate also passed Live Runtime, ASan/UBSan, ThreadSanitizer and bounded resource stress on Linux/macOS/Windows.
+- Native source archives passed path/CRC validation and SHA-256 verification. This is source-distribution evidence, not a runnable application installer.
 
-This is a real end-to-end document path, but it is headless integration coverage, not a successful interactive editor session.
+The smoke proves a real headless document path and a real POSIX experimental TUI path on Linux/macOS. It does not make TUI a supported default launch mode: the experimental opt-in remains required, and Windows Console TUI/GUI-SDL are not implemented.
 
 ## 3. Experimental POSIX TUI
 
@@ -60,7 +62,7 @@ The harness uses a pseudo-terminal and checks:
 - startup failure with a missing Runtime root;
 - terminal mode, descriptor flags and alternate-screen/cursor/bracketed-paste restoration.
 
-The last completed CDIN PTY run failed because Frontend could clear its outstanding version-pinned `view.lines` request when a snapshot left the same document version/line target unchanged. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) has now merged the request-state lifecycle fix and regression coverage as `e29df5118e7b822912724b15c0c963b0b99f2f8a`; CDIN's `deps.lock` pins that exact commit. The current CDIN native matrix and PTY result on the merged pin are pending in run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431). Do not treat the earlier PTY failure as the result of the merged fix, or mark the new PTY gate PASS until this run completes.
+The earlier PTY defect was owned and fixed by Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11), merged at `e29df5118e7b822912724b15c0c963b0b99f2f8a`. The current candidate's CDIN PTY test passes on Linux and macOS in run [42182694691](https://github.com/cdin-editor/cdin/actions/runs/42182694691), including render, terminal input, SIGWINCH, save/quit, signal shutdown, startup failure and restoration. The later Frontend role lifecycle follow-up PR [#14](https://github.com/cdin-editor/frontend/pull/14) is also merged at `eaadc442e04020b0dd209f89c1b94cdb1d3aa7b3`; it allows the granted role to be observed during `ATTACH_SENT` without opening mutating APIs before `ATTACHED`.
 
 Windows does not run the POSIX PTY test. Its TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented.
 
@@ -68,14 +70,12 @@ Windows does not run the POSIX PTY test. Its TUI remains fail-closed until a nat
 
 The following scenarios remain release gates:
 
-1. Pass the POSIX PTY test with the merged Frontend request-lifecycle fix.
-2. Implement and test Windows Console TUI readiness and terminal restoration.
-3. Add GUI-SDL launch/render/input integration.
-4. Exercise plugin load, capability denial, failure isolation and unload in a live session.
-5. Verify multiple Frontends, Driver/Observer promotion, detach/reattach and reconnect.
-6. Exercise Backend/Runtime/transport failures and partial-startup recovery through the full executable.
-7. Add long-running editor workloads for memory, leak, latency and soak measurements.
-8. Test native install/upgrade/uninstall on clean Linux, macOS and Windows machines.
+1. Implement and test Windows Console TUI readiness, input/resize and terminal restoration.
+2. Add GUI-SDL launch/render/input integration.
+3. Exercise plugin load, capability grants/denials, failure isolation and unload in a live session; Runtime's provisional extension manager is not yet connected to a reviewed live CDIN module-resolution and grant path.
+4. Verify transport disconnect/reconnect with work pending, document/session continuity under transport loss, Backend/Runtime process failure recovery, partial startup and repeated shutdown.
+5. Define named editing workloads and collect allocator peak where available, input-to-visible/save latency, p50/p95/p99, raw cross-platform results and long-running soak/leak measurements. The current short headless benchmark is not a product baseline.
+6. Build native install/upgrade/uninstall packages and test clean Linux, macOS and Windows machines; sign release artifacts and verify contents/licenses.
 
 A mock transport or test-only editor implementation is not a substitute for these scenarios.
 
