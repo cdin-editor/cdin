@@ -108,5 +108,12 @@ if(BUILD_TESTING)
         set_tests_properties(cdin_tui_live_pty_smoke PROPERTIES
             ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
             TIMEOUT 60)
+    elseif(WIN32)
+        add_test(NAME cdin_tui_live_conpty_smoke
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_conpty_smoke.py"
+                    "$<TARGET_FILE:cdin>")
+        set_tests_properties(cdin_tui_live_conpty_smoke PROPERTIES
+            ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
+            TIMEOUT 90)
     endif()
 endif()
