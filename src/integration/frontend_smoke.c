@@ -1910,9 +1910,14 @@ static int cdin_tui_on_resize(void *opaque)
     if (context == NULL) return -1;
     if (context->terminal.size(context->terminal.context, &columns, &rows) != 0 ||
         columns == 0u || rows == 0u) {
+#ifdef _WIN32
         MMLLOG_ERROR(context->log->logger,
                      "TUI resize size query failed: win32_error=%lu",
                      (unsigned long)GetLastError());
+#else
+        MMLLOG_ERROR(context->log->logger,
+                     "TUI resize size query failed: errno=%d", errno);
+#endif
         return -1;
     }
     context->columns = columns;
