@@ -2,12 +2,12 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "da1fa74f7668a242c38d753d100d55f72c07944a"
+revision = "07d43f9b1aba96baf707635c5e821f6da217bb4f"
 version = "1.0.0-rc.1"
 host_api = "1.0.0"
 protocol = "1.0.0"
 kernel_abi = "1.1.0"
-role = "Runtime PR #6 candidate: resolver-backed lifecycle and structured Backend error propagation"
+role = "Runtime PR #6 candidate: structured resolver errors and deterministic extension lifecycle"
 
 [dependencies.kernel]
 repository = "https://github.com/cdin-editor/kernel.git"
