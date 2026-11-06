@@ -1355,8 +1355,6 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
     ULONGLONG deadline = 0u;
     uint32_t ready = 0u;
     DWORD base_timeout = INFINITE;
-    DWORD wait_status;
-    DWORD timeout;
     HANDLE input;
     if (context == NULL || out_ready_events == NULL ||
         (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL ||
@@ -1392,68 +1390,81 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         deadline = GetTickCount64() + (ULONGLONG)timeout_ms;
         base_timeout = (DWORD)timeout_ms;
     }
-    timeout = base_timeout;
-    if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
-        (timeout == INFINITE || timeout > 30u)) timeout = 30u;
-    wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
-    if (wait_status == WAIT_OBJECT_0) {
-        *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-        return 0;
-    }
-    if (wait_status == WAIT_OBJECT_0 + 1u) {
-        uint32_t wake_ready = 0u;
-        if (!ResetEvent(context->wake_event)) {
-            MMLLOG_ERROR(context->log->logger,
-                         "TUI wake event reset failed: win32_error=%lu",
-                         (unsigned long)GetLastError());
-            return -1;
-        }
-        if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
-            wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
-        if (context->terminate_pending)
-            wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
-        *out_ready_events = wake_ready;
-        return 0;
-    }
-    if (wait_status == WAIT_OBJECT_0 + 2u) {
-        uint32_t columns = 0u;
-        uint32_t rows = 0u;
-        if (context->terminal.size(context->terminal.context, &columns, &rows) != 0) {
-            MMLLOG_ERROR(context->log->logger,
-                         "TUI terminal size query failed in wait loop: win32_error=%lu",
-                         (unsigned long)GetLastError());
-            return -1;
-        }
-        if (columns != context->columns || rows != context->rows) {
-            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
-            return 0;
-        }
-        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
-            context->flush_escape = 1;
+
+    for (;;) {
+        DWORD timeout = base_timeout;
+        DWORD wait_status;
+        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
+            (timeout == INFINITE || timeout > 30u)) timeout = 30u;
+        wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
+        if (wait_status == WAIT_OBJECT_0) {
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
             return 0;
         }
-        if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
-            *out_ready_events = 0u;
-            return 0;
+        if (wait_status == WAIT_OBJECT_0 + 1u) {
+            uint32_t wake_ready = 0u;
+            if (!ResetEvent(context->wake_event)) {
+                MMLLOG_ERROR(context->log->logger,
+                             "TUI wake event reset failed: win32_error=%lu",
+                             (unsigned long)GetLastError());
+                return -1;
+            }
+            if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+                wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
+            if (context->terminate_pending)
+                wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+            if (wake_ready != 0u) {
+                *out_ready_events = wake_ready;
+                return 0;
+            }
+            /* A coalesced/spurious wake with no pending source is not a
+             * readiness event. Keep waiting rather than returning ready=0. */
+            continue;
         }
-        /* A timer tick is only a size poll; do not report input readiness. */
-        *out_ready_events = 0u;
-        return 0;
-    }
-    if (wait_status == WAIT_TIMEOUT) {
-        if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
-            context->flush_escape = 1;
-            *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
-            return 0;
+        if (wait_status == WAIT_OBJECT_0 + 2u) {
+            uint32_t columns = 0u;
+            uint32_t rows = 0u;
+            if (context->terminal.size(context->terminal.context, &columns, &rows) != 0) {
+                MMLLOG_ERROR(context->log->logger,
+                             "TUI terminal size query failed in wait loop: win32_error=%lu",
+                             (unsigned long)GetLastError());
+                return -1;
+            }
+            if (columns != context->columns || rows != context->rows) {
+                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
+                return 0;
+            }
+            if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+                context->flush_escape = 1;
+                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+                return 0;
+            }
+            if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
+                MMLLOG_ERROR(context->log->logger,
+                             "TUI wait deadline expired without a readiness event");
+                return -1;
+            }
+            /* Routine resize polling found no change; continue blocking. */
+            continue;
         }
-        *out_ready_events = 0u;
-        return 0;
+        if (wait_status == WAIT_TIMEOUT) {
+            if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu) {
+                context->flush_escape = 1;
+                *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
+                return 0;
+            }
+            if (timeout_ms >= 0 && GetTickCount64() >= deadline) {
+                MMLLOG_ERROR(context->log->logger,
+                             "TUI wait deadline expired without a readiness event");
+                return -1;
+            }
+            continue;
+        }
+        MMLLOG_ERROR(context->log->logger,
+                     "TUI wait failed: win32_error=%lu",
+                     (unsigned long)GetLastError());
+        return -1;
     }
-    MMLLOG_ERROR(context->log->logger,
-                 "TUI wait failed: win32_error=%lu",
-                 (unsigned long)GetLastError());
-    return -1;
 }
 
 static void cdin_tui_backend_wakeup(void *opaque)
