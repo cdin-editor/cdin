@@ -2,8 +2,17 @@
 
 This document reports capabilities exercised by the CDIN Composition Root, not merely features exposed by a component. A green component build does not prove that the complete editor is usable.
 
-The product epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). The current integration candidate is developed on `feature/complete-composition-root-rewrite` through [PR #110](https://github.com/cdin-editor/cdin/pull/110), which remains Draft. GUI-SDL composition code and an executable live-session smoke are now present in the candidate, but the current CDIN CI run is blocked at compilation; this is not yet a verified GUI launch.
+The product epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). The current integration candidate is developed on feature/complete-composition-root-rewrite through [PR #110](https://github.com/cdin-editor/cdin/pull/110), which remains Draft. Current head is 634075a92aeb5a6e58b817d2045d653dfbf8bbf2. The GUI-SDL Composition Root now compiles on the prior native candidate and its live-session smoke reaches attach/model processing, but no run has yet reported a passing exact-byte SDL text + Ctrl+S save. Current native CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) has been dispatched and is pending job start.
 
+## Current candidate verification — 2026-11-07
+
+The current pinned Frontend candidate is 1dd2fc0826d302883fa0e6bab0cbead3ec84a6d4; its component CI [42304001468](https://github.com/cdin-editor/frontend/actions/runs/42304001468) passed Linux/macOS/Windows, GUI-SDL AddressSanitizer tests, clean-prefix package consumer and Pipeline quality. The model binds the actual Runtime view ID from the first view-scoped snapshot rather than assuming it equals the Frontend attach ID.
+
+The Backend resolver regression branch is independent of the CDIN dependency pin. Backend PR #18 head 987acd2f04bf6cc7eed360a4328bb11085628457 passed [CI 42300963625](https://github.com/cdin-editor/backend/actions/runs/42300963625) with Lua 5.4 resolver integration on Linux/macOS/Windows, [Live Runtime 42300963086](https://github.com/cdin-editor/backend/actions/runs/42300963086), [native resource stress 42300963234](https://github.com/cdin-editor/backend/actions/runs/42300963234) and [Code Quality 42300958559](https://github.com/cdin-editor/backend/actions/runs/42300958559). Backend Issue #14 is closed; PR #18 is Ready for Review.
+
+The CDIN candidate fixes the earlier build include path, SDL3 text input event pointer, exact payload length and CLI assertion issues. It captures flush scope/revision before apply_message because that operation ACKs through the same client and may reuse the message buffer. It also drains SDL startup focus/resize events in a warm-up turn before enqueuing deterministic text and Ctrl+S input.
+
+These fixes have not yet produced a green GUI E2E result. CDIN CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) is the current native/sanitizer run; at the time of this update its jobs have not started. Treat GUI live-session smoke as **NOT VERIFIED** until logs prove snapshot commit, SDL text delivery, input.key delivery, Runtime save command and byte-exact saved file. Keep GUI-SDL launch experimental.
 ## 1. Verified in CDIN
 
 | Capability | Status | Evidence |
