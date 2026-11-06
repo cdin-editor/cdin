@@ -22,7 +22,9 @@ add_executable(cdin
     src/main.c
     src/diagnostics/log.c
     src/integration/frontend_smoke.c)
-target_include_directories(cdin PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(cdin PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_features(cdin PRIVATE c_std_11)
 target_compile_definitions(cdin PRIVATE
     CDIN_VERSION="${PROJECT_VERSION}"

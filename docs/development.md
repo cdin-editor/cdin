@@ -19,6 +19,7 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `scripts/build_stack.py` | Build/test/install orchestration for the pinned stack. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
 | `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
+| `src/integration/gui_sdl.c` | CDIN-owned Backend/Frontend Protocol transport and GUI-SDL process lifecycle composition. |
 | `scripts/tui_pty_smoke.py` | Exercise the experimental POSIX TUI through a real pseudo-terminal. |
 | `scripts/assert_cli.py` | Executable-level CLI output and exit-status check. |
 | `scripts/package.py` | Source archive creation. |
@@ -82,10 +83,11 @@ The stack builder checks out the revisions in `deps.lock` and runs the component
 1. Build and install `m-mdy-m/log.c`.
 2. Build, test and install Kernel.
 3. Build, test and install Backend, including its Kernel integration tests.
-4. Build and test Frontend Core, Headless and the TUI adapter target.
-5. Configure and build CDIN; export `compile_commands.json`.
-6. Run the CLI, headless document, POSIX PTY (where supported), architecture and compiler include-graph checks.
-7. Install CDIN and run the installed `cdin --check` smoke test.
+4. Build SDL3 3.4.16 from the SHA-256-pinned archive in `deps.lock`.
+5. Build and test Frontend Core, Headless, TUI and the installable GUI-SDL adapter; install the exported CMake package.
+6. Configure CDIN with `CDIN_ENABLE_GUI_SDL=ON`, build and export `compile_commands.json`.
+7. Run the CLI, headless document, GUI-SDL live-session smoke, POSIX PTY (where supported), architecture and compiler include-graph checks.
+8. Install CDIN and run the installed `cdin --check` smoke test.
 
 The command can take substantially longer than a normal single-project build because it builds the pinned components from source. It is the reproducible integration path for this repository; it is not a prebuilt production package manager.
 
@@ -134,11 +136,11 @@ This does not rebuild or retest the pinned component repositories. Use `make sta
 
 ## 5. What the tests cover
 
-The root CTest suite checks CLI help/version, the advertised `headless|tui` choices, invalid/missing values and fail-closed modes. The headless integration test uses the public Frontend session API to negotiate, attach, verify the initial snapshot/flush/ACK and resize, then create/edit/paste/undo/redo/save/close/open and compare exact bytes through the real Backend/Runtime/Kernel stack.
+The root CTest suite checks CLI help/version, invalid/missing values and fail-closed modes. The headless integration test uses the public Frontend session API to negotiate, attach, verify the initial snapshot/flush/ACK and resize, then create/edit/paste/undo/redo/save/close/open and compare exact bytes through the real Backend/Runtime/Kernel stack. When the pinned GUI-SDL option is enabled, `cdin_gui_sdl_live_session_smoke` also checks a live Backend/Runtime Driver Session with SDL dummy video, deterministic text input, Runtime Ctrl+S and exact-byte save. The current head's compile blocker is tracked in [PR #110](https://github.com/cdin-editor/cdin/pull/110); this GUI CTest is NOT RUN until that compile is fixed.
 
 The file-fixture smoke covers NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR data. The filesystem-failure smoke covers missing-file read, failed atomic save, preservation of in-memory bytes and successful recovery.
 
-POSIX builds also run `cdin_tui_live_pty_smoke`, which exercises the opt-in experimental TUI, rendered input, signal/resize handling and terminal restoration. That test currently fails because Frontend can clear a pending version-pinned `view.lines` request before its response arrives. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-state fix and regression tests; its macOS job must finish before the immutable pin is advanced.
+POSIX builds also run `cdin_tui_live_pty_smoke`, which exercises the opt-in experimental TUI, rendered input, signal/resize handling and terminal restoration. The previous fully green CDIN candidate passed it; the current GUI-enabled branch must rerun it after the Composition Root compile fix.
 
 See [E2E verification](../tests/e2e/README.md) for per-platform evidence and remaining scenarios.
 

@@ -1,6 +1,6 @@
 # User guide
 
-This guide describes the current CDIN Composition Root candidate. CDIN can run a verified headless document integration workflow and contains an experimental POSIX TUI launch path. It is **not yet a release-ready interactive editor**.
+This guide describes the CDIN Composition Root candidate. The headless document path is verified on an earlier native candidate; POSIX TUI is experimental. GUI-SDL composition and a live-session smoke are present in the current feature branch, but the current CDIN native run stops at compile time before GUI runtime verification. CDIN is **not yet a release-ready interactive editor**.
 
 ## 1. What CDIN does
 
@@ -24,8 +24,10 @@ The Composition Root pins compatible revisions, builds and installs them, then c
 | `cdin --runtime-entry MODULE` | Select the Runtime entry module passed to Backend. |
 | `cdin --frontend headless --check` | Explicitly select the headless verification path. |
 | `cdin --frontend tui` | Request the POSIX TUI adapter; requires explicit experimental opt-in and is not yet release-ready. |
+| `cdin --frontend gui-sdl --check` | Run the GUI-SDL live-session test with SDL dummy video: attach, create a Runtime document, send SDL text input, dispatch Ctrl+S and verify exact saved bytes. The current CDIN CI head has not yet reached this CTest. |
+| `cdin --frontend gui-sdl` | Launch the experimental SDL3 window; requires `CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1`. |
 
-Unknown options and missing option values are rejected. GUI-SDL is not a supported launcher target.
+Unknown options and missing option values are rejected. GUI-SDL is an experimental candidate path, not a supported release target.
 
 ## 3. Build the application
 
@@ -57,7 +59,7 @@ CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui
 
 This opt-in is for integration testing, not general use. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) has merged the request-lifecycle fix and regression tests as `e29df5118e7b822912724b15c0c963b0b99f2f8a`, and CDIN's `deps.lock` pins that immutable commit. The current CDIN native matrix run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431) is queued. The POSIX TUI remains experimental until CDIN's live PTY and sanitizer tests pass on this merged pin.
 
-The experimental TUI currently targets POSIX. Windows remains fail-closed until the native Console readiness/input/restore bridge is implemented. GUI-SDL is not implemented.
+The experimental TUI currently targets POSIX. Windows remains fail-closed until the native Console readiness/input/restore bridge is implemented. GUI-SDL is built by `make stack` from the pinned SDL3 3.4.16 archive and Frontend PR #17 candidate; run its current CI check only after the Composition Root compile issue is fixed. To open the interactive window during development, set `CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1`. The Frontend renderer remains a debug ASCII baseline, so this is not a product-ready desktop editor.
 
 ## 5. Runtime location
 
@@ -77,9 +79,9 @@ The headless `--check` workflow negotiates a real Frontend Protocol session, att
 This workflow does not prove that the terminal renderer or GUI is release-ready. The POSIX PTY smoke is a separate, currently failing gate. The current native CDIN CI evidence is summarized in [Integration status](development/integration-status.md).
 
 The following remain unverified or unimplemented:
-- successful interactive TUI input/render/resize/shutdown on POSIX;
-- a native Windows TUI;
-- GUI-SDL;
+- supported, non-experimental TUI launch and full Windows Console TUI;
+- the CDIN GUI-SDL live-session smoke on the current candidate (the current native run is blocked at compile);
+- production GUI text rendering, IME, bidi/Persian layout and multi-pane rendering;
 - live plugin capability isolation and failure containment;
 - multiple Frontends, detach/reconnect and recovery;
 - measured memory, latency, leak, soak and performance budgets;

@@ -1,91 +1,54 @@
 # Architecture audit
 
-**Audit baseline:** the current Composition Root candidate uses immutable component pins from `deps.lock`. The latest fully completed native CDIN run inspected for the current integration direction is [run 42117574266](https://github.com/cdin-editor/cdin/actions/runs/42117574266), on candidate `dd1f5896c27756948750a1adc1770b16b4207b66`. Later commits update CLI help and documentation; their CI runs must be evaluated against their own HEAD SHAs.
-
-This audit separates implemented source from behavior actually exercised by CDIN. It is not a claim that the complete editor or release package is finished.
+**Current candidate:** CDIN PR [#110](https://github.com/cdin-editor/cdin/pull/110), branch `feature/complete-composition-root-rewrite`, head `f347f5085e5c32a14fda09e2a4971cc90d981800`. The current CI run [42296140965](https://github.com/cdin-editor/cdin/actions/runs/42296140965) is **FAILED** on all native jobs and Linux sanitizers because `src/integration/gui_sdl.c` includes the private Composition Root header `integration/frontend_smoke.h` without the `src/` directory on the `cdin` target include path. The component build stages completed before this compilation failure. This document distinguishes the current implementation from prior green evidence.
 
 ## 1. Ownership model
 
-- **Kernel:** document bytes, edits, snapshots, versions and undo/redo.
-- **Runtime:** Lua policy, commands, keymaps, configuration and plugin lifecycle.
-- **Backend:** Kernel/Runtime hosting, sessions, Protocol server, queues, file I/O and OS services.
-- **Frontend:** input, semantic UI projection, layout, TUI event loop and rendering.
-- **CDIN:** immutable pins, stack build/install, CLI, diagnostics, process composition and resource teardown.
+- **Kernel:** canonical document bytes, edits, versions, snapshots and undo/redo.
+- **Runtime:** Lua 5.4 editor policy, commands, keymaps, configuration and extension execution.
+- **Backend:** Runtime/Kernel hosting, sessions, Frontend Protocol server, file I/O and OS services.
+- **Frontend:** protocol client, physical input, semantic UI model, presentation layout and terminal/window rendering.
+- **CDIN:** immutable dependency pins, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
 
-CDIN must not duplicate document, keymap, plugin, protocol, session, input or rendering implementations. Normative references: [ARCH-001](https://github.com/cdin-editor/spec/blob/main/docs/architecture/overview.md#L113-L113), [ARCH-040–046](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L65-L71), [ROOT-001](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L22-L22).
+CDIN must not copy document, keymap, plugin, session, protocol, input or renderer implementations from the component repositories. The GUI integration source constructs the transport and lifecycle only; SDL event translation and drawing remain in Frontend.
 
 ## 2. Composition Root inventory
 
-| Area | Evidence | Assessment |
+| Area | Source | Current assessment |
 | --- | --- | --- |
-| CLI and launch | `src/main.c`, `src/cli/options.c` | Headless `--check` and opt-in experimental POSIX `--frontend tui`; Windows TUI remains fail-closed. |
-| Diagnostics | `src/diagnostics/log.c`, `include/cdin/log.h` | CDIN logger setup and Backend callback adapter; TUI logger is passed into Frontend Session/Model. |
-| Dependency pins | `deps.lock`, `scripts/deps.py` | Immutable component/tool revisions. Frontend PR #11 is merged and CDIN pins its merge commit `e29df5118e7b822912724b15c0c963b0b99f2f8a`. |
-| Stack orchestration | `scripts/build_stack.py`, `pipeline.toml` | Builds, tests and installs the pinned component stack; exports `compile_commands.json` for include auditing. |
-| Architecture checks | `scripts/check_boundaries.py`, `scripts/check_include_graph.py` | Selected source-boundary checks plus compiler-resolved include traces and six policy unit tests. |
-| Headless integration | `src/integration/frontend_smoke.c` | HELLO/HELLO_ACK/ATTACH, six-message snapshot/flush/ACK/resize, document new/edit/paste/undo/redo/save/close/open and exact byte readback. |
-| POSIX TUI | `src/integration/frontend_smoke.c`, `scripts/tui_pty_smoke.py` | Real terminal/wakeup/event-loop adapter exists behind explicit opt-in; PTY test is currently failing on line-request lifecycle. |
-| Source distribution | `scripts/package.py` | Reproducible source ZIP, path/CRC validation and SHA-256 sidecar. This is not an application installer. |
-| Benchmarks | `tests/bench/README.md` | Workload/report specification only; no verified product RSS, latency or soak result. |
+| CLI and launch dispatch | `src/main.c`, `src/cli/options.c` | Headless checks, experimental POSIX TUI, and an experimental GUI-SDL launch path are present. GUI-SDL is opt-in via `CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1`; its CI `--check` path runs with SDL dummy video. |
+| Headless integration | `src/integration/frontend_smoke.c` | Public Frontend Session handshake/attach, ordered snapshot/flush/ACK/resize and document lifecycle; previously passed the Linux/macOS/Windows matrix and Linux sanitizers on CDIN run 42265415995. |
+| POSIX TUI | `src/integration/frontend_smoke.c`, `scripts/tui_pty_smoke.py` | Experimental PTY-tested input/edit/save/quit and terminal restore on the previous fully green candidate. |
+| Windows TUI | `scripts/tui_conpty_smoke.py` | Experimental ConPTY test exists and passed on the previous candidate; supported launch remains gated pending the broader Windows console contract. |
+| GUI-SDL composition | `src/integration/gui_sdl.c` | Builds a real Backend Runtime host, opens a Frontend Protocol Driver Session, creates the SDL adapter, requests a document and drives the SDL event/render loop. An executable smoke sends text and Ctrl+S and checks exact saved bytes. Current CDIN CI has not reached this source's compile due to the include-path defect above. |
+| GUI-SDL component package | `deps.lock`, Frontend PR #17 | Frontend pin `552eedd14e3971e2b39d706804d4af57f8b2dc38`; SDL3 3.4.16 is checksum-pinned. Frontend CI run 42295241142 passed native and SDL AddressSanitizer tests plus clean-prefix consumer installation. |
+| Runtime extension lifecycle | `src/integration/frontend_smoke.c`, Backend PR #18 | CDIN has a temporary extension Lua init/unload smoke; Backend adds repeated-read, case-fold and read-failure tests. Backend PR #18 Linux Runtime integration, three-platform stress/sanitizers and Python quality passed, but resolver test execution on macOS/Windows remains open. |
+| Source distribution | `scripts/package.py` | Reproducible source ZIP with archive validation and SHA-256. This is not an application installer. |
+| Resource benchmarks | `tests/bench/` | Short headless smoke measurements exist; no product allocator peak, editing latency budget or long-running soak proof. |
 
 ## 3. Verified versus incomplete
 
 | Capability | Status | Evidence / limitation |
 | --- | --- | --- |
-| Immutable component source pins | IMPLEMENTED | `deps.lock`. |
-| Backend/Runtime lifecycle | PASS in CDIN smoke | Backend create/start/pump/shutdown/destroy; Runtime version identity is checked against the pin. |
-| Frontend Core Protocol | PASS in headless path | HELLO/HELLO_ACK, real ATTACH, ordered UI snapshot, `ui.flush`/ACK, queue release and resize. |
-| Document new/edit/save/reopen | PASS in headless path | Public Frontend session APIs drive Runtime/Backend/Kernel; disk and reopened bytes are compared. |
-| Byte preservation and file failures | PASS in inspected Windows run | BOM, LF-only and mixed CRLF/LF/CR fixtures; missing-file read, failed atomic commit, intact in-memory bytes and successful recovery. Linux/macOS headless CTest also passed in the same run, though the later PTY test failed. |
-| CLI validation | PASS in inspected native jobs | Help/version, invalid/missing option values and fail-closed modes; a newer help regression now checks the advertised `headless|tui` choices and requires its own current-HEAD CI result. |
-| Compiler-resolved include graph | PASS on Windows | Six Python architecture tests and compiler trace for all four CDIN translation units passed; the trace reported no private component source/build headers. Linux/macOS have not yet completed the task because the earlier PTY failure stops their stack pipeline first. |
-| Experimental POSIX TUI | PARTIAL / NOT RELEASE-READY | Terminal setup, wake pipe, signal handling, attach/bootstrap and Frontend event-loop adapter exist. Frontend PR #11 has merged the pending-request lifecycle fix and regression coverage. CDIN's current Linux/macOS PTY result on the merged pin is pending; do not call the TUI accepted until it passes. |
-| Windows TUI | NOT IMPLEMENTED | Native Console readiness/input/restore bridge is absent; launcher fails closed. |
-| GUI-SDL | NOT IMPLEMENTED | No GUI launch path in CDIN. |
-| Plugin isolation and lifecycle | NOT VERIFIED FROM CDIN | Live load/unload, capability denial and failure isolation remain. |
-| Multiple Frontends and recovery | NOT VERIFIED FROM CDIN | Driver/Observer roles, detach/reattach, reconnect and partial-startup recovery remain. |
-| ASan/UBSan/leak gate | BLOCKED BY PTY | The inspected Linux sanitizer job failed on the same live PTY smoke; this is not a separate sanitizer diagnostic. Rerun once the Frontend request fix is pinned. |
-| Source snapshot integrity | IMPLEMENTED | Deterministic source snapshot, archive safety/CRC and SHA-256 sidecar. Not a runnable application artifact. |
-| Product RSS/soak/latency | NOT IMPLEMENTED | No measured product workload. |
-| Application installers | NOT IMPLEMENTED | No clean-machine native installers or signed app releases. |
+| Immutable pins / stack orchestration | IMPLEMENTED | `deps.lock`, `scripts/deps.py`, Pipeline; includes SDL3 archive SHA-256. |
+| Backend/Runtime lifecycle and headless editing | VERIFIED ON PREVIOUS CANDIDATE | CDIN CI run 42265415995 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection before the newest GUI source was added. |
+| Frontend GUI-SDL package | VERIFIED AS COMPONENT | Frontend CI run 42295241142 passed native/Pipeline jobs, SDL3 AddressSanitizer tests, installed package and external CMake consumer. |
+| CDIN GUI-SDL live session | IMPLEMENTED / NOT VERIFIED | Build is blocked at missing internal include path; do not claim runtime input/save smoke passed. |
+| TUI POSIX | VERIFIED ON PREVIOUS CANDIDATE; EXPERIMENTAL | Previous CDIN candidate passed PTY, input/save/quit and restoration on Linux/macOS. |
+| TUI Windows | EXPERIMENTAL / NOT RELEASE-READY | ConPTY test exists; native Console contract and broader input semantics remain gated. |
+| Backend resolver regression tests | VERIFIED ON LINUX ONLY | Linux Live Runtime integration run 42291308024 passed. Native resource/sanitizer matrix 42291307713 and Python quality 42291301523 passed; the extension resolver integration executable is not yet run under macOS/Windows. |
+| Multiple Frontends / Driver-Observer | VERIFIED ON PREVIOUS CANDIDATE | Previous CDIN run 42265415995; transport-loss recovery and work-pending reconnect remain open. |
+| Plugin capability isolation and failure recovery | PARTIAL | Load/unload smoke exists; capability allow/deny, failed-init/runtime containment and recovery under live session remain. |
+| Product RSS/latency/soak | NOT COMPLETE | Existing short smoke measurements are not product workload baselines. |
+| Native installers / stable release | NOT IMPLEMENTED | Clean-machine install, upgrade, launch, uninstall and signing remain. |
 
-## 4. Native CI evidence
+## 4. Required next checks
 
-[CDIN run 42117574266](https://github.com/cdin-editor/cdin/actions/runs/42117574266) completed on candidate `dd1f5896c27756948750a1adc1770b16b4207b66`.
-
-- **Windows:** full stack and 9/9 CDIN CTest cases passed. Logs record the document workflow, BOM/LF/mixed-EOL fixture, filesystem-failure recovery, six architecture unit tests and compiler-resolved include graph for four CDIN translation units.
-- **Linux and macOS:** Frontend component suite 19/19 and headless CDIN CTest passed, but the live `cdin_tui_live_pty_smoke` failed (9/10 root CTest tests passed).
-- **Linux sanitizer:** failed because the full-stack run includes the same PTY test; do not report this as a separate sanitizer defect.
-- **Include graph:** Windows verified. Linux/macOS did not reach that later check after the PTY CTest failure.
-
-The run is evidence for its recorded SHA only. Later commits require a fresh matching run. The trusted-main provenance job is intentionally skipped on PR builds.
-
-## 5. Security and repository settings
-
-### CodeQL
-
-GitHub CodeQL Default Setup is enabled. The custom advanced workflow was removed to avoid a conflicting SARIF upload while Default Setup is active. Repository settings still need a manual review to confirm C/C++ and Python are selected.
-
-### GitHub Code Quality
-
-The separate GitHub-managed Code Quality workflow attempts JavaScript/TypeScript analysis even though this repository has no JS/TS source; its Python job passes and the JS/TS job fails after extracting YAML-only files. This is controlled under **Settings → Security → Code quality**, not by a repository source change. Deselect JavaScript/TypeScript and retain Python.
-
-### Artifact provenance
-
-The trusted-main attestation flow applies to reproducible source snapshots, not user-ready application installers. PR jobs do not receive OIDC/attestation permissions.
-
-## 6. Remaining release gates
-
-1. Verify and merge Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) only after its complete Linux/macOS/Windows and Pipeline matrix passes.
-2. Update CDIN's immutable Frontend pin to the merged commit and rerun the full CDIN native matrix plus Linux ASan/UBSan/leak detection.
-3. Pass the real POSIX PTY workflow: render, input, resize/signal interruption, save/quit, terminal restoration and startup/shutdown failure.
-4. Run compiler-resolved include graph checks on Linux, macOS and Windows.
-5. Implement Windows TUI's native Console readiness/input/restore bridge.
-6. Implement and verify GUI-SDL launch.
-7. Verify live plugin load/unload, capability isolation, failure containment and configuration/command error propagation.
-8. Verify multiple Frontends, Driver/Observer role, detach/reattach, reconnect and recovery.
-9. Add measured RSS/allocator peak, latency p50/p95/p99, leak checks and soak workloads.
-10. Produce reproducible, signed Linux/macOS/Windows application installers and test clean-machine install/upgrade/uninstall.
-11. Complete the manual GitHub Code Quality and CodeQL language-selection review.
-
-Registry handoff is deliberately not a blocker for this epic; it remains a later product-neutral infrastructure concern. The epic stays open until all required release gates are evidenced. A configured workflow or green component suite alone is not a product-level PASS.
+1. Add `${CMAKE_CURRENT_SOURCE_DIR}/src` as a private include directory for the `cdin` target (or use an explicit private header path), then rebuild all three native jobs and Linux sanitizers.
+2. Inspect `cdin_gui_sdl_live_session_smoke` specifically: attach snapshot/ACK, Runtime document creation, SDL text event, Ctrl+S dispatch, saved-byte equality and teardown.
+3. Keep GUI-SDL launch behind the experimental environment gate until the live session smoke passes. The current renderer is a debug ASCII baseline, not a release text renderer.
+4. Run Backend resolver integration on Linux, macOS and Windows before closing Backend Issue #14.
+5. Complete Windows Console TUI, reconnect while work is pending, repeated start/stop and process recovery.
+6. Define editing workloads and record allocator peak, input-to-visible/save latency, p50/p95/p99 and a documented soak/leak run.
+7. Build signed native installers and validate clean-machine install/upgrade/launch/uninstall.
+8. Resolve the separate repository Code Quality JavaScript/TypeScript language selection in Settings; this source tree has no JS/TS.
