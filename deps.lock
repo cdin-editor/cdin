@@ -18,10 +18,10 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "60ccca7254ba6907f2c99f21adf45355966f2238"
+revision = "3764128a13051c1a16683ef201a391b026a93e6f"
 version = "1.0.2"
 protocol = "1.0.0"
-role = "Integration candidate: Backend PR #12 plus PR #13 sequence-test correction; immutable validated PR revision"
+role = "Merged Backend PR #12 and PR #13; immutable merge commit with validated reattach sequence test"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
