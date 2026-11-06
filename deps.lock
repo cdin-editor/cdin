@@ -25,9 +25,9 @@ role = "Merged Backend PR #17: Windows GCC -Wtype-limits fix for resolver alloca
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
-revision = "6820129c2df0959aaef18ae273ea60c81ecc188c"
+revision = "35ae996b904764a78d100655cffe7ee721a576e0"
 version = "1.0.0"
-role = "Frontend PR #16 candidate: read/wait on CONIN$ and coalesce terminal text runs into bounded input.text batches; awaiting CDIN ConPTY verification"
+role = "Frontend PR #16 candidate: nonblocking CONIN$ reads with ERROR_NO_DATA readiness plus bounded UTF-8 text batching; awaiting CDIN ConPTY verification"
 
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
