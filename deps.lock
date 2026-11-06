@@ -18,7 +18,7 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "dd451caa3f8bf2d34b0149a9502c46c192005bf0"
+revision = "872a467d2485258f8e6379cca37aec23174bba30"
 version = "1.0.2"
 protocol = "1.0.0"
 role = "Integration candidate: Backend PR #12 (driver-role reattach); includes PR #11 negotiated events and binary-safe Host reads"
