@@ -19,6 +19,9 @@ VALID_INVOCATIONS = {
     ("--frontend",),
     ("--frontend", "gui-sdl"),
     ("--frontend", "tui"),
+    ("--extension-root",),
+    ("--load-extension",),
+    ("--load-extension", "demo"),
 }
 
 
