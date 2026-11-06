@@ -1413,13 +1413,23 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         if (context->parser.length == 1u && context->parser.bytes[0] == 0x1bu &&
             (timeout == INFINITE || timeout > 30u)) timeout = 30u;
         wait_status = WaitForMultipleObjects(handle_count, handles, FALSE, timeout);
+        if (wait_status == WAIT_FAILED) {
+            MMLLOG_ERROR(context->log->logger,
+                         "TUI wait failed: win32_error=%lu conpty_pipe=%d",
+                         (unsigned long)GetLastError(), context->conpty_input_pipe);
+            return -1;
+        }
         if (input_index != MAXDWORD && wait_status == WAIT_OBJECT_0 + input_index) {
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
             return 0;
         }
         if (wait_status == WAIT_OBJECT_0 + wake_index) {
             uint32_t wake_ready = 0u;
-            if (!ResetEvent(context->wake_event)) return -1;
+            if (!ResetEvent(context->wake_event)) {
+                MMLLOG_ERROR(context->log->logger, "TUI wake event reset failed: win32_error=%lu",
+                             (unsigned long)GetLastError());
+                return -1;
+            }
             if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
                 wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
             if (context->terminate_pending)
@@ -1438,7 +1448,12 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
                         *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
                         return 0;
                     }
-                    if (error != ERROR_NO_DATA) return -1;
+                    if (error != ERROR_NO_DATA) {
+                        MMLLOG_ERROR(context->log->logger,
+                                     "ConPTY PeekNamedPipe failed: win32_error=%lu",
+                                     (unsigned long)error);
+                        return -1;
+                    }
                     /* ERROR_NO_DATA means the pipe is currently empty; it is
                      * not EOF and must not authorize a blocking ReadFile. */
                 }
@@ -1450,8 +1465,12 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
             {
                 uint32_t columns = 0u;
                 uint32_t rows = 0u;
-                if (context->terminal.size(context->terminal.context, &columns, &rows) != 0)
+                if (context->terminal.size(context->terminal.context, &columns, &rows) != 0) {
+                    MMLLOG_ERROR(context->log->logger,
+                                 "TUI terminal size query failed in wait loop: win32_error=%lu",
+                                 (unsigned long)GetLastError());
                     return -1;
+                }
                 if (columns != context->columns || rows != context->rows) {
                     *out_ready_events = CDIN_FRONTEND_TUI_EVENT_RESIZE;
                     return 0;
@@ -1741,6 +1760,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     buffer_only = context->terminal_buffer_only;
     context->terminal_buffer_only = 0;
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
+        MMLLOG_ERROR(context->log->logger, "TUI input parser failed before terminal read");
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     if (processed != 0u) {
@@ -1755,13 +1775,25 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     if (was_escape_timeout || buffer_only) return CDIN_FRONTEND_TUI_IO_AGAIN;
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
-    if (amount == 0) return CDIN_FRONTEND_TUI_IO_EOF;
+    if (amount == 0) {
+#ifdef _WIN32
+        MMLLOG_WARN(context->log->logger, "TUI terminal read returned EOF");
+#endif
+        return CDIN_FRONTEND_TUI_IO_EOF;
+    }
 #ifndef _WIN32
     if (amount < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
 #endif
-    if (amount < 0 || (size_t)amount > sizeof(bytes)) return CDIN_FRONTEND_TUI_IO_FAILURE;
+    if (amount < 0 || (size_t)amount > sizeof(bytes)) {
+#ifdef _WIN32
+        MMLLOG_ERROR(context->log->logger,
+                     "TUI terminal read failed: win32_error=%lu conpty_pipe=%d",
+                     (unsigned long)GetLastError(), context->conpty_input_pipe);
+#endif
+        return CDIN_FRONTEND_TUI_IO_FAILURE;
+    }
     if (cdin_frontend_input_parser_feed(&context->parser, bytes, (size_t)amount) ==
         CDIN_FRONTEND_INPUT_PARSER_LIMIT_EXCEEDED) {
         cdin_frontend_input_parser_init(&context->parser);
@@ -1769,6 +1801,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         return CDIN_FRONTEND_TUI_IO_AGAIN;
     }
     if (cdin_tui_parse_pending(context, max_items, &processed) != 0) {
+        MMLLOG_ERROR(context->log->logger, "TUI input parser failed after terminal read");
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
     if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
@@ -1874,9 +1907,14 @@ static int cdin_tui_on_resize(void *opaque)
     uint32_t columns = 80u;
     uint32_t rows = 24u;
     cdin_frontend_protocol_status status;
-    if (context == NULL || context->terminal.size(context->terminal.context,
-                                                  &columns, &rows) != 0 ||
-        columns == 0u || rows == 0u) return -1;
+    if (context == NULL) return -1;
+    if (context->terminal.size(context->terminal.context, &columns, &rows) != 0 ||
+        columns == 0u || rows == 0u) {
+        MMLLOG_ERROR(context->log->logger,
+                     "TUI resize size query failed: win32_error=%lu",
+                     (unsigned long)GetLastError());
+        return -1;
+    }
     context->columns = columns;
     context->rows = rows;
     status = cdin_frontend_session_resize(&context->session, columns, rows);
