@@ -262,7 +262,7 @@ static int cdin_gui_drain(
         int committed = 0;
         protocol_status = cdin_frontend_session_receive(session, &message);
         if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
-            MMLLOG_ERROR(gui->logger, "GUI-SDL response read failed: %s",
+            MMLLOG_ERROR(log->logger, "GUI-SDL response read failed: %s",
                          cdin_frontend_protocol_status_name(protocol_status));
             return -1;
         }
@@ -277,19 +277,19 @@ static int cdin_gui_drain(
             (void)cdin_frontend_protocol_payload_get_text(
                 message.payload, message.payload_length, "message",
                 detail, sizeof(detail), &detail_length);
-            MMLLOG_ERROR(gui->logger, "GUI-SDL Backend returned Protocol error %s: %s",
+            MMLLOG_ERROR(log->logger, "GUI-SDL Backend returned Protocol error %s: %s",
                          code_length != 0u ? code : "UNKNOWN",
                          detail_length != 0u ? detail : "no diagnostic");
             return -1;
         }
         gui_status = cdin_frontend_gui_sdl_apply_message(gui, &message, &committed);
         if (gui_status != CDIN_FRONTEND_GUI_SDL_OK) {
-            MMLLOG_ERROR(gui->logger, "GUI-SDL could not apply Backend message %s: status=%d",
+            MMLLOG_ERROR(log->logger, "GUI-SDL could not apply Backend message %s: status=%d",
                          cdin_frontend_protocol_message_name(message.type),
                          (int)gui_status);
             return -1;
         }
-        MMLLOG_INFO(gui->logger, "GUI-SDL applied %s sequence=%llu committed=%d",
+        MMLLOG_INFO(log->logger, "GUI-SDL applied %s sequence=%llu committed=%d",
                     cdin_frontend_protocol_message_name(message.type),
                     (unsigned long long)message.sequence, committed);
         if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH && committed != 0) {
@@ -306,7 +306,7 @@ static int cdin_gui_drain(
                     &revision) == CDIN_FRONTEND_PROTOCOL_OK &&
                 revision != 0u) {
                 *out_document_snapshot_committed = 1;
-                MMLLOG_INFO(gui->logger,
+                MMLLOG_INFO(log->logger,
                             "GUI-SDL document snapshot committed revision=%llu",
                             (unsigned long long)revision);
             }
