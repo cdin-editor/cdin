@@ -2,12 +2,12 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "07d43f9b1aba96baf707635c5e821f6da217bb4f"
+revision = "d2acb6f174edf127c3bf59e8e5d4aedcbef0d490"
 version = "1.0.0-rc.1"
 host_api = "1.0.0"
 protocol = "1.0.0"
 kernel_abi = "1.1.0"
-role = "Runtime PR #6 candidate: structured resolver errors and deterministic extension lifecycle"
+role = "Merged Runtime PR #6: structured resolver errors and deterministic extension lifecycle"
 
 [dependencies.kernel]
 repository = "https://github.com/cdin-editor/kernel.git"
@@ -18,10 +18,10 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "a906e3265daa6c1aa304a17a1b0dd07c07abfcf8"
+revision = "bdb3d17e1330b3fc5d2a4906ec212b3aa32905c1"
 version = "1.2.0"
 protocol = "1.0.0"
-role = "Backend PR #16 candidate: trusted lifecycle API, Lua test-target fix, and case-insensitive filesystem test portability fix"
+role = "Merged Backend PR #16: trusted lifecycle API, Lua test-target fix, and case-insensitive filesystem test portability fix"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
