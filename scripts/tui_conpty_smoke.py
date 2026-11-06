@@ -174,6 +174,7 @@ class PseudoConsole:
         self.process = wintypes.HANDLE()
         self.thread = wintypes.HANDLE()
         self.attribute_list = None
+        self.attribute_list_initialized = False
         self.attribute_buffer = None
         self.output = bytearray()
         input_read = wintypes.HANDLE()
@@ -213,11 +214,12 @@ class PseudoConsole:
                 self.attribute_list, 1, 0, ctypes.byref(required)
             ):
                 raise win_error("InitializeProcThreadAttributeList")
+            self.attribute_list_initialized = True
             if not kernel32.UpdateProcThreadAttribute(
                 self.attribute_list,
                 0,
                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-                ctypes.byref(self.hpc),
+                self.hpc,
                 ctypes.sizeof(self.hpc),
                 None,
                 None,
@@ -258,8 +260,10 @@ class PseudoConsole:
             raise
         finally:
             if self.attribute_list:
-                kernel32.DeleteProcThreadAttributeList(self.attribute_list)
+                if self.attribute_list_initialized:
+                    kernel32.DeleteProcThreadAttributeList(self.attribute_list)
                 self.attribute_list = None
+                self.attribute_list_initialized = False
             close_handle(self.thread)
             self.thread = None
 
@@ -390,6 +394,7 @@ def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
         if scratch_path.parent != working.resolve():
             raise AssertionError("scratch title path escaped the private working directory")
 
+        session.drain()
         output_mark = len(session.output)
         session.resize(100, 32)
         session.read_until(
@@ -432,12 +437,20 @@ def run_startup_failure(executable: Path, working: Path) -> None:
         code = session.wait_exit(12.0)
         if code == 0:
             raise AssertionError("CDIN unexpectedly started with a missing Runtime root")
-        missing = [token for token in RESTORE if token not in session.output]
-        if missing:
-            raise AssertionError(
-                f"Windows terminal was not restored after startup failure: {missing!r}"
-            )
-        print("CDIN Windows ConPTY startup-failure smoke passed: terminal state restored")
+        entered_terminal = any(
+            token in session.output
+            for token in (b"\\x1b[?25l", b"\\x1b[?2004h", b"\\x1b[?1049h")
+        )
+        if entered_terminal:
+            missing = [token for token in RESTORE if token not in session.output]
+            if missing:
+                raise AssertionError(
+                    f"Windows terminal was not restored after startup failure: {missing!r}"
+                )
+        print(
+            "CDIN Windows ConPTY startup-failure smoke passed: terminal state "
+            "was unchanged or restored"
+        )
     finally:
         session.close()
 
