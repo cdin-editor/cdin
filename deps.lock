@@ -18,10 +18,10 @@ role = "Backend-only native dependency"
 
 [dependencies.backend]
 repository = "https://github.com/cdin-editor/backend.git"
-revision = "5bebc09d131d02b646fd5a02f3de27bdba59d45a"
+revision = "a906e3265daa6c1aa304a17a1b0dd07c07abfcf8"
 version = "1.2.0"
 protocol = "1.0.0"
-role = "Backend PR #16 candidate: secure resolver, trusted owner-thread extension lifecycle API, and Lua-enabled integration target fix"
+role = "Backend PR #16 candidate: trusted lifecycle API, Lua test-target fix, and case-insensitive filesystem test portability fix"
 
 [dependencies.frontend]
 repository = "https://github.com/cdin-editor/frontend.git"
