@@ -92,6 +92,18 @@ if(BUILD_TESTING)
     add_test(NAME cdin_cli_missing_frontend
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --frontend)
+    add_test(NAME cdin_cli_help_describes_trusted_extensions
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 0 "extension-root" "-" --help)
+    add_test(NAME cdin_cli_missing_extension_root
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --extension-root)
+    add_test(NAME cdin_cli_missing_load_extension
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --load-extension)
+    add_test(NAME cdin_cli_extension_requires_root
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
+                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --load-extension demo)
     add_test(NAME cdin_cli_unsupported_frontend_is_gated
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend gui-sdl)
@@ -101,6 +113,12 @@ if(BUILD_TESTING)
     add_test(NAME cdin_headless_frontend_protocol_smoke COMMAND cdin --check)
     set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
+    add_test(NAME cdin_trusted_extension_cli_smoke
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/extension_cli_smoke.py"
+                "$<TARGET_FILE:cdin>")
+    set_tests_properties(cdin_trusted_extension_cli_smoke PROPERTIES
+        ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
+        TIMEOUT 60)
     if(UNIX)
         add_test(NAME cdin_tui_live_pty_smoke
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_pty_smoke.py"
