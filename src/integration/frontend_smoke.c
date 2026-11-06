@@ -1936,6 +1936,33 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
 
     terminal_status = cdin_frontend_terminal_open(&context.terminal);
     if (terminal_status != CDIN_FRONTEND_TERMINAL_OK) {
+#ifdef _WIN32
+        {
+            HANDLE input_handle = GetStdHandle(STD_INPUT_HANDLE);
+            HANDLE output_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            DWORD input_mode = 0u, output_mode = 0u;
+            DWORD input_type = input_handle == NULL || input_handle == INVALID_HANDLE_VALUE
+                ? FILE_TYPE_UNKNOWN : GetFileType(input_handle);
+            DWORD output_type = output_handle == NULL || output_handle == INVALID_HANDLE_VALUE
+                ? FILE_TYPE_UNKNOWN : GetFileType(output_handle);
+            BOOL input_console = FALSE, output_console = FALSE;
+            DWORD input_error = ERROR_SUCCESS, output_error = ERROR_SUCCESS;
+            if (input_handle != NULL && input_handle != INVALID_HANDLE_VALUE) {
+                input_console = GetConsoleMode(input_handle, &input_mode);
+                if (!input_console) input_error = GetLastError();
+            }
+            if (output_handle != NULL && output_handle != INVALID_HANDLE_VALUE) {
+                output_console = GetConsoleMode(output_handle, &output_mode);
+                if (!output_console) output_error = GetLastError();
+            }
+            (void)fprintf(stderr,
+                "cdin: Windows terminal diagnostic status=%d stdin=%p type=%lu console=%d mode=0x%08lx error=%lu stdout=%p type=%lu console=%d mode=0x%08lx error=%lu\n",
+                (int)terminal_status, (void *)input_handle, (unsigned long)input_type,
+                (int)input_console, (unsigned long)input_mode, (unsigned long)input_error,
+                (void *)output_handle, (unsigned long)output_type,
+                (int)output_console, (unsigned long)output_mode, (unsigned long)output_error);
+        }
+#endif
         (void)fprintf(stderr,
             "cdin: frontend 'tui' is not launchable: interactive terminal setup failed (%d)\n",
             (int)terminal_status);
