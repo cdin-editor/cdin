@@ -37,6 +37,19 @@ return {
   end,
 }
 """
+local logger
+return {
+  init = function(core)
+    logger = core
+    core:log("info", "CDIN_TUI_EXTENSION_INIT_8427")
+  end,
+  unload = function()
+    if logger ~= nil then
+      logger:log("info", "CDIN_TUI_EXTENSION_UNLOAD_8427")
+    end
+  end,
+}
+"""
 RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
 CREATE_UNICODE_ENVIRONMENT = 0x00000400
 EXTENDED_STARTUPINFO_PRESENT = 0x00080000
