@@ -1434,11 +1434,13 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
                 if (!PeekNamedPipe(context->redirected_input_pipe, NULL, 0u,
                                    NULL, &available, NULL)) {
                     DWORD error = GetLastError();
-                    if (error == ERROR_BROKEN_PIPE || error == ERROR_NO_DATA) {
+                    if (error == ERROR_BROKEN_PIPE) {
                         *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
                         return 0;
                     }
-                    return -1;
+                    if (error != ERROR_NO_DATA) return -1;
+                    /* ERROR_NO_DATA means the pipe is currently empty; it is
+                     * not EOF and must not authorize a blocking ReadFile. */
                 }
                 if (available != 0u) {
                     *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
