@@ -43,7 +43,7 @@ The verified headless workflow exercises:
 - All three native logs confirmed the two-session scenario: `Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach lease reacquisition and input`.
 - All three platforms passed the document edit/save/reopen path, exact-byte fixtures (NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR), and missing-file/failed-atomic-save recovery.
 - Compiler-resolved include audit passed on all three platforms for all four CDIN translation units, with no private component source/build headers. The architecture policy tests passed.
-- Linux ASan/UBSan/leak-detection job passed. Backend's pinned integration candidate also passed Live Runtime, ASan/UBSan, ThreadSanitizer and bounded resource stress on Linux/macOS/Windows.
+- Linux ASan/UBSan/leak-detection job passed. Backend PR #13's tested head also passed Live Runtime, ASan/UBSan, ThreadSanitizer and bounded resource stress on Linux/macOS/Windows; PR #13 is now merged at `3764128a13051c1a16683ef201a391b026a93e6f`, and CDIN has refreshed `deps.lock` to that merge commit (a new full-stack run verifies the merged pin).
 - Native source archives passed path/CRC validation and SHA-256 verification. This is source-distribution evidence, not a runnable application installer.
 
 The smoke proves a real headless document path and a real POSIX experimental TUI path on Linux/macOS. It does not make TUI a supported default launch mode: the experimental opt-in remains required, and Windows Console TUI/GUI-SDL are not implemented.
