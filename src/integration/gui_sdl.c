@@ -259,6 +259,10 @@ static int cdin_gui_drain(
         cdin_frontend_protocol_message_view message;
         cdin_frontend_protocol_status protocol_status;
         cdin_frontend_gui_sdl_status gui_status;
+        char flush_scope[16] = { 0 };
+        size_t flush_scope_length = 0u;
+        uint64_t flush_revision = 0u;
+        int snapshot_flush = 0;
         int committed = 0;
         protocol_status = cdin_frontend_session_receive(session, &message);
         if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
@@ -282,6 +286,35 @@ static int cdin_gui_drain(
                          detail_length != 0u ? detail : "no diagnostic");
             return -1;
         }
+
+        /* apply_message() ACKs ui.flush via the same protocol client. The
+         * ACK write can reuse the client's frame buffer, invalidating the
+         * message payload view. Capture the scope/revision before applying
+         * (and therefore before ACK) so a committed document snapshot cannot
+         * be mistaken for a response flush. */
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH) {
+            protocol_status = cdin_frontend_protocol_payload_get_text(
+                message.payload, message.payload_length, "scope",
+                flush_scope, sizeof(flush_scope), &flush_scope_length);
+            if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+                MMLLOG_ERROR(log->logger, "GUI-SDL flush is missing its scope");
+                return -1;
+            }
+            if (flush_scope_length == 8u &&
+                memcmp(flush_scope, "snapshot", 8u) == 0) {
+                protocol_status = cdin_frontend_protocol_payload_get_uint(
+                    message.payload, message.payload_length, "revision",
+                    &flush_revision);
+                if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK ||
+                    flush_revision == 0u) {
+                    MMLLOG_ERROR(log->logger,
+                                 "GUI-SDL snapshot flush has no valid revision");
+                    return -1;
+                }
+                snapshot_flush = 1;
+            }
+        }
+
         gui_status = cdin_frontend_gui_sdl_apply_message(gui, &message, &committed);
         if (gui_status != CDIN_FRONTEND_GUI_SDL_OK) {
             MMLLOG_ERROR(log->logger, "GUI-SDL could not apply Backend message %s: status=%d",
@@ -292,24 +325,12 @@ static int cdin_gui_drain(
         MMLLOG_INFO(log->logger, "GUI-SDL applied %s sequence=%llu committed=%d",
                     cdin_frontend_protocol_message_name(message.type),
                     (unsigned long long)message.sequence, committed);
-        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH && committed != 0) {
-            char scope[16];
-            size_t scope_length = 0u;
-            uint64_t revision = 0u;
-            if (cdin_frontend_protocol_payload_get_text(
-                    message.payload, message.payload_length, "scope",
-                    scope, sizeof(scope), &scope_length) ==
-                    CDIN_FRONTEND_PROTOCOL_OK &&
-                scope_length == 8u && memcmp(scope, "snapshot", 8u) == 0 &&
-                cdin_frontend_protocol_payload_get_uint(
-                    message.payload, message.payload_length, "revision",
-                    &revision) == CDIN_FRONTEND_PROTOCOL_OK &&
-                revision != 0u) {
-                *out_document_snapshot_committed = 1;
-                MMLLOG_INFO(log->logger,
-                            "GUI-SDL document snapshot committed revision=%llu",
-                            (unsigned long long)revision);
-            }
+        if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH &&
+            committed != 0 && snapshot_flush) {
+            *out_document_snapshot_committed = 1;
+            MMLLOG_INFO(log->logger,
+                        "GUI-SDL document snapshot committed revision=%llu",
+                        (unsigned long long)flush_revision);
         }
     }
     return 0;
