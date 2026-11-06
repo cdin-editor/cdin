@@ -1961,7 +1961,7 @@ static int cdin_tui_on_resize(void *opaque)
                      cdin_frontend_protocol_status_name(status));
         return -1;
     }
-    context->backend_ready = 1;
+    cdin_tui_backend_ready_set(context);
     return 0;
 }
 
