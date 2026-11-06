@@ -1084,6 +1084,8 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
     int first_open = 0;
     int second_open = 0;
     int result = -1;
+    uint64_t backend_session_id = 0u;
+    uint64_t disconnected_client_id = 0u;
 
     memset(&first, 0, sizeof(first));
     memset(&second, 0, sizeof(second));
@@ -1092,6 +1094,8 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
         goto cleanup;
     }
     first_open = 1;
+    backend_session_id = first.session.session_id;
+    disconnected_client_id = first.session.client_id;
     if (cdin_multisession_peer_open(backend, &second, "cdin-multisession-observer") != 0) {
         MMLLOG_ERROR(log->logger, "Could not negotiate second multi-session Frontend");
         goto cleanup;
@@ -1126,8 +1130,57 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
         goto cleanup;
     }
 
+    /* Reconnect coverage: attach both peers again, create a Backend-owned
+     * document so the first peer has an unconsumed UI batch, then close that
+     * peer without DETACH. The remaining Observer must be promoted; a fresh
+     * Protocol client must reconnect to the same Backend session, attach as
+     * Observer, and become Driver only after the active lease is released. */
+    if (cdin_multisession_peer_attach(&first, "cdin-multisession-view-1", 0, 1) != 0 ||
+        cdin_multisession_peer_attach(&second, "cdin-multisession-view-2", 0, 0) != 0 ||
+        cdin_frontend_session_request_command(
+            &first.session, "document.new", "cdin-reconnect-pending.cdin") !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_backend_frontend_pending(first.transport.frontend) == 0u) {
+        MMLLOG_ERROR(log->logger, "Could not queue Backend-owned UI work before peer disconnect");
+        goto cleanup;
+    }
+    disconnected_client_id = first.session.client_id;
+    if (cdin_multisession_peer_close(&first) != 0) {
+        first_open = 0;
+        MMLLOG_ERROR(log->logger, "Abrupt Frontend peer close failed");
+        goto cleanup;
+    }
+    first_open = 0;
+    if (cdin_multisession_peer_expect_role(&second, 1) != 0) {
+        MMLLOG_ERROR(log->logger, "Backend did not promote the surviving Observer after peer loss");
+        goto cleanup;
+    }
+    if (cdin_multisession_peer_open(backend, &first, "cdin-multisession-reconnected") != 0) {
+        MMLLOG_ERROR(log->logger, "Fresh Frontend Protocol client could not reconnect");
+        goto cleanup;
+    }
+    first_open = 1;
+    if (first.session.session_id != backend_session_id ||
+        first.session.client_id == disconnected_client_id ||
+        first.session.driver ||
+        cdin_multisession_peer_attach(&first, "cdin-multisession-view-1", 0, 0) != 0) {
+        MMLLOG_ERROR(log->logger,
+                     "Reconnect did not create a fresh Observer client in the existing Backend session");
+        goto cleanup;
+    }
+    if (cdin_multisession_peer_detach(&second) != 0 ||
+        cdin_multisession_peer_expect_role(&first, 1) != 0 ||
+        cdin_frontend_session_send_key(&first.session, "left", 0u, "press") !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_multisession_drain(&first) != 0 ||
+        cdin_multisession_peer_detach(&first) != 0) {
+        MMLLOG_ERROR(log->logger,
+                     "Reconnected Observer did not receive the released Driver lease and process input");
+        goto cleanup;
+    }
+
     MMLLOG_INFO(log->logger,
-                "Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach lease reacquisition and input");
+                "Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach, abrupt peer loss with queued UI work, same-session reconnect and lease reacquisition");
     result = 0;
 
 cleanup:
