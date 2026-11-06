@@ -545,6 +545,22 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
         }
     }
 
+    /* Drain SDL's initial window/focus/resize events before queuing
+     * deterministic text and keyboard input. This matches the adapter's
+     * real event-loop startup contract and avoids mixing startup events with
+     * the synthetic input batch in the first PollEvent turn. */
+    {
+        cdin_frontend_gui_sdl_status gui_status =
+            cdin_frontend_gui_sdl_pump_events(gui, &quit_requested);
+        if (gui_status != CDIN_FRONTEND_GUI_SDL_OK || quit_requested ||
+            cdin_frontend_gui_sdl_render(gui) != CDIN_FRONTEND_GUI_SDL_OK) {
+            MMLLOG_ERROR(log->logger,
+                         "GUI-SDL initial event-loop warm-up failed: status=%d quit=%d",
+                         (int)gui_status, quit_requested);
+            goto cleanup;
+        }
+    }
+
     {
         int written = snprintf(scratch_path, sizeof(scratch_path),
                                "cdin-gui-sdl-%lu-%lld.cdin",
