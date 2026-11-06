@@ -1279,6 +1279,53 @@ typedef struct cdin_tui_context {
     uint8_t *client_buffer;
 } cdin_tui_context;
 
+/* The Backend wakeup callback may run on a worker thread on Windows.
+ * Keep every access to these shared flags atomic on that platform. On POSIX,
+ * Backend wakeups are serialized through the nonblocking self-pipe; the flags
+ * are only consumed/updated by the owner thread after draining that pipe. */
+static void cdin_tui_backend_ready_set(cdin_tui_context *context)
+{
+    if (context == NULL) return;
+#ifdef _WIN32
+    (void)InterlockedExchange((volatile LONG *)&context->backend_ready, 1L);
+#else
+    context->backend_ready = 1L;
+#endif
+}
+
+static int cdin_tui_backend_ready_take(cdin_tui_context *context)
+{
+    if (context == NULL) return 0;
+#ifdef _WIN32
+    return InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L;
+#else
+    if (context->backend_ready == 0L) return 0;
+    context->backend_ready = 0L;
+    return 1;
+#endif
+}
+
+static void cdin_tui_request_termination(cdin_tui_context *context)
+{
+    if (context == NULL) return;
+#ifdef _WIN32
+    (void)InterlockedExchange((volatile LONG *)&context->terminate_pending, 1L);
+#else
+    context->terminate_pending = 1L;
+#endif
+}
+
+static int cdin_tui_termination_requested(cdin_tui_context *context)
+{
+    if (context == NULL) return 0;
+#ifdef _WIN32
+    return InterlockedCompareExchange(
+        (volatile LONG *)&context->terminate_pending, 0L, 0L) != 0L;
+#else
+    return context->terminate_pending != 0L;
+#endif
+}
+
 #ifdef _WIN32
 static cdin_tui_context *cdin_tui_active_context;
 
@@ -1292,7 +1339,7 @@ static BOOL WINAPI cdin_tui_console_handler(DWORD control_type)
         case CTRL_LOGOFF_EVENT:
         case CTRL_SHUTDOWN_EVENT:
             if (context == NULL || context->wake_event == NULL) return FALSE;
-            InterlockedExchange((volatile LONG *)&context->terminate_pending, 1L);
+            cdin_tui_request_termination(context);
             (void)SetEvent(context->wake_event);
             return TRUE;
         default:
@@ -1359,14 +1406,14 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
     if (context == NULL || out_ready_events == NULL ||
         (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL ||
         context->wake_event == NULL || context->resize_timer == NULL) return -1;
-    if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
+    if (cdin_tui_backend_ready_take(context))
         ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
     if (context->parser_ready_pending) {
         context->parser_ready_pending = 0;
         context->terminal_buffer_only = 1;
         ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
     }
-    if (context->terminate_pending) ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
+    if (cdin_tui_termination_requested(context)) ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
     if (ready != 0u) {
         *out_ready_events = ready;
         return 0;
@@ -1411,7 +1458,7 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
             }
             if (InterlockedExchange((volatile LONG *)&context->backend_ready, 0L) != 0L)
                 wake_ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
-            if (context->terminate_pending)
+            if (cdin_tui_termination_requested(context))
                 wake_ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
             if (wake_ready != 0u) {
                 *out_ready_events = wake_ready;
@@ -1471,7 +1518,7 @@ static void cdin_tui_backend_wakeup(void *opaque)
 {
     cdin_tui_context *context = (cdin_tui_context *)opaque;
     if (context == NULL || context->wake_event == NULL) return;
-    InterlockedExchange((volatile LONG *)&context->backend_ready, 1L);
+    cdin_tui_backend_ready_set(context);
     (void)SetEvent(context->wake_event);
 }
 
@@ -1590,16 +1637,14 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
         (requested_events & CDIN_FRONTEND_TUI_EVENT_ALL) != CDIN_FRONTEND_TUI_EVENT_ALL) {
         return -1;
     }
-    if (context->backend_ready) {
+    if (cdin_tui_backend_ready_take(context))
         ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE;
-        context->backend_ready = 0;
-    }
     if (context->parser_ready_pending) {
         context->parser_ready_pending = 0;
         context->terminal_buffer_only = 1;
         ready |= CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
     }
-    if (context->terminate_pending) {
+    if (cdin_tui_termination_requested(context)) {
         *out_ready_events = ready | CDIN_FRONTEND_TUI_EVENT_TERMINATE;
         return 0;
     }
@@ -1640,7 +1685,7 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
                         case 'B': ready |= CDIN_FRONTEND_TUI_EVENT_BACKEND_READABLE; break;
                         case 'R': ready |= CDIN_FRONTEND_TUI_EVENT_RESIZE; break;
                         case 'T':
-                            context->terminate_pending = 1;
+                            cdin_tui_request_termination(context);
                             ready |= CDIN_FRONTEND_TUI_EVENT_TERMINATE;
                             break;
                         default: break;
@@ -1668,7 +1713,7 @@ static int cdin_tui_dispatch_input(cdin_tui_context *context,
     if (event->kind == CDIN_FRONTEND_INPUT_KEY &&
         (event->modifiers & CDIN_FRONTEND_MOD_CTRL) != 0u &&
         (strcmp(event->key, "c") == 0 || strcmp(event->key, "q") == 0)) {
-        context->terminate_pending = 1;
+        cdin_tui_request_termination(context);
         return 0;
     }
     status = cdin_frontend_tui_send_input(&context->session, event);
@@ -1679,7 +1724,7 @@ static int cdin_tui_dispatch_input(cdin_tui_context *context,
     }
     /* The in-process transport pumps synchronously; still schedule a Backend
      * drain so the common event loop applies and renders every resulting batch. */
-    context->backend_ready = 1;
+    cdin_tui_backend_ready_set(context);
     return 0;
 }
 
@@ -1876,7 +1921,7 @@ static cdin_frontend_tui_io_result cdin_tui_drain_backend(
         processed++;
     }
     if (cdin_backend_frontend_pending(context->transport.frontend) != 0u) {
-        context->backend_ready = 1;
+        cdin_tui_backend_ready_set(context);
     }
     if (processed != 0u) {
         *out_processed = processed;
@@ -2015,7 +2060,7 @@ static int cdin_tui_drain_initial_snapshot(cdin_tui_context *context)
                 return -1;
             }
             if ((ready & CDIN_FRONTEND_TUI_EVENT_TERMINATE) != 0u ||
-                context->terminate_pending) {
+                cdin_tui_termination_requested(context)) {
                 MMLLOG_WARN(context->log->logger,
                             "TUI shutdown requested while waiting for initial UI snapshot");
                 return -1;
@@ -2223,7 +2268,7 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     protocol_status = cdin_frontend_session_request_command(
         &context.session, "document.new", context.scratch_path);
     if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) goto protocol_failure;
-    context.backend_ready = 1;
+    cdin_tui_backend_ready_set(&context);
 
     memset(&loop, 0, sizeof(loop));
     loop.context = &context;
