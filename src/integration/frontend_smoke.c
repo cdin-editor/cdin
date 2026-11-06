@@ -1969,6 +1969,7 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     cdin_frontend_protocol_message_view hello_ack;
     cdin_frontend_tui_event_loop loop;
     size_t processed = 0u;
+    size_t loaded_extensions = 0u;
     int result = EXIT_FAILURE;
     int backend_created = 0;
     const char *runtime_root;
@@ -2033,6 +2034,7 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     cdin_backend_config_init(&config);
     config.runtime_root = runtime_root;
     config.runtime_entry = runtime_entry;
+    config.extension_source_root = options->extension_root;
     config.enable_lua = 1;
     config.enable_headless_protocol = 1;
     config.log_output = CDIN_BACKEND_LOG_OUTPUT_CALLBACK;
@@ -2053,6 +2055,11 @@ int cdin_frontend_tui_launch(const cdin_options *options, cdin_log *log)
     if (backend_status != CDIN_BACKEND_OK) {
         MMLLOG_ERROR(log->logger, "Backend start failed for TUI: %s",
                      cdin_backend_status_name(backend_status));
+        goto cleanup;
+    }
+    if (cdin_frontend_extensions_load(
+            context.backend, options, log, &loaded_extensions) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not load the requested trusted Runtime extensions for TUI");
         goto cleanup;
     }
     backend_status = cdin_backend_pump(context.backend, 64u, &processed);
@@ -2173,6 +2180,12 @@ cleanup:
             result = EXIT_FAILURE;
         }
         context.transport.frontend = NULL;
+    }
+    if (backend_created && loaded_extensions != 0u &&
+        cdin_frontend_extensions_unload(
+            context.backend, options, log, loaded_extensions) != 0) {
+        MMLLOG_ERROR(log->logger, "One or more trusted Runtime extensions failed to unload after TUI");
+        result = EXIT_FAILURE;
     }
     if (backend_created) {
         backend_status = cdin_backend_shutdown(context.backend, 0);
