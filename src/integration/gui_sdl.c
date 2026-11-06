@@ -315,24 +315,40 @@ static int cdin_gui_drain(
     return 0;
 }
 
-static int cdin_gui_inject_test_input(void)
+static int cdin_gui_inject_test_input(cdin_log *log)
 {
     /* SDL3's SDL_TextInputEvent owns a const pointer, not an inline buffer.
      * Keep the smoke payload alive while the queued event is dispatched. */
     static const char smoke_text[] = CDIN_GUI_SMOKE_PAYLOAD;
     SDL_Event event;
+    int text_queued;
+    int key_queued;
     memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_TEXT_INPUT;
     event.text.type = SDL_EVENT_TEXT_INPUT;
     event.text.text = smoke_text;
-    if (!SDL_PushEvent(&event)) return -1;
+    if (!SDL_PushEvent(&event)) {
+        MMLLOG_ERROR(log->logger, "SDL_PushEvent(text) failed: %s", SDL_GetError());
+        return -1;
+    }
     memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_KEY_DOWN;
     event.key.type = SDL_EVENT_KEY_DOWN;
     event.key.key = SDLK_S;
     event.key.mod = SDL_KMOD_CTRL;
     event.key.down = true;
-    return SDL_PushEvent(&event) ? 0 : -1;
+    if (!SDL_PushEvent(&event)) {
+        MMLLOG_ERROR(log->logger, "SDL_PushEvent(Ctrl+S) failed: %s", SDL_GetError());
+        return -1;
+    }
+    text_queued = SDL_HasEvent(SDL_EVENT_TEXT_INPUT) ? 1 : 0;
+    key_queued = SDL_HasEvent(SDL_EVENT_KEY_DOWN) ? 1 : 0;
+    MMLLOG_INFO(log->logger,
+                "GUI-SDL synthetic queue state: text_enabled=%d text_queued=%d key_enabled=%d key_queued=%d",
+                SDL_EventEnabled(SDL_EVENT_TEXT_INPUT) ? 1 : 0, text_queued,
+                SDL_EventEnabled(SDL_EVENT_KEY_DOWN) ? 1 : 0, key_queued);
+    if (!text_queued || !key_queued) return -1;
+    return 0;
 }
 
 static int cdin_gui_saved_bytes_match(const char *path)
@@ -541,7 +557,7 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
         if (newly_committed) document_snapshot_committed = 1;
 
         if (smoke_mode && document_snapshot_committed && !smoke_input_sent) {
-            if (cdin_gui_inject_test_input() != 0) {
+            if (cdin_gui_inject_test_input(log) != 0) {
                 MMLLOG_ERROR(log->logger, "GUI-SDL could not enqueue deterministic SDL input");
                 result = EXIT_FAILURE;
                 break;
@@ -550,8 +566,16 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
         }
 
         {
+            uint64_t tx_before = session.client->next_tx_sequence;
             cdin_frontend_gui_sdl_status gui_status =
                 cdin_frontend_gui_sdl_pump_events(gui, &quit_requested);
+            MMLLOG_INFO(log->logger,
+                        "GUI-SDL SDL pump result=%d protocol_tx_before=%llu protocol_tx_after=%llu text_pending=%d key_pending=%d",
+                        (int)gui_status,
+                        (unsigned long long)tx_before,
+                        (unsigned long long)session.client->next_tx_sequence,
+                        SDL_HasEvent(SDL_EVENT_TEXT_INPUT) ? 1 : 0,
+                        SDL_HasEvent(SDL_EVENT_KEY_DOWN) ? 1 : 0);
             if (gui_status != CDIN_FRONTEND_GUI_SDL_OK ||
                 cdin_frontend_gui_sdl_render(gui) != CDIN_FRONTEND_GUI_SDL_OK) {
                 MMLLOG_ERROR(log->logger, "GUI-SDL event pump or render failed");
