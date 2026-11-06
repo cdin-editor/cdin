@@ -52,6 +52,7 @@ typedef struct cdin_gui_transport {
     size_t outgoing_message_index;
     cdin_frontend_protocol_message_type outgoing_message_type;
     int outgoing_waiting_ack;
+    cdin_log *log;
 } cdin_gui_transport;
 
 static int cdin_gui_process_inbound_frame(cdin_gui_transport *transport)
@@ -63,15 +64,40 @@ static int cdin_gui_process_inbound_frame(cdin_gui_transport *transport)
         cdin_frontend_protocol_decode_frame(
             transport->incoming, transport->incoming_expected,
             &inbound, CDIN_GUI_FRAME_BYTES);
-    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK ||
-        (transport->outgoing_waiting_ack &&
-         inbound.type != CDIN_FRONTEND_PROTOCOL_ACK)) return -1;
+    if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+        MMLLOG_ERROR(transport->log->logger, "GUI-SDL inbound frame decode failed: %s",
+                     cdin_frontend_protocol_status_name(protocol_status));
+        return -1;
+    }
+    if (transport->outgoing_waiting_ack &&
+        inbound.type != CDIN_FRONTEND_PROTOCOL_ACK) {
+        MMLLOG_ERROR(transport->log->logger,
+                     "GUI-SDL expected ACK while output was backpressured, received %s",
+                     cdin_frontend_protocol_message_name(inbound.type));
+        return -1;
+    }
     backend_status = cdin_backend_frontend_receive(
         transport->frontend, transport->incoming,
         transport->incoming_expected);
-    if (backend_status != CDIN_BACKEND_OK) return -1;
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(transport->log->logger, "GUI-SDL inbound %s rejected: %s",
+                     cdin_frontend_protocol_message_name(inbound.type),
+                     cdin_backend_status_name(backend_status));
+        return -1;
+    }
     backend_status = cdin_backend_pump(transport->backend, 64u, &processed);
-    if (backend_status != CDIN_BACKEND_OK) return -1;
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(transport->log->logger, "GUI-SDL Backend pump after %s failed: %s",
+                     cdin_frontend_protocol_message_name(inbound.type),
+                     cdin_backend_status_name(backend_status));
+        return -1;
+    }
+    MMLLOG_INFO(transport->log->logger,
+                "GUI-SDL Protocol received %s sequence=%llu processed=%llu pending=%llu",
+                cdin_frontend_protocol_message_name(inbound.type),
+                (unsigned long long)inbound.sequence,
+                (unsigned long long)processed,
+                (unsigned long long)cdin_backend_frontend_pending(transport->frontend));
     if (transport->outgoing_waiting_ack) {
         transport->outgoing_waiting_ack = 0;
         transport->outgoing_message_index = 0u;
@@ -219,17 +245,53 @@ static int cdin_gui_drain(
     int *out_document_snapshot_committed)
 {
     size_t processed = 0u;
-    if (out_document_snapshot_committed == NULL ||
-        cdin_backend_pump(backend, 64u, &processed) != CDIN_BACKEND_OK) return -1;
+    cdin_backend_status backend_status;
+    if (out_document_snapshot_committed == NULL) return -1;
+    backend_status = cdin_backend_pump(backend, 64u, &processed);
+    if (backend_status != CDIN_BACKEND_OK) {
+        MMLLOG_ERROR(gui != NULL ? gui->logger : NULL,
+                     "GUI-SDL Backend pump before drain failed: %s",
+                     cdin_backend_status_name(backend_status));
+        return -1;
+    }
     *out_document_snapshot_committed = 0;
     while (cdin_backend_frontend_pending(frontend) != 0u) {
         cdin_frontend_protocol_message_view message;
+        cdin_frontend_protocol_status protocol_status;
+        cdin_frontend_gui_sdl_status gui_status;
         int committed = 0;
-        if (cdin_frontend_session_receive(session, &message) !=
-                CDIN_FRONTEND_PROTOCOL_OK ||
-            message.type == CDIN_FRONTEND_PROTOCOL_ERROR ||
-            cdin_frontend_gui_sdl_apply_message(
-                gui, &message, &committed) != CDIN_FRONTEND_GUI_SDL_OK) return -1;
+        protocol_status = cdin_frontend_session_receive(session, &message);
+        if (protocol_status != CDIN_FRONTEND_PROTOCOL_OK) {
+            MMLLOG_ERROR(gui->logger, "GUI-SDL response read failed: %s",
+                         cdin_frontend_protocol_status_name(protocol_status));
+            return -1;
+        }
+        if (message.type == CDIN_FRONTEND_PROTOCOL_ERROR) {
+            char code[64] = { 0 };
+            char detail[512] = { 0 };
+            size_t code_length = 0u;
+            size_t detail_length = 0u;
+            (void)cdin_frontend_protocol_payload_get_text(
+                message.payload, message.payload_length, "code",
+                code, sizeof(code), &code_length);
+            (void)cdin_frontend_protocol_payload_get_text(
+                message.payload, message.payload_length, "message",
+                detail, sizeof(detail), &detail_length);
+            MMLLOG_ERROR(gui->logger, "GUI-SDL Backend returned Protocol error %s: %s",
+                         code_length != 0u ? code : "UNKNOWN",
+                         detail_length != 0u ? detail : "no diagnostic");
+            return -1;
+        }
+        gui_status = cdin_frontend_gui_sdl_apply_message(gui, &message, &committed);
+        if (gui_status != CDIN_FRONTEND_GUI_SDL_OK) {
+            MMLLOG_ERROR(gui->logger, "GUI-SDL could not apply Backend message %s: status=%d",
+                         cdin_frontend_protocol_message_name(message.type),
+                         (int)gui_status);
+            return -1;
+        }
+        MMLLOG_INFO(gui->logger, "GUI-SDL applied %s sequence=%llu committed=%d",
+                    cdin_frontend_protocol_message_name(message.type),
+                    (unsigned long long)message.sequence, committed);
         if (message.type == CDIN_FRONTEND_PROTOCOL_UI_FLUSH && committed != 0) {
             char scope[16];
             size_t scope_length = 0u;
@@ -244,6 +306,9 @@ static int cdin_gui_drain(
                     &revision) == CDIN_FRONTEND_PROTOCOL_OK &&
                 revision != 0u) {
                 *out_document_snapshot_committed = 1;
+                MMLLOG_INFO(gui->logger,
+                            "GUI-SDL document snapshot committed revision=%llu",
+                            (unsigned long long)revision);
             }
         }
     }
@@ -381,6 +446,7 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
     }
 
     transport.backend = backend;
+    transport.log = log;
     transport.incoming = (uint8_t *)malloc(CDIN_GUI_FRAME_CAPACITY);
     transport.outgoing = (uint8_t *)malloc(CDIN_GUI_FRAME_CAPACITY);
     client_buffer = (uint8_t *)malloc(CDIN_GUI_FRAME_CAPACITY);
@@ -451,10 +517,16 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
             goto cleanup;
         }
     }
-    if (cdin_frontend_session_request_command(
-            &session, "document.new", scratch_path) != CDIN_FRONTEND_PROTOCOL_OK) {
-        MMLLOG_ERROR(log->logger, "GUI-SDL could not request its initial document");
-        goto cleanup;
+    {
+        cdin_frontend_protocol_status command_status =
+            cdin_frontend_session_request_command(
+                &session, "document.new", scratch_path);
+        if (command_status != CDIN_FRONTEND_PROTOCOL_OK) {
+            MMLLOG_ERROR(log->logger, "GUI-SDL document.new send failed: %s",
+                         cdin_frontend_protocol_status_name(command_status));
+            goto cleanup;
+        }
+        MMLLOG_INFO(log->logger, "GUI-SDL requested document.new path=%s", scratch_path);
     }
 
     for (attempt = 0u;
