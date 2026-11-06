@@ -35,19 +35,64 @@ The Runtime Lua tree is installed under `.deps/install/share/cdin/lua`.
 
 The `--check` path is a headless integration workflow. It attaches Frontend Core to Backend, validates the initial snapshot/flush/ACK and resize path, then exercises document create/edit/paste/undo/redo/save/close/open and exact-byte readback. It also exercises BOM and EOL variants and filesystem failure recovery. It does not launch a terminal or GUI renderer.
 
-## 4. Experimental POSIX TUI
+## 4. Trusted Runtime extensions (integration candidate)
 
-An experimental POSIX TUI path is available only with an explicit environment opt-in:
+The Composition Root branch adds explicit local extension selection. It does not
+scan an extension directory or load everything it finds. Each selected extension
+must be a trusted child directory below an administrator-controlled root and
+must provide an `init.lua` entry point.
+
+For a headless lifecycle check:
+
+```sh
+./.deps/install/bin/cdin --check \
+  --extension-root "$HOME/.local/share/cdin/extensions" \
+  --load-extension sample
+```
+
+To use the same selection during an experimental TUI session:
+
+```sh
+CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui \
+  --extension-root "$HOME/.local/share/cdin/extensions" \
+  --load-extension sample
+```
+
+`--load-extension` may be repeated. Extension names are bounded dotted
+namespace identifiers, not filesystem paths. CDIN passes the selected names
+to Backend on the Runtime owner thread and unloads successfully loaded
+extensions in reverse order during controlled shutdown. The management calls
+are local embedding APIs; there is no Frontend Protocol command for loading
+code. Do not point the root at a user-writable download/cache directory or
+untrusted code. Host sandboxing is defense in depth, not process isolation.
+
+This path depends on Backend 1.2.0 candidate [PR #16](https://github.com/cdin-editor/backend/pull/16)
+and remains an integration candidate until the pinned build, live Lua init/unload
+smoke, capability allow/deny and failure-cleanup tests pass on the current
+native matrix. It is not yet a stable extension distribution/marketplace
+contract.
+
+## 5. Experimental TUI
+
+The POSIX TUI requires the explicit environment opt-in:
 
 ```sh
 CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui
 ```
 
-This is for development and integration testing only. It is not a supported end-user installation path. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) has merged the pending `view.lines` request-lifecycle fix as `e29df5118e7b822912724b15c0c963b0b99f2f8a`, and CDIN pins that exact immutable commit. CDIN run [42122228431](https://github.com/cdin-editor/cdin/actions/runs/42122228431) is validating the merged dependency on the native matrix. Keep the POSIX TUI experimental until the current CDIN PTY and sanitizer gates pass.
+This is for development and integration testing only. It is not a supported
+end-user installation path. The merged Frontend request-lifecycle fix
+[PR #11](https://github.com/cdin-editor/frontend/pull/11) is pinned by its
+immutable merge commit `e29df5118e7b822912724b15c0c963b0b99f2f8a`. A separate
+ConPTY adapter fix is under Draft [Frontend PR #16](https://github.com/cdin-editor/frontend/pull/16).
+The last inspected Windows run reached the initial render but did not yet
+observe edited text in the rendered output. Keep Windows TUI fail-closed until
+the input/ACK/redraw path passes the ConPTY acceptance test. GUI-SDL launch
+is not available.
 
-Windows TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented. GUI-SDL launch is not available.
+## 6. Source archive
 
-## 5. Source archive
+## 6. Source archive
 
 To create a source archive for development review:
 
@@ -57,13 +102,13 @@ make package
 
 The archive is written to `dist/cdin-composition-root-source.zip`. It is a source snapshot, not a platform installer or release package; it does not bundle the separately built component binaries.
 
-## 6. Release status
+## 7. Release status
 
 The following are not currently available as verified product deliverables:
 
 - signed Linux, macOS or Windows application installers;
 - a release-ready interactive TUI or GUI editor;
-- a Windows Console TUI adapter;
+- a verified Windows Console/ConPTY TUI input and restoration path;
 - a complete application package containing a verified Frontend;
 - a stable release workflow that publishes tested platform artifacts.
 
