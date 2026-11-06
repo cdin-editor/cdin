@@ -23,20 +23,7 @@ SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"WIN_CONPTY_EDIT_8427"
 LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_8427"
 LIVE_PLUGIN_UNLOAD = b"CDIN_TUI_EXTENSION_UNLOAD_8427"
-LIVE_PLUGIN_SOURCE = """\\
-local logger
-return {
-  init = function(core)
-    logger = core
-    core:log("info", "CDIN_TUI_EXTENSION_INIT_8427")
-  end,
-  unload = function()
-    if logger ~= nil then
-      logger:log("info", "CDIN_TUI_EXTENSION_UNLOAD_8427")
-    end
-  end,
-}
-"""
+LIVE_PLUGIN_SOURCE = """\
 local logger
 return {
   init = function(core)
