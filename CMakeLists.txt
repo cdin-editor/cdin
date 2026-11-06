@@ -11,7 +11,7 @@ option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
 # The Composition Root never compiles copied component sources.
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
 find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)
-find_package(cdinBackend 1.0.2 CONFIG REQUIRED)
+find_package(cdinBackend 1.2.0 CONFIG REQUIRED)
 
 add_library(cdin_options STATIC src/cli/options.c)
 target_include_directories(cdin_options PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
