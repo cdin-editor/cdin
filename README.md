@@ -33,11 +33,81 @@ CDIN is not a second editor engine. It must not copy document operations from Ke
 
 ## Current status
 
-The Composition Root candidate is tracked by [PR #110](https://github.com/cdin-editor/cdin/pull/110), branch feature/complete-composition-root-rewrite. Current head: 634075a92aeb5a6e58b817d2045d653dfbf8bbf2. The native full-stack workflow [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) has been dispatched but its jobs have not started yet; the GUI live-session smoke is **NOT VERIFIED** on this head.
+The Composition Root candidate is tracked by [PR #110](https://github.com/cdin-editor/cdin/pull/110), branch `feature/complete-composition-root-rewrite`. Current head: `8d4aaf425cd544ae085ccfe256ce964a55793d9a`. It now pins Frontend PR #18's immutable candidate `bb22901e82f4b0f3a6aa0eefdd22265465564cd3`. The latest CDIN full-stack run [42309344504](https://github.com/cdin-editor/cdin/actions/runs/42309344504) is queued after the pin update; its result is not yet verified.
 
-Earlier attempts exposed and led to fixes for the CDIN private include path, SDL3 text-event pointer semantics, exact-byte test length, CLI test allowlisting/gate wording, and reading the ui.flush scope/revision after its ACK reused the protocol client buffer. The current candidate captures that metadata before ACK and warms the SDL event loop by draining initial focus/resize events before injecting deterministic text and Ctrl+S. These are implementation fixes, not a GUI PASS claim.
+The previous full-stack run [42306512218](https://github.com/cdin-editor/cdin/actions/runs/42306512218) isolated the Windows failure to `cdin_tui_live_conpty_smoke`: the ConPTY child receives pipe-backed standard handles, so `GetConsoleMode` on `GetStdHandle` returned `ERROR_INVALID_HANDLE (6)`. The GUI-SDL live Backend/Runtime session smoke passed on Windows in that run. The new Frontend candidate opens `CONIN# CDIN
 
-CDIN pins Frontend PR #17 at immutable candidate 1dd2fc0826d302883fa0e6bab0cbead3ec84a6d4. [Frontend CI run 42304001468](https://github.com/cdin-editor/frontend/actions/runs/42304001468) passed Linux, macOS, Windows, SDL3 AddressSanitizer model/adapter tests, clean-prefix package consumer and Pipeline quality. The GUI model binds the actual Runtime view ID from the first view-scoped snapshot; it no longer assumes the Frontend attach view ID and Runtime-created view ID are identical. This verifies the independent Frontend package, not CDIN application launch.
+<p align="center">
+  <a href="https://github.com/cdin-editor/cdin-editor.github.io">
+    <img src="https://raw.githubusercontent.com/cdin-editor/cdin-editor.github.io/main/public/cdin-icons/source/cdin-original-transparent-512.png" width="180" alt="CDIN logo" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cdin-editor/cdin/actions/workflows/ci.yml"><img src="https://github.com/cdin-editor/cdin/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg" alt="License: GPL-3.0-or-later"></a>
+  <a href="https://www.lua.org/versions.html"><img src="https://img.shields.io/badge/Runtime-Lua%205.4-blue.svg" alt="Lua 5.4"></a>
+  <a href="https://github.com/cdin-editor/spec"><img src="https://img.shields.io/badge/CDIN-Specification-purple.svg" alt="CDIN specification"></a>
+</p>
+
+<p align="center">The composition root for the CDIN editor components.</p>
+
+CDIN brings together the Kernel, Runtime, Backend and Frontend projects. It owns the application build, dependency pins, packaging, launcher and process lifecycle. Editor behavior lives in the component that owns it.
+
+## What is CDIN?
+
+A user-facing editor needs a document engine, editor policy, operating-system services and a way to present the interface. CDIN keeps those responsibilities in separate projects and connects them through their public contracts.
+
+| Component | Responsibility |
+| --- | --- |
+| **Kernel** | Owns document bytes, edits, versions, snapshots and undo/redo. |
+| **Runtime** | Runs Lua 5.4 editor policy: commands, keymaps, configuration and plugins. |
+| **Backend** | Hosts Kernel and Runtime, manages sessions and OS services, and serves the Frontend Protocol. |
+| **Frontend** | Adapts input, presents the semantic UI model, performs visual layout and renders the editor. |
+| **CDIN** | Pins, builds, packages and launches the components. |
+
+CDIN is not a second editor engine. It must not copy document operations from Kernel, keymap or plugin behavior from Runtime, session logic from Backend, or layout and rendering from Frontend.
+
+## Current status
+
+/`CONOUT# CDIN
+
+<p align="center">
+  <a href="https://github.com/cdin-editor/cdin-editor.github.io">
+    <img src="https://raw.githubusercontent.com/cdin-editor/cdin-editor.github.io/main/public/cdin-icons/source/cdin-original-transparent-512.png" width="180" alt="CDIN logo" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/cdin-editor/cdin/actions/workflows/ci.yml"><img src="https://github.com/cdin-editor/cdin/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg" alt="License: GPL-3.0-or-later"></a>
+  <a href="https://www.lua.org/versions.html"><img src="https://img.shields.io/badge/Runtime-Lua%205.4-blue.svg" alt="Lua 5.4"></a>
+  <a href="https://github.com/cdin-editor/spec"><img src="https://img.shields.io/badge/CDIN-Specification-purple.svg" alt="CDIN specification"></a>
+</p>
+
+<p align="center">The composition root for the CDIN editor components.</p>
+
+CDIN brings together the Kernel, Runtime, Backend and Frontend projects. It owns the application build, dependency pins, packaging, launcher and process lifecycle. Editor behavior lives in the component that owns it.
+
+## What is CDIN?
+
+A user-facing editor needs a document engine, editor policy, operating-system services and a way to present the interface. CDIN keeps those responsibilities in separate projects and connects them through their public contracts.
+
+| Component | Responsibility |
+| --- | --- |
+| **Kernel** | Owns document bytes, edits, versions, snapshots and undo/redo. |
+| **Runtime** | Runs Lua 5.4 editor policy: commands, keymaps, configuration and plugins. |
+| **Backend** | Hosts Kernel and Runtime, manages sessions and OS services, and serves the Frontend Protocol. |
+| **Frontend** | Adapts input, presents the semantic UI model, performs visual layout and renders the editor. |
+| **CDIN** | Pins, builds, packages and launches the components. |
+
+CDIN is not a second editor engine. It must not copy document operations from Kernel, keymap or plugin behavior from Runtime, session logic from Backend, or layout and rendering from Frontend.
+
+## Current status
+
+ for ConPTY/redirected stdio, restores their modes and closes only handles owned by the TUI adapter; the refreshed CDIN run must verify that path.
+
+Frontend PR #17 was merged into `main` at [`fea9560`](https://github.com/cdin-editor/frontend/commit/fea9560d60085aa4d579efc6a584d90349ee4ac0). Follow-up PR [#18](https://github.com/cdin-editor/frontend/pull/18) carries the review fixes: strict snapshot revision monotonicity, exact visible-line request correlation, no Runtime-owned selection cache, required pixel units for GUI-SDL, filtering input by SDL window ID, and the Windows ConPTY handle fallback. Its latest CI [42309328264](https://github.com/cdin-editor/frontend/actions/runs/42309328264) has passed Linux/macOS native jobs and Pipeline quality; Windows and the SDL3 AddressSanitizer/package-consumer job are running after the pixel-unit validation test was corrected. This is candidate verification, not a merge or release-readiness claim.
 
 Backend PR #18 is ready for review at 987acd2f04bf6cc7eed360a4328bb11085628457. [Backend CI 42300963625](https://github.com/cdin-editor/backend/actions/runs/42300963625) passed Markdown lint, Pipeline quality and Lua 5.4 resolver integration on Ubuntu, macOS and Windows. [Live Runtime integration 42300963086](https://github.com/cdin-editor/backend/actions/runs/42300963086), [Native resource stress 42300963234](https://github.com/cdin-editor/backend/actions/runs/42300963234) and [Code Quality 42300958559](https://github.com/cdin-editor/backend/actions/runs/42300958559) also passed. Backend Issue [#14](https://github.com/cdin-editor/backend/issues/14) is closed with these results.
 
