@@ -2,17 +2,24 @@
 
 This document reports capabilities exercised by the CDIN Composition Root, not merely features exposed by a component. A green component build does not prove that the complete editor is usable.
 
-The product epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). The current integration candidate is developed on feature/complete-composition-root-rewrite through [PR #110](https://github.com/cdin-editor/cdin/pull/110), which remains Draft. Current head is 634075a92aeb5a6e58b817d2045d653dfbf8bbf2. The GUI-SDL Composition Root now compiles on the prior native candidate and its live-session smoke reaches attach/model processing, but no run has yet reported a passing exact-byte SDL text + Ctrl+S save. Current native CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) has been dispatched and is pending job start.
+The product epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). The current integration candidate is developed on `feature/complete-composition-root-rewrite` through [PR #110](https://github.com/cdin-editor/cdin/pull/110), which remains Draft. The current branch includes the merged Frontend ConPTY correction and the immutable dependency pin recorded below.
 
-## Current candidate verification — 2026-11-07
+## Current verification update — 2026-11-07
 
-The current pinned Frontend candidate is 1dd2fc0826d302883fa0e6bab0cbead3ec84a6d4; its component CI [42304001468](https://github.com/cdin-editor/frontend/actions/runs/42304001468) passed Linux/macOS/Windows, GUI-SDL AddressSanitizer tests, clean-prefix package consumer and Pipeline quality. The model binds the actual Runtime view ID from the first view-scoped snapshot rather than assuming it equals the Frontend attach ID.
+### Frontend ConPTY correction
 
-The Backend resolver regression branch is independent of the CDIN dependency pin. Backend PR #18 head 987acd2f04bf6cc7eed360a4328bb11085628457 passed [CI 42300963625](https://github.com/cdin-editor/backend/actions/runs/42300963625) with Lua 5.4 resolver integration on Linux/macOS/Windows, [Live Runtime 42300963086](https://github.com/cdin-editor/backend/actions/runs/42300963086), [native resource stress 42300963234](https://github.com/cdin-editor/backend/actions/runs/42300963234) and [Code Quality 42300958559](https://github.com/cdin-editor/backend/actions/runs/42300958559). Backend Issue #14 is closed; PR #18 is Ready for Review.
+- Frontend [PR #19](https://github.com/cdin-editor/frontend/pull/19) merged at `1373715c23eb965445caa926de3a99d9c0246f81`.
+- Frontend CI [run 42312049293](https://github.com/cdin-editor/frontend/actions/runs/42312049293) passed all five jobs: Linux native TUI, macOS native TUI, Windows native TUI, SDL3 production adapter/installed consumer, and Pipeline quality.
+- CDIN `deps.lock` pins that exact merge commit. The pin update is [commit ab9d854](https://github.com/cdin-editor/cdin/commit/ab9d85455c78200e2cccd7df50e5f65bbf70b6c9).
+- CDIN full-stack + sanitizer verification for that exact pin is [run 42312594183](https://github.com/cdin-editor/cdin/actions/runs/42312594183). At the time of this document update, its Linux, macOS, Windows and ASan/UBSan/leak-detection jobs are still running. The Windows `cdin_tui_live_conpty_smoke` must pass before the cross-repository ConPTY gate is checked off.
 
-The CDIN candidate fixes the earlier build include path, SDL3 text input event pointer, exact payload length and CLI assertion issues. It captures flush scope/revision before apply_message because that operation ACKs through the same client and may reuse the message buffer. It also drains SDL startup focus/resize events in a warm-up turn before enqueuing deterministic text and Ctrl+S input.
+### Current verified boundary
 
-These fixes have not yet produced a green GUI E2E result. CDIN CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) is the current native/sanitizer run; at the time of this update its jobs have not started. Treat GUI live-session smoke as **NOT VERIFIED** until logs prove snapshot commit, SDL text delivery, input.key delivery, Runtime save command and byte-exact saved file. Keep GUI-SDL launch experimental.
+- The previous CDIN candidate passed the headless editing/persistence workflow, POSIX PTY, multiple Frontend Driver/Observer roles, detach/reattach lease reacquisition, byte-preservation fixtures, filesystem failure recovery, compiler-resolved include graph, reproducible source snapshot and Linux ASan/UBSan/leak detection in [run 42182694691](https://github.com/cdin-editor/cdin/actions/runs/42182694691).
+- GUI-SDL live-session text input and exact-byte save smoke passed on Linux/macOS/Windows in [run 42310020078](https://github.com/cdin-editor/cdin/actions/runs/42310020078). That run used the prior Frontend pin and is not a substitute for the new run above. GUI-SDL remains experimental; complete PaneTree rendering, IME, shaping/bidi/Persian, device-loss recovery and full session recovery are still open.
+- The current CDIN ConPTY failure before PR #19 was isolated to the readiness wait using a different handle from the terminal adapter's `CONIN$` read handle. PR #19 aligns the wait and read handles and restores the original standard input handle on teardown. The correction is merged and component-tested; CDIN acceptance is pending.
+- PR #110 remains Draft. No supported release-mode interactive launch, complete plugin capability policy, process recovery, product-grade performance/soak evidence or native application installers are claimed.
+
 ## 1. Verified in CDIN
 
 | Capability | Status | Evidence |
