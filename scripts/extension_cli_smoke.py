@@ -52,16 +52,28 @@ def resolve_executable(raw: str) -> Path:
     return executable
 
 
+def resolve_runtime_root(raw: str) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError("Runtime root must be an absolute path")
+    runtime_root = candidate.resolve(strict=True)
+    expected_root = (ROOT / ".deps" / "src" / "runtime" / "lua").resolve(strict=True)
+    if runtime_root != expected_root or not runtime_root.is_dir():
+        raise ValueError("Runtime root must be the pinned Runtime Lua directory")
+    return runtime_root
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: extension_cli_smoke.py CDIN_EXECUTABLE", file=sys.stderr)
         return 2
-    runtime_root = os.environ.get("CDIN_RUNTIME_ROOT")
-    if not runtime_root or not Path(runtime_root).is_dir():
+    runtime_value = os.environ.get("CDIN_RUNTIME_ROOT")
+    if not runtime_value:
         print("CDIN_RUNTIME_ROOT must identify the pinned Runtime Lua tree", file=sys.stderr)
         return 2
     try:
         executable = resolve_executable(sys.argv[1])
+        runtime_root = resolve_runtime_root(runtime_value)
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -74,7 +86,7 @@ def main() -> int:
         working = root / "work"
         working.mkdir()
         environment = os.environ.copy()
-        environment["CDIN_RUNTIME_ROOT"] = str(Path(runtime_root).resolve())
+        environment["CDIN_RUNTIME_ROOT"] = str(runtime_root)
 
         completed = subprocess.run(
             [

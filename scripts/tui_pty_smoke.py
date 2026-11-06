@@ -129,6 +129,17 @@ def assert_restored(slave: int, before_termios, before_flags: int, output: bytea
         )
 
 
+def resolve_runtime_root(raw: str) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError("Runtime root must be an absolute path")
+    runtime_root = candidate.resolve(strict=True)
+    expected_root = (ROOT / ".deps" / "src" / "runtime" / "lua").resolve(strict=True)
+    if runtime_root != expected_root or not runtime_root.is_dir():
+        raise ValueError("Runtime root must be the pinned Runtime Lua directory")
+    return runtime_root
+
+
 def run_live_edit(executable: str) -> None:
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
@@ -273,8 +284,14 @@ def main() -> int:
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 2
-    if not os.environ.get("CDIN_RUNTIME_ROOT"):
+    runtime_value = os.environ.get("CDIN_RUNTIME_ROOT")
+    if not runtime_value:
         print("CDIN_RUNTIME_ROOT must point at the pinned Runtime Lua tree", file=sys.stderr)
+        return 2
+    try:
+        os.environ["CDIN_RUNTIME_ROOT"] = str(resolve_runtime_root(runtime_value))
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
         return 2
     run_live_edit(executable)
     run_signal_shutdown(executable)

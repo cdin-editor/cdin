@@ -4,13 +4,19 @@
 from __future__ import annotations
 
 import ctypes
-from ctypes import wintypes
+import ctypes.wintypes
+
+wintypes = ctypes.wintypes
 import os
 import re
 import sys
 import tempfile
 import time
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILD_BIN = ROOT / "build" / "stack" / "cdin"
+INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"WIN_CONPTY_EDIT_8427"
@@ -370,6 +376,41 @@ class PseudoConsole:
         self.process = wintypes.HANDLE()
 
 
+def is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def resolve_cdin_executable(raw: str) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError("CDIN executable path must be absolute")
+    executable = candidate.resolve(strict=True)
+    allowed_roots = (
+        BUILD_BIN.resolve(strict=False),
+        INSTALL_BIN.resolve(strict=False),
+    )
+    if not any(is_within(executable, root) for root in allowed_roots):
+        raise ValueError("CDIN executable must be inside the repository build/install bin directory")
+    if executable.name.lower() not in {"cdin", "cdin.exe"} or not executable.is_file():
+        raise ValueError("target must be the built CDIN executable")
+    return executable
+
+
+def resolve_runtime_root(raw: str) -> Path:
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError("Runtime root must be an absolute path")
+    runtime_root = candidate.resolve(strict=True)
+    expected_root = (ROOT / ".deps" / "src" / "runtime" / "lua").resolve(strict=True)
+    if runtime_root != expected_root or not runtime_root.is_dir():
+        raise ValueError("Runtime root must be the pinned Runtime Lua directory")
+    return runtime_root
+
+
 def make_environment(runtime_root: Path) -> dict[str, str]:
     environment = os.environ.copy()
     environment["CDIN_ENABLE_EXPERIMENTAL_TUI"] = "1"
@@ -462,17 +503,15 @@ def main() -> int:
     if len(sys.argv) != 2:
         print("usage: tui_conpty_smoke.py CDIN_EXECUTABLE", file=sys.stderr)
         return 2
-    executable = Path(sys.argv[1]).resolve()
-    if not executable.is_file():
-        print(f"CDIN executable not found: {executable}", file=sys.stderr)
-        return 2
     runtime_value = os.environ.get("CDIN_RUNTIME_ROOT")
     if not runtime_value:
         print("CDIN_RUNTIME_ROOT must point at the pinned Runtime Lua tree", file=sys.stderr)
         return 2
-    runtime_root = Path(runtime_value).resolve()
-    if not runtime_root.is_dir():
-        print(f"Runtime root does not exist: {runtime_root}", file=sys.stderr)
+    try:
+        executable = resolve_cdin_executable(sys.argv[1])
+        runtime_root = resolve_runtime_root(runtime_value)
+    except (OSError, ValueError) as error:
+        print(str(error), file=sys.stderr)
         return 2
 
     with tempfile.TemporaryDirectory(prefix="cdin-tui-conpty-") as directory:
