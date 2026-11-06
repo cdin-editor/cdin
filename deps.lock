@@ -2,12 +2,12 @@ schema_version = 1
 
 [dependencies.runtime]
 repository = "https://github.com/cdin-editor/runtime.git"
-revision = "ca2f386c858dcd93fc3481f6d39f29c4daf128e3"
+revision = "da1fa74f7668a242c38d753d100d55f72c07944a"
 version = "1.0.0-rc.1"
 host_api = "1.0.0"
 protocol = "1.0.0"
 kernel_abi = "1.1.0"
-role = "Lua runtime assets"
+role = "Runtime PR #6 candidate: resolver-backed lifecycle and structured Backend error propagation"
 
 [dependencies.kernel]
 repository = "https://github.com/cdin-editor/kernel.git"
