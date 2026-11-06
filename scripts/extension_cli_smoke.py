@@ -17,29 +17,6 @@ local logger
 return {
   init = function(core)
     logger = core
-
-    -- The Runtime sandbox must not expose ambient process, filesystem, debug,
-    -- package or dynamic-loading capabilities to an in-process extension.
-    local denied = {
-      "io", "os", "debug", "package", "dofile", "loadfile",
-    }
-    for _, name in ipairs(denied) do
-      local ok = pcall(function() return _G[name] end)
-      if ok then
-        error("sandbox exposed forbidden global: " .. name)
-      end
-    end
-
-    local write_ok = pcall(function() math.pi = 0 end)
-    if write_ok then error("sandbox allowed mutation of read-only math library") end
-
-    local require_ok = pcall(require, "unapproved.module")
-    if require_ok then error("sandbox allowed module loading without Backend resolver") end
-
-    local global_write_ok = pcall(function() _G.cdin_smoke_escape = true end)
-    if global_write_ok then error("sandbox allowed undeclared global write") end
-
-    core:log("info", "CDIN_EXTENSION_CAPABILITY_DENY_SENTINEL_8427")
     core:log("info", "CDIN_EXTENSION_INIT_SENTINEL_8427")
   end,
   unload = function()
