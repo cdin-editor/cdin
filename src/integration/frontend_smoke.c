@@ -1135,13 +1135,17 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
      * peer without DETACH. The remaining Observer must be promoted; a fresh
      * Protocol client must reconnect to the same Backend session, attach as
      * Observer, and become Driver only after the active lease is released. */
-    if (cdin_multisession_peer_attach(&first, "cdin-multisession-view-1", 0, 1) != 0 ||
-        cdin_multisession_peer_attach(&second, "cdin-multisession-view-2", 0, 0) != 0 ||
-        cdin_frontend_session_request_command(
-            &first.session, "document.new", "cdin-reconnect-pending.cdin") !=
+    /* Leave the first peer's ordered ATTACH snapshot (and its initial role
+     * event, because its lease was reacquired after detach) unread. This gives
+     * the disconnect path real pending Backend output without relying on an
+     * editor command whose Runtime publication may complete in a later pump. */
+    if (cdin_frontend_session_attach(
+            &first.session, "cdin-reconnect-pending-view", "cells", 80u, 24u) !=
             CDIN_FRONTEND_PROTOCOL_OK ||
+        cdin_backend_frontend_pending(first.transport.frontend) == 0u ||
+        cdin_multisession_peer_attach(&second, "cdin-multisession-view-2", 0, 0) != 0 ||
         cdin_backend_frontend_pending(first.transport.frontend) == 0u) {
-        MMLLOG_ERROR(log->logger, "Could not queue Backend-owned UI work before peer disconnect");
+        MMLLOG_ERROR(log->logger, "Could not queue an unread Backend ATTACH snapshot before peer disconnect");
         goto cleanup;
     }
     disconnected_client_id = first.session.client_id;
