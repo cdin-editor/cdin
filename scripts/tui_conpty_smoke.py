@@ -439,7 +439,7 @@ def run_startup_failure(executable: Path, working: Path) -> None:
             raise AssertionError("CDIN unexpectedly started with a missing Runtime root")
         entered_terminal = any(
             token in session.output
-            for token in (b"\\x1b[?25l", b"\\x1b[?2004h", b"\\x1b[?1049h")
+            for token in (b"\x1b[?25l", b"\x1b[?2004h", b"\x1b[?1049h")
         )
         if entered_terminal:
             missing = [token for token in RESTORE if token not in session.output]
