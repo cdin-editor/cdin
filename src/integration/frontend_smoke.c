@@ -63,6 +63,56 @@ typedef struct cdin_inproc_transport {
     int outgoing_waiting_ack;
 } cdin_inproc_transport;
 
+int cdin_frontend_extensions_load(cdin_backend *backend,
+                                  const cdin_options *options,
+                                  cdin_log *log,
+                                  size_t *out_loaded)
+{
+    size_t index;
+    if (out_loaded != NULL) *out_loaded = 0u;
+    if (backend == NULL || options == NULL || log == NULL || log->logger == NULL ||
+        out_loaded == NULL) return -1;
+    if (options->extension_count != 0u && options->extension_root == NULL) {
+        MMLLOG_ERROR(log->logger, "Extension names require an explicit trusted extension root");
+        return -1;
+    }
+    for (index = 0u; index < options->extension_count; index++) {
+        const char *name = options->extension_names[index];
+        cdin_backend_status status = cdin_backend_extension_load(backend, name);
+        if (status != CDIN_BACKEND_OK) {
+            MMLLOG_ERROR(log->logger, "Extension load failed name=%s status=%s",
+                         name != NULL ? name : "(null)", cdin_backend_status_name(status));
+            return -1;
+        }
+        *out_loaded = index + 1u;
+        MMLLOG_INFO(log->logger, "Loaded trusted Runtime extension name=%s", name);
+    }
+    return 0;
+}
+
+int cdin_frontend_extensions_unload(cdin_backend *backend,
+                                    const cdin_options *options,
+                                    cdin_log *log,
+                                    size_t loaded)
+{
+    int result = 0;
+    if (backend == NULL || options == NULL || log == NULL || log->logger == NULL ||
+        loaded > options->extension_count) return -1;
+    while (loaded != 0u) {
+        const char *name = options->extension_names[loaded - 1u];
+        cdin_backend_status status = cdin_backend_extension_unload(backend, name);
+        if (status != CDIN_BACKEND_OK) {
+            MMLLOG_ERROR(log->logger, "Extension unload failed name=%s status=%s",
+                         name != NULL ? name : "(null)", cdin_backend_status_name(status));
+            result = -1;
+        } else {
+            MMLLOG_INFO(log->logger, "Unloaded trusted Runtime extension name=%s", name);
+        }
+        loaded--;
+    }
+    return result;
+}
+
 static int process_inbound_frame(cdin_inproc_transport *transport)
 {
     cdin_backend_status status;
