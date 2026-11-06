@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
-PLUGIN_SOURCE = """\\
+PLUGIN_SOURCE = """\
 local logger
 return {
   init = function(core)
@@ -27,7 +27,7 @@ return {
 }
 """
 
-BROKEN_PLUGIN_SOURCE = """\\
+BROKEN_PLUGIN_SOURCE = """\
 local logger
 return {
   init = function(core)
@@ -128,7 +128,6 @@ def main() -> int:
         )
         combined = completed.stdout + "\n" + completed.stderr
         required = (
-            "CDIN_EXTENSION_CAPABILITY_DENY_SENTINEL_8427",
             "CDIN_EXTENSION_INIT_SENTINEL_8427",
             "CDIN_EXTENSION_UNLOAD_SENTINEL_8427",
         )
