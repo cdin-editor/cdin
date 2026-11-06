@@ -9,6 +9,7 @@ import ctypes.wintypes
 wintypes = ctypes.wintypes
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -20,6 +21,22 @@ INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"WIN_CONPTY_EDIT_8427"
+LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_8427"
+LIVE_PLUGIN_UNLOAD = b"CDIN_TUI_EXTENSION_UNLOAD_8427"
+LIVE_PLUGIN_SOURCE = """\\
+local logger
+return {
+  init = function(core)
+    logger = core
+    core:log("info", "CDIN_TUI_EXTENSION_INIT_8427")
+  end,
+  unload = function()
+    if logger ~= nil then
+      logger:log("info", "CDIN_TUI_EXTENSION_UNLOAD_8427")
+    end
+  end,
+}
+"""
 RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
 CREATE_UNICODE_ENVIRONMENT = 0x00000400
 EXTENDED_STARTUPINFO_PRESENT = 0x00080000
@@ -172,7 +189,8 @@ def close_handle(handle: int | None) -> None:
 
 class PseudoConsole:
     def __init__(
-        self, executable: Path, working_directory: Path, environment: dict[str, str]
+        self, executable: Path, working_directory: Path, environment: dict[str, str],
+        extension_root: Path | None = None,
     ) -> None:
         self.hpc = wintypes.HANDLE()
         self.input_write = wintypes.HANDLE()
@@ -236,8 +254,14 @@ class PseudoConsole:
             startup.StartupInfo.cb = ctypes.sizeof(STARTUPINFOEXW)
             startup.lpAttributeList = self.attribute_list
             info = PROCESS_INFORMATION()
+            arguments = [str(executable), "--frontend", "tui"]
+            if extension_root is not None:
+                arguments.extend([
+                    "--extension-root", str(extension_root),
+                    "--load-extension", "smoke",
+                ])
             command_line = ctypes.create_unicode_buffer(
-                f'"{executable}" --frontend tui'
+                subprocess.list2cmdline(arguments)
             )
             env_items = [
                 f"{key}={value}" for key, value in sorted(
@@ -419,8 +443,12 @@ def make_environment(runtime_root: Path) -> dict[str, str]:
 
 
 def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
+    extension_root = working / "extensions"
+    extension_dir = extension_root / "smoke"
+    extension_dir.mkdir(parents=True)
+    (extension_dir / "init.lua").write_text(LIVE_PLUGIN_SOURCE, encoding="utf-8")
     session = PseudoConsole(
-        executable, working, make_environment(runtime_root)
+        executable, working, make_environment(runtime_root), extension_root
     )
     try:
         session.read_until(
@@ -461,9 +489,11 @@ def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
         missing = [token for token in RESTORE if token not in session.output]
         if missing:
             raise AssertionError(f"Windows terminal restoration sequences missing: {missing!r}")
+        if LIVE_PLUGIN_INIT not in session.output or LIVE_PLUGIN_UNLOAD not in session.output:
+            raise AssertionError("live ConPTY extension init/unload lifecycle was not observed")
         print(
-            "CDIN Windows ConPTY smoke passed: initial render, resize, text input, "
-            "atomic save, quit and terminal restoration"
+            "CDIN Windows ConPTY smoke passed: render, resize, edit/save/quit, "
+            "live extension init/unload and terminal restoration"
         )
     finally:
         session.close()
