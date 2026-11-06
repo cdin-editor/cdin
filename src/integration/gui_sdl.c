@@ -241,7 +241,7 @@ static int cdin_gui_wait_for_attach(
 
 static int cdin_gui_drain(
     cdin_backend *backend, cdin_backend_frontend *frontend,
-    cdin_frontend_session *session, cdin_frontend_gui_sdl *gui,
+    cdin_frontend_session *session, cdin_frontend_gui_sdl *gui, cdin_log *log,
     int *out_document_snapshot_committed)
 {
     size_t processed = 0u;
@@ -249,7 +249,7 @@ static int cdin_gui_drain(
     if (out_document_snapshot_committed == NULL) return -1;
     backend_status = cdin_backend_pump(backend, 64u, &processed);
     if (backend_status != CDIN_BACKEND_OK) {
-        MMLLOG_ERROR(gui != NULL ? gui->logger : NULL,
+        MMLLOG_ERROR(log != NULL ? log->logger : NULL,
                      "GUI-SDL Backend pump before drain failed: %s",
                      cdin_backend_status_name(backend_status));
         return -1;
@@ -534,7 +534,7 @@ int cdin_frontend_gui_sdl_launch(const cdin_options *options, cdin_log *log)
          ++attempt) {
         int newly_committed = 0;
         if (cdin_gui_drain(
-                backend, frontend, &session, gui, &newly_committed) != 0) {
+                backend, frontend, &session, gui, log, &newly_committed) != 0) {
             result = EXIT_FAILURE;
             break;
         }
