@@ -1,6 +1,6 @@
 # Developer guide
 
-This guide is for contributors changing the Composition Root. It covers the repository layout, build loop, test evidence and rules for changing component pins.
+This guide is for contributors changing the Composition Root. It covers the repository layout, Registry handoff, build loop, test evidence and component release metadata.
 
 The [Architecture](architecture.md) document describes ownership and runtime behavior. The [User guide](user-guide.md) describes the CLI from a user's point of view.
 
@@ -9,14 +9,14 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | Path | Responsibility |
 | --- | --- |
 | `AGENTS.md` | Mandatory architecture and engineering rules. |
-| `deps.lock` | Immutable source and tool revisions. |
+| `deps.lock` | Immutable non-component dependencies and build-tool revisions; component versions are selected by Registry. |
 | `CMakeLists.txt` | Composition Root executable, package discovery and installation rules. |
 | `src/main.c` | CLI dispatch and Backend lifecycle composition. |
 | `src/cli/` | Small launcher argument parser. |
 | `src/diagnostics/` | CDIN logger adapter and Backend log callback. |
 | `include/cdin/` | Private headers shared by launcher modules. |
-| `scripts/deps.py` | Pinned component checkout and materialization. |
-| `scripts/build_stack.py` | Build/test/install orchestration for the pinned stack. |
+| `scripts/deps.py` | Pinned non-component dependency checkout and materialization. |
+| `scripts/registry.py` | Build Registry, validate inputs, resolve, prepare, verify and replay the component workspace. |\n| `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
 | `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
 | `src/integration/gui_sdl.c` | CDIN-owned Backend/Frontend Protocol transport and GUI-SDL process lifecycle composition. |
@@ -30,11 +30,11 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `tests/bench/` | Resource and soak benchmark plan. |
 | `docs/` | Architecture, user and contributor documentation. |
 
-Pinned component source trees are materialized under `.deps/src/`; installed build dependencies are under `.deps/install/`. Both are generated and ignored. They are not copied into `src/`.
+Registry prepares immutable component source units under `.deps/registry-workspace-<profile>/`. A private build staging copy is materialized under `.deps/src/`; installed build dependencies are under `.deps/install/`. All are generated and ignored. They are not copied into `src/`.
 
 ## 2. Prerequisites
 
-The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files, Python 3.11 or newer and Go 1.25 or newer for the repository tools.
+The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files, Python 3.11 or newer and Go 1.27.3 or newer for the Registry build tool.
 
 ### GNU/Linux
 
@@ -70,7 +70,7 @@ pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
 
 Use the `lua54` package rather than the unversioned `lua` package. The CI build selects `/ucrt64/include/lua5.4` and `/ucrt64/lib/liblua5.4.dll.a` explicitly so Lua 5.5 cannot be selected accidentally. Run the build commands from that environment so compiler, Python, Go and pkg-config resolve to the same toolchain. MSVC is not currently a verified build target.
 
-## 3. Build and test the pinned stack
+## 3. Resolve, build and test the component stack
 
 From the repository root:
 
@@ -78,26 +78,34 @@ From the repository root:
 make stack
 ```
 
-The stack builder checks out the revisions in `deps.lock` and runs the component build in dependency order:
+The Pipeline task graph performs the following steps in order:
 
-1. Build and install `m-mdy-m/log.c`.
-2. Build, test and install Kernel.
-3. Build, test and install Backend, including its Kernel integration tests.
-4. Build SDL3 3.4.16 from the SHA-256-pinned archive in `deps.lock`.
-5. Build and test Frontend Core, Headless, TUI and the installable GUI-SDL adapter; install the exported CMake package.
-6. Configure CDIN with `CDIN_ENABLE_GUI_SDL=ON`, build and export `compile_commands.json`.
-7. Run the CLI, headless document, GUI-SDL live-session smoke, POSIX PTY (where supported), architecture and compiler include-graph checks.
-8. Install CDIN and run the installed `cdin --check` smoke test.
+1. Check out the immutable non-component dependencies and developer tools.
+2. Check out and build the pinned Registry source, then run its Go test suite.
+3. Validate the selected Product Definition and Catalog Index against Registry's versioned contracts.
+4. Resolve the transitive component/dependency/contract graph.
+5. Prepare the immutable source workspace and Resolved Manifest.
+6. Verify the Manifest, replay it into a second workspace and compare the resulting Manifest bytes.
+7. Materialize the selected source units for the existing dependency-ordered build.
+8. Build/test/install Kernel, Backend and Frontend, configure/build/test/install CDIN, and run product lifecycle E2E.
 
-The command can take substantially longer than a normal single-project build because it builds the pinned components from source. It is the reproducible integration path for this repository; it is not a prebuilt production package manager.
+The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains only non-component dependencies and build tools. See [Registry integration](development/registry.md).
 
-To materialize the immutable source pins without building:
+To prepare a Registry workspace without compiling the stack:
 
 ```sh
-python3 scripts/deps.py
+make deps
+make registry
 ```
 
-The checked-out revision is detached at the SHA recorded in `deps.lock`. Do not edit files inside `.deps/src/` as part of a CDIN change.
+Choose the Frontend variant with:
+
+```sh
+CDIN_FRONTEND_VARIANT=tui make registry
+CDIN_FRONTEND_VARIANT=gui-sdl make registry
+```
+
+Registry refuses to overwrite an existing workspace or replay destination. Remove the generated `.deps/registry-workspace-<profile>` and `.deps/registry-replay-<profile>` directories (or use `make clean`) before preparing the same profile again.
 
 ## 4. Local task graph
 
@@ -150,18 +158,21 @@ The CI workflow has an Ubuntu full-stack ASan/UBSan job with leak detection. In 
 
 A CDIN process memory benchmark and long-running soak test are not implemented. The real headless document workflow is integration coverage, not a performance measurement. See [Resource and soak benchmarks](../tests/bench/README.md). Do not treat queue capacity or a short smoke as memory measurement.
 
-## 7. Changing a dependency pin
+## 7. Publishing or selecting a component release
 
-Before updating `deps.lock`:
+Component maintainers own their `registry/releases/*.json` documents. A release metadata document must declare the stable component/variant identity, SemVer package version, dependencies, contract declarations and full immutable source commit. Publish metadata at an immutable URL and calculate SHA-256 over the exact bytes.
 
-1. Inspect the component's public headers, package metadata, tests and release notes.
-2. Check the relevant accepted Spec and ADR requirements.
-3. Select a specific commit SHA or immutable release.
-4. Confirm the package version, ABI and Protocol versions from actual source.
-5. Build the complete pinned stack and run the dependent integration tests.
-6. Update the dependency matrix and traceability notes in the same change.
+The Catalog Index publisher adds an entry with the metadata URI and digest. CDIN changes its Product Definition or Catalog Index input only after checking the component release and its compatibility evidence. Never add a component source revision to `deps.lock` or let CDIN independently discover a release.
 
-Do not use a floating branch, assume a version from a repository name or silently keep an older package after a pin change.
+After a selection change:
+
+1. Validate the Product Definition and Catalog Index with the pinned Registry.
+2. Run resolve, prepare, manifest verify and replay.
+3. Build and test the complete product from the prepared workspace.
+4. Update the dependency matrix, Registry documentation and traceability evidence.
+5. Keep old Manifests immutable for reproducibility.
+
+Do not use a floating branch, invent a package version or update a published metadata document in place.
 
 ## 8. C code and resource ownership
 
