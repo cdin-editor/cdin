@@ -50,6 +50,15 @@ def main() -> int:
             if not source.is_dir():
                 raise SystemExit(f"missing materialized source unit for {key}: {source}")
 
+    frontend_revisions = {
+        unit["revision"]
+        for key, component in components.items()
+        if key[0] == "frontend"
+        for unit in component["source_units"]
+    }
+    if len(frontend_revisions) != 1:
+        raise SystemExit("TUI and GUI-SDL variants must resolve to the same Frontend source revision")
+
     backend = components[("backend", "default")]
     dependencies = {
         (item["component_id"], item["variant"], item["version"])
