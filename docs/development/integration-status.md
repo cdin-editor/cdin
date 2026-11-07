@@ -1,8 +1,21 @@
+## Registry integration update — 2026-11-07
+
+The Composition Root feature branch now contains the Registry-based component selection and source handoff described by [Registry integration](registry.md) and [Spec ROOT-010](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31).
+
+- Kernel, Runtime, Backend and Frontend own immutable release metadata in their component repositories. Frontend TUI and GUI-SDL are separately declared variants.
+- CDIN contains TUI and GUI-SDL Product Definitions plus a Catalog Index snapshot whose metadata URLs and SHA-256 digests are immutable.
+- The GUI-SDL product resolves both the TUI base adapter and GUI-SDL adapter, matching the current executable composition.
+- Registry is pinned as a host build tool, runs its Go tests, validates the product/catalog documents, resolves and prepares sources, verifies and replays the Manifest. It is not a runtime dependency.
+- Component versions and source revisions are read from the Resolved Manifest; component entries have been removed from `deps.lock`.
+- The native CI matrix now includes TUI and GUI-SDL product profiles on Linux, macOS and Windows. The sanitizer job uses the GUI-SDL superset profile, exercising TUI, GUI-SDL and headless paths together.
+
+**Status: IMPLEMENTED IN SOURCE / NOT VERIFIED.** The latest branch commits have not yet produced a confirmed successful full current-head CI run. Do not mark Registry integration accepted until all six native profile/OS jobs and the sanitizer job pass. The Runtime prerelease allowance is transitional. A separate Catalog publisher/release publication workflow remains outstanding.
+
 ## Current verification update — 2026-11-07
 
 PR #110 is the active Draft integration candidate; consult the PR page for its current head SHA.
 
-- Frontend PR #19 is merged and CDIN `deps.lock` pins its exact merge commit `1373715c23eb965445caa926de3a99d9c0246f81`.
+- Frontend PR #19 is merged at `1373715c23eb965445caa926de3a99d9c0246f81`; CDIN now selects this immutable source through its Frontend release metadata and Catalog Index rather than a component entry in `deps.lock`.
 - Runtime sandbox capability-denial unit coverage is in Runtime commit `e2f19e279e3194a6615ce213331639fde4f42e87`; Runtime CI run [42315040626](https://github.com/cdin-editor/runtime/actions/runs/42315040626) passed Linux, Windows, macOS, Pipeline quality and docs/workflow validation.
 - CDIN's trusted extension CLI and PTY/ConPTY fixtures were corrected after the prior run exposed invalid Python triple-quoted Lua source. Current CLI/PTY/ConPTY fixtures now use one line-continuation backslash; the accidental duplicate ConPTY source block and stale capability sentinel were removed.
 - The multi-session smoke now verifies exact Backend-owned document bytes survive abrupt peer loss and a new Protocol client reconnecting to the same Backend session (commit `6eb58fd`). This test is not accepted until the current matrix passes.
@@ -38,8 +51,8 @@ The product epic and acceptance criteria are tracked in [issue #111](https://git
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Immutable dependency pins and stack build | IMPLEMENTED | `deps.lock`, `scripts/deps.py`, `scripts/build_stack.py`. |
-| Versioned package discovery | VERIFIED | CDIN requires the versioned Backend package and checks Backend ABI plus Backend/Frontend Protocol versions. Runtime's reported version is compared with the immutable lock entry. |
+| Registry component selection and immutable workspace | IMPLEMENTED / NOT VERIFIED | Component-owned `registry/releases/*.json`, CDIN Product Definitions/Catalog Index, `scripts/registry.py`, Resolved Manifest and product E2E assertions. Full current-head native/sanitizer CI is pending. |
+| Registry release/contract resolution and package compatibility | IMPLEMENTED / NOT VERIFIED | Registry resolves Backend → Kernel/Runtime and the ABI/Host API/Protocol contracts; CMake and Runtime lifecycle checks consume versions from the Resolved Manifest. Current-head CI is pending. |
 | Backend lifecycle | VERIFIED | `--check` calls Backend create/start/pump/shutdown/destroy and routes Backend log callbacks into the CDIN logger. |
 | Headless Frontend Protocol | PASS on Linux/macOS/Windows | HELLO/HELLO_ACK, ATTACH, ordered UI snapshot, `ui.flush`/ACK, queue release and resize are exercised over the public Frontend session API. |
 | Document editing workflow | PASS on Linux/macOS/Windows | `document.new/open/close`, text and binary paste, undo/redo, atomic save and version-pinned line readback run through Frontend → Backend → Runtime → Kernel. |
