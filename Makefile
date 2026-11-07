@@ -1,9 +1,10 @@
-.PHONY: help deps stack configure build install test check integration clean package
+.PHONY: help deps registry stack configure build install test check integration clean package
 BUILD_DIR ?= build
 PREFIX ?= $(CURDIR)/.deps/install
 
 help:
-	@printf '%s\n' 'make deps         checkout immutable component pins' \
+	@printf '%s\n' 'make deps         checkout immutable non-component build dependencies' \
+	  'make registry     resolve and prepare the Registry component workspace' \
 	  'make stack        build/test/install the full pinned component stack' \
 	  'make configure    configure the Composition Root' \
 	  'make build        build cdin (requires installed components)' \
@@ -16,7 +17,10 @@ help:
 deps:
 	python3 scripts/deps.py
 
-stack: deps
+registry: deps
+	python3 scripts/registry.py
+
+stack: registry
 	python3 scripts/build_stack.py
 
 configure:
@@ -41,4 +45,4 @@ package:
 	python3 scripts/package.py
 
 clean:
-	rm -rf "$(BUILD_DIR)" "$(BUILD_DIR)-tests" dist
+	rm -rf "$(BUILD_DIR)" "$(BUILD_DIR)-tests" dist .deps/registry-workspace-* .deps/registry-replay-*
