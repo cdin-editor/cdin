@@ -34,7 +34,8 @@ Requirements: C11 compiler, CMake 3.22+, Make, Git, Python 3.11+, Go 1.27.3+,
 ```sh
 git clone https://github.com/cdin-editor/cdin.git
 cd cdin
-make stack
+make stack                         # TUI product profile
+make stack-gui                     # TUI + GUI-SDL product profile
 ./.deps/install/bin/cdin --help
 ./.deps/install/bin/cdin --version
 ./.deps/install/bin/cdin --check
