@@ -52,14 +52,16 @@ def checkout_registry() -> None:
         raise RuntimeError(f"Registry source pin mismatch: expected {revision}, found {actual}")
 
 
-def build_registry() -> Path:
+def build_registry(*, run_tests: bool = True) -> Path:
     if shutil.which("git") is None or shutil.which("go") is None:
         raise RuntimeError("Registry preparation requires Git and Go 1.27.3 or newer")
     checkout_registry()
-    run(["go", "test", "./..."], cwd=REGISTRY_SOURCE)
+    if run_tests:
+        run(["go", "test", "./..."], cwd=REGISTRY_SOURCE)
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
     binary = REGISTRY_BUILD / ("registry.exe" if os.name == "nt" else "registry")
-    run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"], cwd=REGISTRY_SOURCE)
+    if run_tests or not binary.is_file():
+        run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"], cwd=REGISTRY_SOURCE)
     return binary
 
 
@@ -158,7 +160,7 @@ def main() -> int:
                         help="verify an already prepared workspace without resolving again")
     args = parser.parse_args()
     profile = profile_name(args.profile)
-    binary = build_registry()
+    binary = build_registry(run_tests=not args.verify_workspace)
     if args.verify_workspace:
         verify_workspace(binary, profile)
     else:
