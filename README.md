@@ -18,37 +18,17 @@ lifecycle; editor behavior stays in the component that owns it.
 
 ## Current status
 
-- CDIN composition candidate: [PR #110](https://github.com/cdin-editor/cdin/pull/110).
-- Current CDIN head: `e4b77f27fed2028e1465b776506e12a2c11f97de`.
-- Frontend PR [#17](https://github.com/cdin-editor/frontend/pull/17) is merged.
-- Frontend follow-up [PR #18](https://github.com/cdin-editor/frontend/pull/18)
-  passes Windows, Linux, macOS, SDL3/ASan, package-consumer and Pipeline checks:
-  [run 42309550750](https://github.com/cdin-editor/frontend/actions/runs/42309550750).
-- CDIN pins Frontend commit
-  `1fb73848966af166ec9c0b8f1ca317247563649d` in `deps.lock`.
-- CDIN full-stack E2E for this pin is running:
-  [run 42309627407](https://github.com/cdin-editor/cdin/actions/runs/42309627407).
-  Windows ConPTY is not yet verified on this candidate.
-
-The earlier Windows failure was isolated to the TUI ConPTY smoke: ConPTY
-provides pipe-backed standard handles, so `GetConsoleMode` on
-`GetStdHandle` returned `ERROR_INVALID_HANDLE (6)`. Frontend PR #18 opens
-`CONIN$`/`CONOUT$`, restores their modes and closes only handles it owns.
-The previous GUI-SDL live Backend/Runtime smoke passed on Windows; the current
-CDIN run must verify the TUI fix end-to-end.
-
-GUI-SDL remains experimental. The renderer is an ASCII/debug-text baseline;
-full PaneTree rendering, IME, shaping, bidi/Persian layout and recovery remain
-release gates. Frontend [Issue #15](https://github.com/cdin-editor/frontend/issues/15)
-and CDIN [Epic #111](https://github.com/cdin-editor/cdin/issues/111) remain open.
-
-The CodeQL JavaScript/TypeScript analyzer reports no source code because this
-repository has no JS/TS files. C/C++, Python and Actions analyses pass; the
-language selection needs a repository-level Code Scanning setting change.
+- CDIN Composition Root and Registry handoff: [PR #110](https://github.com/cdin-editor/cdin/pull/110).
+- Product integration epic: [Issue #111](https://github.com/cdin-editor/cdin/issues/111).
+- Registry is a build-time delivery-plane tool. It resolves component versions and immutable source revisions, prepares the workspace and emits the Resolved Manifest. It is never linked into CDIN or any component at runtime.
+- Kernel, Runtime, Backend and Frontend own their own Registry Release Metadata. CDIN supplies TUI and GUI-SDL Product Definitions and a pinned Catalog Index.
+- The current Runtime candidate is 1.0.0-rc.1; prerelease selection is explicitly transitional and will be disabled after a stable Runtime release.
+- Registry implementation and the new product E2E tests are in the branch; the full current-head Linux/macOS/Windows and sanitizer CI matrix is still required before this integration is marked verified.
+- GUI-SDL remains experimental. The renderer is an ASCII/debug-text baseline; full PaneTree rendering, IME, shaping, bidi/Persian layout and recovery remain release gates.
 
 ## Build
 
-Requirements: C11 compiler, CMake 3.22+, Make, Git, Python 3.11+, Go 1.25+,
+Requirements: C11 compiler, CMake 3.22+, Make, Git, Python 3.11+, Go 1.27.3+,
 `pkg-config` and Lua 5.4 development files.
 
 ```sh
@@ -71,12 +51,14 @@ On Windows, use `.deps/install/bin/cdin.exe` from MSYS2 UCRT64.
 [Architecture audit](docs/architecture/audit.md) ·
 [Spec traceability](docs/architecture/traceability.md) ·
 [Dependency matrix](docs/development/dependency-matrix.md) ·
+[Registry integration](docs/development/registry.md) ·
 [Integration status](docs/development/integration-status.md) ·
 [Tooling](docs/development/tooling.md)
 
 ## Related
 
 [Specification](https://github.com/cdin-editor/spec) ·
+[Registry](https://github.com/cdin-editor/registry) ·
 [Kernel](https://github.com/cdin-editor/kernel) ·
 [Runtime](https://github.com/cdin-editor/runtime) ·
 [Backend](https://github.com/cdin-editor/backend) ·
