@@ -128,7 +128,7 @@ The reproducible source snapshot and trusted-main provenance flow are source-dis
 | Application installers | NOT IMPLEMENTED | Native Linux/macOS/Windows packages, runtime discovery, clean-machine install/upgrade/uninstall and checksums/provenance. |
 | Stable release | NOT READY | Requires all interactive, recovery, security, performance and packaging gates above. |
 
-Registry handoff is deliberately not a blocker for this epic; it is a later, product-neutral infrastructure concern.
+Historical note: this sentence predates the Registry handoff implementation. The current Catalog ownership and build path are described in the Registry integration section at the top of this document.
 
 ## 5. Ordered release gates
 
