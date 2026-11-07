@@ -1,10 +1,12 @@
-.PHONY: help deps registry stack configure build install test check integration clean package
+.PHONY: help deps registry registry-gui stack stack-gui configure build install test check integration clean package
 BUILD_DIR ?= build
 PREFIX ?= $(CURDIR)/.deps/install
+CDIN_FRONTEND_VARIANT ?= tui
 
 help:
 	@printf '%s\n' 'make deps         checkout immutable non-component build dependencies' \
-	  'make registry     resolve and prepare the Registry component workspace' \
+	  'make registry     resolve and prepare the selected Registry component workspace' \\
+	  'make registry-gui resolve and prepare the GUI-SDL + TUI workspace' \\
 	  'make stack        build/test/install the full pinned component stack' \
 	  'make configure    configure the Composition Root' \
 	  'make build        build cdin (requires installed components)' \
@@ -18,14 +20,22 @@ deps:
 	python3 scripts/deps.py
 
 registry: deps
-	python3 scripts/registry.py
+	CDIN_FRONTEND_VARIANT="$(CDIN_FRONTEND_VARIANT)" python3 scripts/registry.py
+
+registry-gui: deps
+	CDIN_FRONTEND_VARIANT=gui-sdl python3 scripts/registry.py --profile gui-sdl
 
 stack: registry
-	python3 scripts/build_stack.py
+	CDIN_FRONTEND_VARIANT="$(CDIN_FRONTEND_VARIANT)" python3 scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)"
+
+stack-gui: registry-gui
+	CDIN_FRONTEND_VARIANT=gui-sdl python3 scripts/build_stack.py --profile gui-sdl
 
 configure: registry
 	cmake -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release \
-	  -DCMAKE_INSTALL_PREFIX="$(PREFIX)" -DCDIN_RUNTIME_SOURCE_DIR="$(CURDIR)/.deps/src/runtime"
+	  -DCMAKE_INSTALL_PREFIX="$(PREFIX)" -DCDIN_RUNTIME_SOURCE_DIR="$(CURDIR)/.deps/src/runtime" \\
+	  -DCDIN_REGISTRY_PROFILE="$(CDIN_FRONTEND_VARIANT)" \\
+	  -DCDIN_ENABLE_GUI_SDL="$(if $(filter gui-sdl,$(CDIN_FRONTEND_VARIANT)),ON,OFF)"
 
 build: configure
 	cmake --build "$(BUILD_DIR)" --parallel
