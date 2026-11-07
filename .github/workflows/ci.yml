@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   full-stack-e2e:
-    name: Pinned stack + E2E / ${{ matrix.os }}
+    name: Pinned stack + E2E / ${{ matrix.os }} / ${{ matrix.profile }}
     timeout-minutes: 120
     permissions:
       contents: read
@@ -26,11 +26,25 @@ jobs:
         include:
           - os: ubuntu-latest
             shell: bash
+            profile: tui
           - os: macos-latest
             shell: bash
+            profile: tui
           - os: windows-latest
             shell: msys2 {0}
+            profile: tui
+          - os: ubuntu-latest
+            shell: bash
+            profile: gui-sdl
+          - os: macos-latest
+            shell: bash
+            profile: gui-sdl
+          - os: windows-latest
+            shell: msys2 {0}
+            profile: gui-sdl
     runs-on: ${{ matrix.os }}
+    env:
+      CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -222,6 +236,7 @@ jobs:
         run: python -m pip install "git+https://github.com/m-mdy-m/pipeline.git@79169afc4f9f74ee46c52be2bf6974f8544c7db1"
       - name: Run instrumented full-stack verification
         env:
+          CDIN_FRONTEND_VARIANT: gui-sdl
           CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
           CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
           LDFLAGS: -fsanitize=address,undefined
