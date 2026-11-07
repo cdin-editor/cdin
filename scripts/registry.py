@@ -55,7 +55,7 @@ def checkout_registry() -> None:
 def build_registry(*, run_tests: bool = True) -> Path:
     if shutil.which("git") is None or shutil.which("go") is None:
         raise RuntimeError("Registry preparation requires Git and Go 1.27.3 or newer")
-    repository, revision = registry_pin()
+    _, revision = registry_pin()
     if run_tests or not REGISTRY_SOURCE.exists():
         checkout_registry()
     else:
