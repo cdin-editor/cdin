@@ -9,14 +9,14 @@ Component versions and source revisions are selected by the Registry Product Def
 | Backend | 1.2.0 | `c0a88090460929796bd7cd731966f04115256910` | Depends on Kernel and Runtime; provides Runtime Host API 1.0.0 and Frontend Protocol 1.0.0. |
 | Frontend TUI | 1.0.0 | `1373715c23eb965445caa926de3a99d9c0246f81` | Protocol 1.0.0 client and terminal adapter. |
 | Frontend GUI-SDL | 1.0.0 | `1373715c23eb965445caa926de3a99d9c0246f81` | Protocol 1.0.0 client and SDL adapter; selected as a separate Registry variant. |
-| Registry | 0.1.0-dev | `696bc06ca00533d1e497e19dae78aa1f8b342572` | Build-time resolver, source collector and manifest producer; never linked into CDIN. |
+| Registry | 0.1.0-dev | `53c79e28aa155224f3a389a89323ac307cf9fd7a` | Build-time resolver, source collector, Manifest producer and versioned Catalog snapshot; never linked into CDIN. |
 | m-mdy-m/log.c | 0.1.0 | `c9b53e9901dc7103eb50be282ae055fe16e98f9a` | CDIN-owned diagnostics dependency. |
 | SDL3 | 3.4.16 | SHA-256 `7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68` | Checksum-pinned source archive for GUI-SDL. |
 | Pipeline | — | `79169afc4f9f74ee46c52be2bf6974f8544c7db1` | Local and CI task execution. |
 | PSX | — | `e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df` | Project structure validation. |
 | Gix | — | `9f0867923177cef3cd36d980cc2b356a35bee507` | Git branch workflow. |
 
-The four component revisions above are recorded in the current CDIN Catalog Index through component-owned immutable Release Metadata documents. The generated Registry Manifest remains authoritative for an individual prepared build.
+The four component revisions above are discovered from component-owned immutable Release Metadata documents referenced by the Registry Catalog snapshot at `catalogs/cdin-components/catalog-index.json`. CDIN pins the Registry commit (and therefore this Catalog snapshot) in `deps.lock`. The generated Registry Manifest remains authoritative for an individual prepared build.
 
 ## Compatibility checks
 
@@ -35,6 +35,6 @@ The Registry executable itself is currently `0.1.0-dev`; it is pinned to an immu
 
 ## Verification status
 
-The branch now contains the component-owned metadata, immutable Catalog Index, TUI and GUI-SDL Product Definitions, pinned Registry CLI orchestration, manifest replay verification and product-level workspace assertions. These are implementation changes, not yet a claim of green CI. The new workflow must pass the current Linux/macOS/Windows stack matrix and sanitizer job before the Registry handoff is marked verified.
+The branch now contains the component-owned metadata references in Registry's Catalog snapshot, TUI and GUI-SDL Product Definitions, pinned Registry CLI orchestration, Manifest replay verification and product-level workspace assertions. These are implementation changes, not yet a claim of green CI. The new workflow must pass the current Linux/macOS/Windows stack matrix and sanitizer job before the Registry handoff is marked verified.
 
 See [Registry integration](registry.md) and [Integration status](integration-status.md) for the complete workflow and remaining product gates.
