@@ -1782,6 +1782,11 @@ static int cdin_tui_dispatch_input(cdin_tui_context *context,
         cdin_tui_request_termination(context);
         return 0;
     }
+#ifdef _WIN32
+    MMLLOG_INFO(context->log->logger,
+                "TUI diagnostic: dispatch kind=%d text_length=%zu key=%s",
+                (int)event->kind, event->text_length, event->key);
+#endif
     status = cdin_frontend_tui_send_input(&context->session, event);
     if (status != CDIN_FRONTEND_PROTOCOL_OK) {
         MMLLOG_ERROR(context->log->logger, "TUI input forwarding failed: %s",
@@ -1893,6 +1898,11 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         MMLLOG_ERROR(context->log->logger, "TUI input parser failed after terminal read");
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
+#ifdef _WIN32
+    MMLLOG_INFO(context->log->logger,
+                "TUI diagnostic: parsed %zu input event(s), parser_pending=%zu",
+                processed, context->parser.length);
+#endif
     if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
     if (processed == max_items && context->parser.length != 0u) {
         context->parser_ready_pending = 1;
