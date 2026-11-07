@@ -33,9 +33,10 @@ def resolve_cdin_executable() -> Path:
 
 def resolve_runtime_root() -> Path:
     """Return only the pinned Runtime Lua tree inside this repository."""
+    expected = Path(os.path.abspath(os.fspath(RUNTIME_LUA)))
     runtime_root = RUNTIME_LUA.resolve(strict=True)
-    if runtime_root != RUNTIME_LUA.resolve(strict=False) or not runtime_root.is_dir():
-        raise ValueError("pinned Runtime Lua directory is not a real directory")
+    if runtime_root != expected or not runtime_root.is_dir():
+        raise ValueError("pinned Runtime Lua directory must not be a symlink or missing")
     return runtime_root
 
 

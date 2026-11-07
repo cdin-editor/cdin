@@ -54,11 +54,30 @@ def is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def resolve_path(raw: str | Path, base: Path, *, strict: bool = True) -> Path:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        candidate = base / candidate
-    return candidate.resolve(strict=strict)
+def resolve_trusted_path(
+    raw: str | Path,
+    base: Path,
+    trusted_roots: tuple[Path, ...],
+    *,
+    strict: bool = True,
+) -> Path:
+    """Resolve a path only after proving its lexical and real paths stay allowlisted."""
+    raw_value = os.fspath(raw)
+    joined = raw_value if os.path.isabs(raw_value) else os.path.join(os.fspath(base), raw_value)
+    candidate = os.path.normcase(os.path.abspath(os.path.normpath(joined)))
+    roots = tuple(root.resolve(strict=False) for root in trusted_roots)
+    for root in roots:
+        root_value = os.path.normcase(os.path.abspath(os.fspath(root)))
+        try:
+            if os.path.commonpath((candidate, root_value)) != root_value:
+                continue
+        except ValueError:
+            continue
+        resolved = Path(candidate).resolve(strict=strict)
+        if is_within(resolved, root):
+            return resolved
+        raise ValueError("resolved path escaped its allowlisted root")
+    raise ValueError("path is outside the allowlisted roots")
 
 
 def resolve_entry_paths(
@@ -73,15 +92,13 @@ def resolve_entry_paths(
     if not isinstance(raw_directory, str) or not isinstance(raw_file, str):
         raise ValueError("compile entry must contain string directory and file fields")
 
-    working_directory = resolve_path(raw_directory, ROOT)
-    if not working_directory.is_dir() or not is_within(working_directory, build_root):
+    working_directory = resolve_trusted_path(raw_directory, ROOT, (build_root,))
+    if not working_directory.is_dir():
         raise ValueError("compile entry working directory is outside the CDIN build tree")
 
-    translation_unit = resolve_path(raw_file, working_directory)
+    translation_unit = resolve_trusted_path(raw_file, working_directory, (source_root,))
     if not translation_unit.is_file() or translation_unit.suffix.lower() != ".c":
         raise ValueError("compile entry must resolve to a C source file")
-    if not is_within(translation_unit, source_root):
-        raise ValueError("compile entry source is outside the CDIN source tree")
     return working_directory, translation_unit
 
 
@@ -94,7 +111,14 @@ def classify_include(
     private_build_roots: tuple[Path, ...] = PRIVATE_BUILD_ROOTS,
 ) -> str | None:
     """Return a violation reason, or None for an allowed resolved header."""
-    resolved = resolve_path(include_path, working_directory, strict=True)
+    trusted_roots = (
+        ROOT,
+        dependency_root,
+        install_prefix,
+        *private_build_roots,
+        *ALLOWED_SYSTEM_ROOTS,
+    )
+    resolved = resolve_trusted_path(include_path, working_directory, trusted_roots)
     dependency_root = dependency_root.resolve(strict=False)
     install_prefix = install_prefix.resolve(strict=False)
 
@@ -138,17 +162,15 @@ def resolve_compiler(raw: str) -> str:
 
 
 def resolve_include_directory(raw: str, working_directory: Path) -> Path:
-    directory = resolve_path(raw, working_directory, strict=True)
-    if not directory.is_dir():
-        raise ValueError(f"compiler include path is not a directory: {directory}")
     trusted_roots = (
-        ROOT.resolve(strict=False),
-        DEPENDENCY_ROOT.resolve(strict=False),
-        *(root.resolve(strict=False) for root in PRIVATE_BUILD_ROOTS),
-        *(root.resolve(strict=False) for root in ALLOWED_SYSTEM_ROOTS),
+        ROOT,
+        DEPENDENCY_ROOT,
+        *PRIVATE_BUILD_ROOTS,
+        *ALLOWED_SYSTEM_ROOTS,
     )
-    if not any(is_within(directory, root) for root in trusted_roots):
-        raise ValueError(f"compiler include directory is outside trusted roots: {directory}")
+    directory = resolve_trusted_path(raw, working_directory, trusted_roots)
+    if not directory.is_dir():
+        raise ValueError("compiler include path is not a directory")
     return directory
 
 
@@ -233,8 +255,12 @@ def traced_headers(stderr: str, working_directory: Path) -> list[Path]:
             continue
         candidate = match.group(1).strip()
         try:
-            path = resolve_path(candidate, working_directory, strict=True)
-        except OSError:
+            path = resolve_trusted_path(
+                candidate,
+                working_directory,
+                (ROOT, DEPENDENCY_ROOT, *PRIVATE_BUILD_ROOTS, *ALLOWED_SYSTEM_ROOTS),
+            )
+        except (OSError, ValueError):
             continue
         if path.is_file():
             headers.append(path)

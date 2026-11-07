@@ -16,8 +16,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
-PROFILE = os.environ.get("CDIN_FRONTEND_VARIANT", "tui")
-WORKSPACE = ROOT / ".deps" / f"registry-workspace-{PROFILE}"
+PROFILE = "tui"
+WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 PREFIX = ROOT / ".deps" / "install"
 BUILD = ROOT / "build" / "stack"
 LOCK = ROOT / "deps.lock"
@@ -151,12 +151,23 @@ def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
 
 def main() -> int:
     global PROFILE, WORKSPACE
+    requested_default = os.environ.get("CDIN_FRONTEND_VARIANT", "tui")
+    if requested_default == "gui-sdl":
+        default_profile = "gui-sdl"
+    elif requested_default == "tui":
+        default_profile = "tui"
+    else:
+        print("CDIN_FRONTEND_VARIANT must be exactly 'tui' or 'gui-sdl'", file=sys.stderr)
+        return 2
     parser = argparse.ArgumentParser()
-    parser.add_argument("--profile", choices=("tui", "gui-sdl"),
-                        default=os.environ.get("CDIN_FRONTEND_VARIANT", "tui"))
+    parser.add_argument("--profile", choices=("tui", "gui-sdl"), default=default_profile)
     args = parser.parse_args()
-    PROFILE = args.profile
-    WORKSPACE = ROOT / ".deps" / f"registry-workspace-{PROFILE}"
+    if args.profile == "gui-sdl":
+        PROFILE = "gui-sdl"
+        WORKSPACE = ROOT / ".deps" / "registry-workspace-gui-sdl"
+    else:
+        PROFILE = "tui"
+        WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:

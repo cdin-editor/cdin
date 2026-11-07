@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
-SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]{1,10}-[0-9]{1,10}-[0-9]{1,10}\.cdin")
+SCRATCH_RE = re.compile(rb"cdin-untitled-([0-9]{1,10})-([0-9]{1,10})-([0-9]{1,10})\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
 BURST_COUNT = 4
 LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_7391"
