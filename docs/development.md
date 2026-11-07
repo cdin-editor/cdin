@@ -137,7 +137,11 @@ For a faster iteration after all components are installed, use CMake directly:
 cmake -S . -B build/standalone \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_INSTALL_PREFIX="$PWD/.deps/install" \
-  -DCDIN_RUNTIME_SOURCE_DIR="$PWD/.deps/src/runtime"
+  -DCDIN_RUNTIME_SOURCE_DIR="$PWD/.deps/src/runtime" \
+  -DCDIN_REGISTRY_PROFILE=tui \
+  -DCDIN_BACKEND_PACKAGE_VERSION="$(python3 scripts/registry_version.py backend)" \
+  -DCDIN_FRONTEND_PACKAGE_VERSION="$(python3 scripts/registry_version.py frontend --variant tui)" \
+  -DCDIN_ENABLE_GUI_SDL=OFF
 cmake --build build/standalone --parallel
 ctest --test-dir build/standalone --output-on-failure
 ```
