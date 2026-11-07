@@ -1,35 +1,10 @@
-# gix flow config — see `gix config list` or docs/FLAGS.md
 gix:
   version: "1"
 remote: origin
-#
-# NOTE ON `parent:`
-#
-# Every topic branch below is parented to `main`, not to `develop`, and that is
-# a deliberate departure from the git-flow default this file was generated with.
-#
-# `develop` is three months stale (last commit 2026-07-02 against main's
-# 2026-10-01) and predates the cdin / cdin-x split. Branching from it produces a
-# tree that has none of it: no data/core/plugins.lua, no data/core/views/,
-# no data/core/input/, no data/core/rootview/, no docs/architecture/ and no
-# tests/lua/. `git diff --stat main develop` is ~36k deletions.
-#
-# So `develop` is kept below as a base but nothing parents to it. If it is ever
-# brought up to date, the three `parent:` lines here are the only thing that
-# needs to change back.
 branch:
-  bugfix:
-    type: topic
-    prefix: bugfix/
-    parent: main
-    upstream_strategy: merge
-    downstream_strategy: merge
-    delete_on_finish: true
-  develop:
-    name: develop
+  main:
+    name: main
     type: base
-    parent: main
-    autosync: false
     delete_on_finish: false
   feature:
     type: topic
@@ -38,28 +13,27 @@ branch:
     upstream_strategy: merge
     downstream_strategy: merge
     delete_on_finish: true
+  bugfix:
+    type: topic
+    prefix: bugfix/
+    parent: main
+    upstream_strategy: merge
+    downstream_strategy: merge
+    delete_on_finish: true
   hotfix:
     type: topic
     prefix: hotfix/
     parent: main
-    merge_into:
-    - main
-    - develop
+    merge_into: [main]
     upstream_strategy: merge
     downstream_strategy: merge
     tag: true
     delete_on_finish: true
-  main:
-    name: main
-    type: base
-    delete_on_finish: false
   release:
     type: topic
     prefix: release/
     parent: main
-    merge_into:
-    - main
-    - develop
+    merge_into: [main]
     upstream_strategy: merge
     downstream_strategy: merge
     tag: true
