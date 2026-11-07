@@ -209,8 +209,6 @@ def main() -> int:
 
     gui_enabled = PROFILE == "gui-sdl"
     if gui_enabled:
-        gui_enabled = PROFILE == "gui-sdl"
-    if gui_enabled:
         install_sdl3(env)
     frontend = DEPS / "frontend"
     frontend_options = [
