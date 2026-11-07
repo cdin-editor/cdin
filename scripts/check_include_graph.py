@@ -112,6 +112,7 @@ def classify_include(
 ) -> str | None:
     """Return a violation reason, or None for an allowed resolved header."""
     trusted_roots = (
+        working_directory,
         ROOT,
         dependency_root,
         install_prefix,
@@ -258,7 +259,7 @@ def traced_headers(stderr: str, working_directory: Path) -> list[Path]:
             path = resolve_trusted_path(
                 candidate,
                 working_directory,
-                (ROOT, DEPENDENCY_ROOT, *PRIVATE_BUILD_ROOTS, *ALLOWED_SYSTEM_ROOTS),
+                (working_directory, ROOT, DEPENDENCY_ROOT, *PRIVATE_BUILD_ROOTS, *ALLOWED_SYSTEM_ROOTS),
             )
         except (OSError, ValueError):
             continue
