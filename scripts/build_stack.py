@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tarfile
 import hashlib
+import json
 import urllib.request
 import tomllib
 from pathlib import Path
