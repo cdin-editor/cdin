@@ -1509,8 +1509,6 @@ static int cdin_tui_wait(void *opaque, uint32_t requested_events,
             (timeout == INFINITE || timeout > 30u)) timeout = 30u;
         wait_status = WaitForMultipleObjects(3u, handles, FALSE, timeout);
         if (wait_status == WAIT_OBJECT_0) {
-            MMLLOG_INFO(context->log->logger,
-                        "TUI diagnostic: Windows terminal input handle became signaled");
             *out_ready_events = CDIN_FRONTEND_TUI_EVENT_TERMINAL_READABLE;
             return 0;
         }
@@ -1782,11 +1780,6 @@ static int cdin_tui_dispatch_input(cdin_tui_context *context,
         cdin_tui_request_termination(context);
         return 0;
     }
-#ifdef _WIN32
-    MMLLOG_INFO(context->log->logger,
-                "TUI diagnostic: dispatch kind=%d text_length=%zu key=%s",
-                (int)event->kind, event->text_length, event->key);
-#endif
     status = cdin_frontend_tui_send_input(&context->session, event);
     if (status != CDIN_FRONTEND_PROTOCOL_OK) {
         MMLLOG_ERROR(context->log->logger, "TUI input forwarding failed: %s",
@@ -1850,6 +1843,12 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         if (processed == max_items && context->parser.length != 0u) {
             context->parser_ready_pending = 1;
         }
+#ifdef _WIN32
+        /* Windows console ReadFile is blocking. A terminal readiness turn
+         * permits one OS read only; later drain iterations must consume
+         * parser-buffered events and return AGAIN so Backend wakeups can run. */
+        context->terminal_buffer_only = 1;
+#endif
         *out_processed = processed;
         return CDIN_FRONTEND_TUI_IO_PROGRESS;
     }
@@ -1858,11 +1857,6 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
     if (was_escape_timeout || buffer_only) return CDIN_FRONTEND_TUI_IO_AGAIN;
 
     amount = context->terminal.read(context->terminal.context, bytes, sizeof(bytes));
-#ifdef _WIN32
-    MMLLOG_INFO(context->log->logger,
-                "TUI diagnostic: Windows terminal read returned %lld bytes (last_error=%lu)",
-                (long long)amount, (unsigned long)GetLastError());
-#endif
     if (amount == 0) {
 #ifdef _WIN32
         MMLLOG_WARN(context->log->logger, "TUI terminal read returned zero bytes");
@@ -1898,15 +1892,15 @@ static cdin_frontend_tui_io_result cdin_tui_drain_terminal(
         MMLLOG_ERROR(context->log->logger, "TUI input parser failed after terminal read");
         return CDIN_FRONTEND_TUI_IO_FAILURE;
     }
-#ifdef _WIN32
-    MMLLOG_INFO(context->log->logger,
-                "TUI diagnostic: parsed %zu input event(s), parser_pending=%zu",
-                processed, context->parser.length);
-#endif
     if (processed == 0u) return CDIN_FRONTEND_TUI_IO_AGAIN;
     if (processed == max_items && context->parser.length != 0u) {
         context->parser_ready_pending = 1;
     }
+#ifdef _WIN32
+    /* Do not issue a second blocking console read from the same readiness
+     * notification; let the owner loop drain the Backend first. */
+    context->terminal_buffer_only = 1;
+#endif
     *out_processed = processed;
     return CDIN_FRONTEND_TUI_IO_PROGRESS;
 }
