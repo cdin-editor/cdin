@@ -1169,12 +1169,12 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
     (void)snprintf(recovered_document_path, sizeof(recovered_document_path),
                    "cdin-reconnect-recovery-%lu.txt", CDIN_SMOKE_PROCESS_ID());
     (void)remove(recovered_document_path);
-    recovered_view_id[0] = '\\0';
+    recovered_view_id[0] = '\0';
     if (send_command_and_drain(
             &first.transport, &first.session, "document.new",
             recovered_document_path, recovered_view_id,
             sizeof(recovered_view_id), &recovered_document_version) != 0 ||
-        recovered_view_id[0] == '\\0' ||
+        recovered_view_id[0] == '\0' ||
         cdin_frontend_session_send_text(
             &first.session, recovered_bytes, sizeof(recovered_bytes) - 1u) !=
             CDIN_FRONTEND_PROTOCOL_OK ||
