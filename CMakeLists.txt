@@ -22,9 +22,23 @@ endif()
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # The Composition Root never compiles copied component sources.
+set(CDIN_BACKEND_PACKAGE_VERSION "" CACHE STRING "Backend package version selected by Registry")
+set(CDIN_FRONTEND_PACKAGE_VERSION "" CACHE STRING "Frontend package version selected by Registry")
+if(CDIN_BACKEND_PACKAGE_VERSION STREQUAL "" OR CDIN_FRONTEND_PACKAGE_VERSION STREQUAL "")
+    message(FATAL_ERROR "Backend and Frontend package versions must come from registry-manifest.json")
+endif()
+
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
-find_package(cdinFrontend 1.0.0 CONFIG REQUIRED)
-find_package(cdinBackend 1.2.0 CONFIG REQUIRED)
+find_package(cdinFrontend ${CDIN_FRONTEND_PACKAGE_VERSION} CONFIG REQUIRED)
+find_package(cdinBackend ${CDIN_BACKEND_PACKAGE_VERSION} CONFIG REQUIRED)
+if(DEFINED cdinFrontend_VERSION AND
+   NOT cdinFrontend_VERSION VERSION_EQUAL CDIN_FRONTEND_PACKAGE_VERSION)
+    message(FATAL_ERROR "Frontend package version differs from the Registry Resolved Manifest")
+endif()
+if(DEFINED cdinBackend_VERSION AND
+   NOT cdinBackend_VERSION VERSION_EQUAL CDIN_BACKEND_PACKAGE_VERSION)
+    message(FATAL_ERROR "Backend package version differs from the Registry Resolved Manifest")
+endif()
 
 add_library(cdin_options STATIC src/cli/options.c)
 target_include_directories(cdin_options PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
