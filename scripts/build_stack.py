@@ -111,7 +111,7 @@ def install_sdl3(env: dict[str, str]) -> None:
     run(["cmake", "--install", str(build_dir)], env=env)
 
 
-def pinned_package_version(name: str) -> str:
+def pinned_package_version(name: str, variant: str = "default") -> str:
     manifest_path = WORKSPACE / "registry-manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(
@@ -120,7 +120,7 @@ def pinned_package_version(name: str) -> str:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     matches = [
         item["version"] for item in manifest["components"]
-        if item["component_id"] == name
+        if item["component_id"] == name and item["variant"] == variant
     ]
     if len(matches) != 1:
         raise ValueError(
@@ -226,6 +226,8 @@ def main() -> int:
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
+         f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
+         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
          "-DBUILD_TESTING=ON",
