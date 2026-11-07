@@ -76,7 +76,7 @@ def build_registry(*, run_tests: bool = True) -> Path:
         or stamp.read_text(encoding="utf-8").strip() != revision
     ):
         run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"], cwd=REGISTRY_SOURCE)
-        stamp.write_text(revision + "\\n", encoding="utf-8")
+        stamp.write_text(revision + "\n", encoding="utf-8")
     return binary
 
 
