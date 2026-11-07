@@ -26,15 +26,17 @@ def main() -> int:
         ("kernel", "default"),
         ("runtime", "default"),
         ("backend", "default"),
-        ("frontend", args.profile),
+        ("frontend", "tui"),
     }
+    if args.profile == "gui-sdl":
+        expected.add(("frontend", "gui-sdl"))
     if set(components) != expected:
         raise SystemExit(
             f"resolved component graph mismatch: {sorted(components)} != {sorted(expected)}"
         )
 
     for key, component in components.items():
-        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9]*)"
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9]+)"
                             r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
                             component["version"]):
             raise SystemExit(f"invalid resolved SemVer for {key}: {component['version']}")
