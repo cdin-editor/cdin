@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and verify the pinned CDIN component stack in dependency order."""
 from __future__ import annotations
+import argparse
 import os
 import re
 import shutil
@@ -149,6 +150,14 @@ def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
 
 
 def main() -> int:
+    global PROFILE, WORKSPACE
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", choices=("tui", "gui-sdl"),
+                        default=os.environ.get("CDIN_FRONTEND_VARIANT", "tui"))
+    args = parser.parse_args()
+    PROFILE = args.profile
+    WORKSPACE = ROOT / ".deps" / f"registry-workspace-{PROFILE}"
+
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
@@ -199,6 +208,8 @@ def main() -> int:
         "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
 
     gui_enabled = PROFILE == "gui-sdl"
+    if gui_enabled:
+        gui_enabled = PROFILE == "gui-sdl"
     if gui_enabled:
         install_sdl3(env)
     frontend = DEPS / "frontend"
