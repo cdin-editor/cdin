@@ -44,7 +44,7 @@ The headless path exercises the real Backend/Runtime/Kernel stack through the pu
 4. Creates a scratch document and enters the Frontend-owned TUI event loop.
 5. Waits on terminal readiness and the wake source, drains bounded work, handles resize, renders and tears down the terminal/session/backend.
 
-This path is implemented but **not yet accepted as release-ready**. The live PTY smoke reaches the initial UI but currently fails when a version-pinned `view.lines` response is delivered after Frontend incorrectly loses its outstanding request state. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-lifecycle fix and regression tests; its macOS job is still pending. CDIN must pin the immutable merged revision and rerun its own complete native/sanitizer matrix before this gate can be called PASS.
+This path is implemented but **not yet accepted as release-ready**. The TUI Product Definition selects the immutable Frontend/TUI release, and the product's PTY smoke runs as part of the current TUI profile matrix. The Registry-enabled current head has not yet completed its native/sanitizer matrix, so no current-head TUI PASS is claimed.
 
 Windows TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented. GUI-SDL launch is implemented behind the Registry `gui-sdl` product profile and the experimental GUI gate; the profile includes the TUI base adapter as a fallback. It remains experimental until the current native and sanitizer matrix passes.
 
