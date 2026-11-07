@@ -1,34 +1,5 @@
 schema_version = 1
 
-[dependencies.runtime]
-repository = "https://github.com/cdin-editor/runtime.git"
-revision = "d2acb6f174edf127c3bf59e8e5d4aedcbef0d490"
-version = "1.0.0-rc.1"
-host_api = "1.0.0"
-protocol = "1.0.0"
-kernel_abi = "1.1.0"
-role = "Merged Runtime PR #6: structured resolver errors and deterministic extension lifecycle"
-
-[dependencies.kernel]
-repository = "https://github.com/cdin-editor/kernel.git"
-revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
-version = "1.2.1"
-abi = "1.1.0"
-role = "Backend-only native dependency"
-
-[dependencies.backend]
-repository = "https://github.com/cdin-editor/backend.git"
-revision = "c0a88090460929796bd7cd731966f04115256910"
-version = "1.2.0"
-protocol = "1.0.0"
-role = "Merged Backend PR #17: Windows GCC -Wtype-limits fix for resolver allocation guards"
-
-[dependencies.frontend]
-repository = "https://github.com/cdin-editor/frontend.git"
-revision = "1373715c23eb965445caa926de3a99d9c0246f81"
-version = "1.0.0"
-role = "Frontend PR #19 merged: align ConPTY readiness wait with the owned CONIN$ handle; Frontend PR #18 foundation and SDL integration fixes"
-
 [dependencies.logger]
 repository = "https://github.com/m-mdy-m/log.c.git"
 revision = "c9b53e9901dc7103eb50be282ae055fe16e98f9a"
@@ -47,6 +18,11 @@ revision = "e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df"
 repository = "https://github.com/m-mdy-m/gix.git"
 revision = "9f0867923177cef3cd36d980cc2b356a35bee507"
 
+
+[tooling.registry]
+repository = "https://github.com/cdin-editor/registry.git"
+revision = "696bc06ca00533d1e497e19dae78aa1f8b342572"
+version = "0.1.0-dev"
 
 [tooling.sdl3]
 version = "3.4.16"
