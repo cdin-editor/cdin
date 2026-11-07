@@ -73,7 +73,7 @@ def paths(profile: str) -> tuple[Path, Path, Path]:
 
 
 def verify_workspace(binary: Path, profile: str) -> None:
-    product, workspace, _ = paths(profile)
+    _, workspace, _ = paths(profile)
     manifest_path = workspace / "registry-manifest.json"
     if not manifest_path.is_file():
         raise RuntimeError(f"Registry workspace is missing: {manifest_path}")
