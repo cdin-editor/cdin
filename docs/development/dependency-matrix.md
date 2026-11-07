@@ -9,7 +9,7 @@ Component versions and source revisions are selected by the Registry Product Def
 | Backend | 1.2.0 | `c0a88090460929796bd7cd731966f04115256910` | Depends on Kernel and Runtime; provides Runtime Host API 1.0.0 and Frontend Protocol 1.0.0. |
 | Frontend TUI | 1.0.0 | `1373715c23eb965445caa926de3a99d9c0246f81` | Protocol 1.0.0 client and terminal adapter. |
 | Frontend GUI-SDL | 1.0.0 | `1373715c23eb965445caa926de3a99d9c0246f81` | Protocol 1.0.0 client and SDL adapter; selected as a separate Registry variant. |
-| Registry | 0.1.0-dev | `dba83d61e1c78bdfe65bf397ab2eac89003d2fbb` | Build-time resolver, source collector, Manifest producer and versioned Catalog snapshot; never linked into CDIN. |
+| Registry | 0.1.0-dev | `9704b962732109f61cf96632e2edcbb0ee4a68a4` | Build-time resolver, source collector, Manifest producer and versioned Catalog snapshot; never linked into CDIN. |
 | m-mdy-m/log.c | 0.1.0 | `c9b53e9901dc7103eb50be282ae055fe16e98f9a` | CDIN-owned diagnostics dependency. |
 | SDL3 | 3.4.16 | SHA-256 `7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68` | Checksum-pinned source archive for GUI-SDL. |
 | Pipeline | — | `79169afc4f9f74ee46c52be2bf6974f8544c7db1` | Local and CI task execution. |
