@@ -23,6 +23,7 @@ INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
+BURST_COUNT = 4
 LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_7391"
 LIVE_PLUGIN_UNLOAD = b"CDIN_TUI_EXTENSION_UNLOAD_7391"
 LIVE_PLUGIN_SOURCE = """\
@@ -208,10 +209,16 @@ def run_live_edit(executable: str) -> None:
 
             # Force a signal to interrupt the platform wait while the loop is
             # live; the self-pipe must turn it into a resize notification.
-            os.kill(process.pid, signal.SIGWINCH)
-            os.write(master, PAYLOAD)
+            expected_payload = PAYLOAD * BURST_COUNT
+            for index in range(BURST_COUNT):
+                os.write(master, PAYLOAD)
+                # Interleave resize notifications with repeated Backend work
+                # while the owner loop is servicing terminal input.
+                if index % 2 == 0:
+                    os.kill(process.pid, signal.SIGWINCH)
             read_until(master, process, output,
-                       lambda b: PAYLOAD in b, 10.0, "canonical text to render")
+                       lambda b: expected_payload in b, 10.0,
+                       "all burst text rendered without a lost wakeup")
 
             # Save and quit in one input batch. This leaves a UI update pending
             # at teardown while the save itself must finish atomically.
@@ -219,7 +226,7 @@ def run_live_edit(executable: str) -> None:
             code = wait_exit(master, process, output, 10.0)
             if code != 0:
                 raise RuntimeError(f"cdin exited with {code}; output={bytes(output)!r}")
-            if not scratch_path.is_file() or scratch_path.read_bytes() != PAYLOAD:
+            if not scratch_path.is_file() or scratch_path.read_bytes() != expected_payload:
                 raise AssertionError("shutdown lost the completed Ctrl+S save")
             assert_restored(slave, before_termios, before_flags, output)
             if LIVE_PLUGIN_INIT not in output or LIVE_PLUGIN_UNLOAD not in output:
