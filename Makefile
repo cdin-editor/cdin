@@ -23,7 +23,7 @@ registry: deps
 stack: registry
 	python3 scripts/build_stack.py
 
-configure:
+configure: registry
 	cmake -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release \
 	  -DCMAKE_INSTALL_PREFIX="$(PREFIX)" -DCDIN_RUNTIME_SOURCE_DIR="$(CURDIR)/.deps/src/runtime"
 
