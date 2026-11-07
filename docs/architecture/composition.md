@@ -1,6 +1,6 @@
 # Composition Root architecture
 
-CDIN assembles independently maintained components. It owns pins, build/install orchestration, the CLI and process composition—not editor-domain behavior.
+CDIN assembles independently maintained components. Registry resolves component releases and collects immutable source; CDIN owns Product Definitions, the pinned Catalog Index input, build/install orchestration, CLI and process composition—not editor-domain behavior.
 
 ## 1. Ownership
 
@@ -10,7 +10,7 @@ CDIN assembles independently maintained components. It owns pins, build/install 
 | Runtime | Lua 5.4 commands, keymaps, configuration, plugins, views and semantic UI policy. | Install Runtime assets and pass the module root/entry to Backend. |
 | Backend | Kernel adapter, Runtime Host, OS services, sessions, Protocol server, queues and worker wakeups. | Create/start/pump/shutdown/destroy through the public API; compose a Frontend transport. |
 | Frontend | Protocol client, input, semantic presentation model, visual layout, TUI event loop and rendering. | Consume the installed public Frontend Core/TUI package; do not copy its implementation. |
-| CDIN | Pins, build, package, launcher, diagnostics and process lifecycle. | Compose public APIs and own application-level resources and teardown order. |
+| Registry | Validate Product Definitions/Catalogs, resolve component and contract graphs, collect immutable sources, emit Workspace and Resolved Manifest. | Build-time tooling only; never linked into the editor or a component. |\n| CDIN | Product Definitions, pinned Catalog Index input, build, package, launcher, diagnostics and process lifecycle. | Consume the Registry Workspace/Manifest, compose public APIs and own application-level resources and teardown order. |
 
 ## 2. Executable paths
 
@@ -45,20 +45,30 @@ The headless path exercises the real Backend/Runtime/Kernel stack through the pu
 
 This path is implemented but **not yet accepted as release-ready**. The live PTY smoke reaches the initial UI but currently fails when a version-pinned `view.lines` response is delivered after Frontend incorrectly loses its outstanding request state. Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) contains the request-lifecycle fix and regression tests; its macOS job is still pending. CDIN must pin the immutable merged revision and rerun its own complete native/sanitizer matrix before this gate can be called PASS.
 
-Windows TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented. GUI-SDL launch is not implemented.
+Windows TUI remains fail-closed until a native Console readiness/input/restore bridge is implemented. GUI-SDL launch is implemented behind the Registry `gui-sdl` product profile and the experimental GUI gate; the profile includes the TUI base adapter as a fallback. It remains experimental until the current native and sanitizer matrix passes.
 
-## 3. Compatibility checks
+## 3. Registry build-time handoff
 
-The current dependency versions and immutable revisions are recorded in `deps.lock`. The pinned stack builder builds the Kernel dependency closure, Backend and Frontend packages, then CDIN. The root build checks:
+CDIN's component graph is selected by Registry Product Definitions, not by component source pins in `deps.lock`.
 
-- the installed logger, Frontend and Backend package versions;
-- Backend and Frontend Protocol major/minor compatibility at compile time;
-- the loaded Backend version against its public header ABI constants;
-- the Runtime-reported version against the pinned Runtime entry.
+- Kernel, Runtime, Backend and Frontend own immutable Release Metadata in their respective repositories.
+- The CDIN Catalog Index references those metadata documents by immutable raw-content URL and exact SHA-256 digest.
+- The TUI Product Definition selects Backend plus Frontend/TUI. The GUI-SDL Product Definition selects Backend plus both Frontend/TUI and Frontend/GUI-SDL variants; the latter is a superset product that preserves TUI fallback.
+- Backend's metadata declares Kernel and Runtime dependencies. Its contract declarations provide Runtime Host API and Frontend Protocol and require Kernel ABI. Runtime and Frontend require the corresponding contracts; Kernel provides its ABI.
+- The pinned Registry CLI validates the Product Definition/Catalog, resolves the graph, prepares immutable source units, verifies the Resolved Manifest and replays it into a second Workspace.
+- CDIN's stack builder uses only the collected source units and obtains package versions from the Resolved Manifest. `deps.lock` retains non-component dependencies and build-tool revisions only.
 
-The current pinned Backend package is 1.0.2; Frontend Core is 1.0.0. These checks establish explicit package/version/Protocol compatibility, not every semantic ABI or behavioral guarantee. Component public contracts and integration tests remain authoritative.
+Registry is not part of the executable dependency graph. It is not linked, loaded, or called at runtime. Catalog publication is a separate responsibility; the committed Catalog Index is a reproducible product input, not a Registry-hosted Catalog.
 
-## 4. Architecture boundaries
+The current Runtime release is `1.0.0-rc.1`, so both Product Definitions explicitly allow prereleases. This is transitional and must be disabled after a stable Runtime release is published. Registry source is pinned at an immutable commit and built/tested as a host tool.
+
+The current branch includes Registry Go tests, Product Definition/Catalog validation, resolve/prepare/replay, Manifest verification, source-unit checks and product E2E assertions. This implementation is **NOT VERIFIED** until the current TUI and GUI-SDL profiles pass the Linux/macOS/Windows matrix and sanitizer job.
+
+## 4. Compatibility checks
+
+The root build checks package versions passed from the Resolved Manifest, Backend and Frontend Protocol major/minor compatibility, the loaded Backend version against its public header ABI constants, and the Runtime-reported version against the selected Runtime release. These checks establish explicit package/version/Protocol compatibility, not every semantic ABI or behavioral guarantee. Component public contracts and integration tests remain authoritative.
+
+## 5. Architecture boundaries
 
 CDIN may coordinate lifecycle and translate application-level configuration, but must not reproduce:
 
