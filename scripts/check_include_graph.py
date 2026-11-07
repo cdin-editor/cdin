@@ -65,18 +65,27 @@ def resolve_trusted_path(
     raw_value = os.fspath(raw)
     joined = raw_value if os.path.isabs(raw_value) else os.path.join(os.fspath(base), raw_value)
     candidate = os.path.normcase(os.path.abspath(os.path.normpath(joined)))
-    roots = tuple(root.resolve(strict=False) for root in trusted_roots)
-    for root in roots:
-        root_value = os.path.normcase(os.path.abspath(os.fspath(root)))
+
+    for root in trusted_roots:
+        # Compare lexical absolute paths first. Resolving the root before this
+        # check breaks valid macOS paths under /var, which aliases /private/var.
+        root_lexical = os.path.normcase(
+            os.path.abspath(os.path.normpath(os.fspath(root)))
+        )
         try:
-            if os.path.commonpath((candidate, root_value)) != root_value:
+            if os.path.commonpath((candidate, root_lexical)) != root_lexical:
                 continue
         except ValueError:
             continue
+
+        # A lexical match is not sufficient: resolve symlinks for both sides
+        # and prove the physical candidate still belongs to the trusted root.
         resolved = Path(candidate).resolve(strict=strict)
-        if is_within(resolved, root):
+        resolved_root = Path(root_lexical).resolve(strict=False)
+        if is_within(resolved, resolved_root):
             return resolved
         raise ValueError("resolved path escaped its allowlisted root")
+
     raise ValueError("path is outside the allowlisted roots")
 
 
