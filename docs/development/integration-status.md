@@ -1,12 +1,12 @@
 ## Current verification update — 2026-11-07
 
-Current PR #110 head: `904210f23beadfc3cfb3696a1963205bf45f5da9` (Draft; not merged).
+PR #110 is the active Draft integration candidate; consult the PR page for its current head SHA.
 
 - Frontend PR #19 is merged and CDIN `deps.lock` pins its exact merge commit `1373715c23eb965445caa926de3a99d9c0246f81`.
 - Runtime sandbox capability-denial unit coverage is in Runtime commit `e2f19e279e3194a6615ce213331639fde4f42e87`; Runtime CI run [42315040626](https://github.com/cdin-editor/runtime/actions/runs/42315040626) passed Linux, Windows, macOS, Pipeline quality and docs/workflow validation.
 - CDIN's trusted extension CLI and PTY/ConPTY fixtures were corrected after the prior run exposed invalid Python triple-quoted Lua source. Current CLI/PTY/ConPTY fixtures now use one line-continuation backslash; the accidental duplicate ConPTY source block and stale capability sentinel were removed.
 - The multi-session smoke now verifies exact Backend-owned document bytes survive abrupt peer loss and a new Protocol client reconnecting to the same Backend session (commit `6eb58fd`). This test is not accepted until the current matrix passes.
-- Current native + ASan/UBSan/leak matrix: [run 42315669266](https://github.com/cdin-editor/cdin/actions/runs/42315669266), queued.
+- Current native + ASan/UBSan/leak matrix: see the latest CI run attached to [PR #110](https://github.com/cdin-editor/cdin/pull/110); only the run for the current head is acceptance evidence.
 - Frontend SDL renderer device-loss recovery is verified in Frontend CI [42315157831](https://github.com/cdin-editor/frontend/actions/runs/42315157831); the broader GUI-SDL and IME release work remains open in [Frontend Issue #15](https://github.com/cdin-editor/frontend/issues/15).
 
 The interactive TUI launch remains experimental/fail-closed. Do not mark FE-019, Windows ConPTY, plugin lifecycle/capability integration, document reconnect recovery, or product release gates complete until current CDIN test evidence is inspected.
