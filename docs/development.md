@@ -151,11 +151,11 @@ This does not rebuild or retest the pinned component repositories. Use `make sta
 
 ## 5. What the tests cover
 
-The root CTest suite checks CLI help/version, invalid/missing values and fail-closed modes. The headless integration test uses the public Frontend session API to negotiate, attach, verify the initial snapshot/flush/ACK and resize, then create/edit/paste/undo/redo/save/close/open and compare exact bytes through the real Backend/Runtime/Kernel stack. When the pinned GUI-SDL option is enabled, `cdin_gui_sdl_live_session_smoke` also checks a live Backend/Runtime Driver Session with SDL dummy video, deterministic text input, Runtime Ctrl+S and exact-byte save. The current head's compile blocker is tracked in [PR #110](https://github.com/cdin-editor/cdin/pull/110); this GUI CTest is NOT RUN until that compile is fixed.
+The root CTest suite checks CLI help/version, invalid/missing values and fail-closed modes. The headless integration test uses the public Frontend session API to negotiate, attach, verify the initial snapshot/flush/ACK and resize, then create/edit/paste/undo/redo/save/close/open and compare exact bytes through the real Backend/Runtime/Kernel stack. The TUI Product Definition runs the headless and POSIX TUI/PTY coverage without SDL. The GUI-SDL Product Definition resolves the TUI base plus GUI-SDL adapter and runs `cdin_gui_sdl_live_session_smoke` with SDL dummy video, deterministic text input, Runtime Ctrl+S and exact-byte save.
 
 The file-fixture smoke covers NUL, invalid UTF-8, BOM, LF-only and mixed CRLF/LF/CR data. The filesystem-failure smoke covers missing-file read, failed atomic save, preservation of in-memory bytes and successful recovery.
 
-POSIX builds also run `cdin_tui_live_pty_smoke`, which exercises the opt-in experimental TUI, rendered input, signal/resize handling and terminal restoration. The previous fully green CDIN candidate passed it; the current GUI-enabled branch must rerun it after the Composition Root compile fix.
+The TUI PTY smoke exercises the opt-in experimental TUI, rendered input, signal/resize handling and terminal restoration. Both product profiles run in the six-way Linux/macOS/Windows matrix; the sanitizer job runs the GUI-SDL superset profile, including the TUI fallback. The current Registry-enabled head's CI is pending, so these tests are not marked PASS until the complete matrix finishes successfully.
 
 See [E2E verification](../tests/e2e/README.md) for per-platform evidence and remaining scenarios.
 
