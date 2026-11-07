@@ -17,11 +17,13 @@ import termios
 import time
 from pathlib import Path
 
+from smoke_support import resolve_cdin_executable, resolve_runtime_root, scratch_file_from_output
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
-SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
+SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]{1,10}-[0-9]{1,10}-[0-9]{1,10}\.cdin")
 PAYLOAD = b"PTY_EDIT_7391"
 BURST_COUNT = 4
 LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_7391"
@@ -42,33 +44,6 @@ return {
 """
 RESTORE = (b"\x1b[?25h", b"\x1b[?2004l", b"\x1b[?1049l")
 ENTER = (b"\x1b[?25l", b"\x1b[?2004h", b"\x1b[?1049h")
-
-
-def is_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def resolve_cdin_executable(raw: str) -> str:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        raise ValueError("CDIN executable path must be absolute")
-    try:
-        executable = candidate.resolve(strict=True)
-    except OSError as error:
-        raise ValueError(f"CDIN executable does not exist: {error}") from error
-    allowed_roots = (
-        BUILD_BIN.resolve(strict=False),
-        INSTALL_BIN.resolve(strict=False),
-    )
-    if not any(is_within(executable, root) for root in allowed_roots):
-        raise ValueError("CDIN executable must be inside the repository build/install bin directory")
-    if executable.name.lower() not in {"cdin", "cdin.exe"} or not executable.is_file():
-        raise ValueError("target must be the built CDIN executable")
-    return str(executable)
 
 
 def drain(master: int, output: bytearray) -> None:
@@ -146,18 +121,6 @@ def assert_restored(slave: int, before_termios, before_flags: int, output: bytea
         )
 
 
-def resolve_runtime_root(raw: str) -> Path:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        raise ValueError("Runtime root must be an absolute path")
-    runtime_root = candidate.resolve(strict=True)
-    expected_root = (ROOT / ".deps" / "src" / "runtime" / "lua").resolve(strict=True)
-    if runtime_root != expected_root or not runtime_root.is_dir():
-        raise ValueError("Runtime root must be the pinned Runtime Lua directory")
-    return runtime_root
-
-
-
 def prepare_live_extension(working: Path) -> Path:
     extension_root = working / "extensions"
     extension_dir = extension_root / "smoke"
@@ -192,20 +155,8 @@ def run_live_edit(executable: str) -> None:
             if SCRATCH_RE.search(output) is None:
                 raise AssertionError("TUI title did not contain the expected scratch document name")
 
-            # Runtime assigns a constrained scratch name before the first
-            # save; the file itself is created only by Ctrl+S. Accept exactly
-            # one unique name matching the title grammar, then anchor it to
-            # the private temporary directory without following output paths.
-            working_root = Path(working).resolve(strict=True)
-            scratch_names = set(SCRATCH_RE.findall(output))
-            if len(scratch_names) != 1:
-                raise AssertionError(
-                    f"expected one unique scratch title in PTY output, found {len(scratch_names)}"
-                )
-            scratch_name = next(iter(scratch_names)).decode("ascii")
-            scratch_path = (working_root / scratch_name).resolve(strict=False)
-            if scratch_path.parent != working_root:
-                raise AssertionError("scratch document path escaped the temporary directory")
+            if len(set(SCRATCH_RE.findall(output))) != 1:
+                raise AssertionError("expected one unique scratch title in PTY output")
 
             # Force a signal to interrupt the platform wait while the loop is
             # live; the self-pipe must turn it into a resize notification.
@@ -226,7 +177,8 @@ def run_live_edit(executable: str) -> None:
             code = wait_exit(master, process, output, 10.0)
             if code != 0:
                 raise RuntimeError(f"cdin exited with {code}; output={bytes(output)!r}")
-            if not scratch_path.is_file() or scratch_path.read_bytes() != expected_payload:
+            scratch_path = scratch_file_from_output(output, Path(working), SCRATCH_RE)
+            if scratch_path.read_bytes() != expected_payload:
                 raise AssertionError("shutdown lost the completed Ctrl+S save")
             assert_restored(slave, before_termios, before_flags, output)
             if LIVE_PLUGIN_INIT not in output or LIVE_PLUGIN_UNLOAD not in output:
@@ -315,20 +267,12 @@ def run_startup_failure(executable: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: tui_pty_smoke.py CDIN_EXECUTABLE", file=sys.stderr)
+    if len(sys.argv) != 1:
+        print("usage: tui_pty_smoke.py", file=sys.stderr)
         return 2
     try:
-        executable = resolve_cdin_executable(sys.argv[1])
-    except ValueError as error:
-        print(str(error), file=sys.stderr)
-        return 2
-    runtime_value = os.environ.get("CDIN_RUNTIME_ROOT")
-    if not runtime_value:
-        print("CDIN_RUNTIME_ROOT must point at the pinned Runtime Lua tree", file=sys.stderr)
-        return 2
-    try:
-        os.environ["CDIN_RUNTIME_ROOT"] = str(resolve_runtime_root(runtime_value))
+        executable = str(resolve_cdin_executable())
+        os.environ["CDIN_RUNTIME_ROOT"] = str(resolve_runtime_root())
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2

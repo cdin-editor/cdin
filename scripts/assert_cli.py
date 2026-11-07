@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from smoke_support import resolve_cdin_executable
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
@@ -26,44 +28,15 @@ VALID_INVOCATIONS = {
 }
 
 
-def is_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def resolve_cdin_executable(raw: str) -> Path:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        raise ValueError("CDIN executable path must be absolute")
-
-    try:
-        executable = candidate.resolve(strict=True)
-    except OSError as error:
-        raise ValueError(f"CDIN executable does not exist: {error}") from error
-
-    allowed_roots = (
-        BUILD_BIN.resolve(strict=False),
-        INSTALL_BIN.resolve(strict=False),
-    )
-    if not any(is_within(executable, root) for root in allowed_roots):
-        raise ValueError("CDIN executable must be inside the repository build/install bin directory")
-    if executable.name.lower() not in {"cdin", "cdin.exe"} or not executable.is_file():
-        raise ValueError("target must be the built CDIN executable")
-    return executable
-
-
 def main() -> int:
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 4:
         print(
-            "usage: assert_cli.py EXECUTABLE EXIT STDOUT_TOKEN STDERR_TOKEN [ARGS...]",
+            "usage: assert_cli.py EXIT STDOUT_TOKEN STDERR_TOKEN [ARGS...]",
             file=sys.stderr,
         )
         return 2
 
-    executable_arg, expected_status, stdout_token, stderr_token, *arguments = sys.argv[1:]
+    expected_status, stdout_token, stderr_token, *arguments = sys.argv[1:]
     try:
         expected = int(expected_status)
     except ValueError:
@@ -75,8 +48,8 @@ def main() -> int:
         return 2
 
     try:
-        executable = resolve_cdin_executable(executable_arg)
-    except ValueError as error:
+        executable = resolve_cdin_executable()
+    except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
 

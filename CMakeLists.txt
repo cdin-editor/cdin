@@ -128,48 +128,48 @@ if(BUILD_TESTING)
                 --profile "${CDIN_REGISTRY_PROFILE}")
     add_test(NAME cdin_cli_help
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 0 "Usage:" "-" --help)
+                0 "Usage:" "-" --help)
     add_test(NAME cdin_cli_version
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 0 "cdin 0.2.0" "-" --version)
+                0 "cdin 0.2.0" "-" --version)
     add_test(NAME cdin_cli_help_describes_frontend_modes
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 0 "headless|tui" "-" --help)
+                0 "headless|tui" "-" --help)
     add_test(NAME cdin_cli_unknown_option
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --not-a-cdin-option)
+                1 "-" "invalid arguments" --not-a-cdin-option)
     add_test(NAME cdin_cli_missing_runtime_root
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --runtime-root)
+                1 "-" "invalid arguments" --runtime-root)
     add_test(NAME cdin_cli_missing_runtime_entry
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --runtime-entry)
+                1 "-" "invalid arguments" --runtime-entry)
     add_test(NAME cdin_cli_missing_frontend
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --frontend)
+                1 "-" "invalid arguments" --frontend)
     add_test(NAME cdin_cli_help_describes_trusted_extensions
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 0 "extension-root" "-" --help)
+                0 "extension-root" "-" --help)
     add_test(NAME cdin_cli_missing_extension_root
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --extension-root)
+                1 "-" "invalid arguments" --extension-root)
     add_test(NAME cdin_cli_missing_load_extension
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --load-extension)
+                1 "-" "invalid arguments" --load-extension)
     add_test(NAME cdin_cli_extension_requires_root
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 1 "-" "invalid arguments" --load-extension demo)
+                1 "-" "invalid arguments" --load-extension demo)
     add_test(NAME cdin_cli_unknown_frontend_is_rejected
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 3 "-" "not launchable" --frontend unknown)
+                3 "-" "not launchable" --frontend unknown)
     add_test(NAME cdin_cli_interactive_launch_is_gated
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                "$<TARGET_FILE:cdin>" 3 "-" "launch" --frontend tui)
+                3 "-" "launch" --frontend tui)
 
     if(CDIN_ENABLE_GUI_SDL)
         add_test(NAME cdin_cli_gui_sdl_launch_is_gated
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
-                    "$<TARGET_FILE:cdin>" 3 "-" "experimental" --frontend gui-sdl)
+                    3 "-" "experimental" --frontend gui-sdl)
         add_test(NAME cdin_gui_sdl_live_session_smoke
             COMMAND cdin --frontend gui-sdl --check)
         set_tests_properties(cdin_gui_sdl_live_session_smoke PROPERTIES
@@ -180,22 +180,19 @@ if(BUILD_TESTING)
     set_tests_properties(cdin_headless_frontend_protocol_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua")
     add_test(NAME cdin_trusted_extension_cli_smoke
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/extension_cli_smoke.py"
-                "$<TARGET_FILE:cdin>")
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/extension_cli_smoke.py")
     set_tests_properties(cdin_trusted_extension_cli_smoke PROPERTIES
         ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
         TIMEOUT 60)
     if(UNIX)
         add_test(NAME cdin_tui_live_pty_smoke
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_pty_smoke.py"
-                    "$<TARGET_FILE:cdin>")
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_pty_smoke.py")
         set_tests_properties(cdin_tui_live_pty_smoke PROPERTIES
             ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
             TIMEOUT 60)
     elseif(WIN32)
         add_test(NAME cdin_tui_live_conpty_smoke
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_conpty_smoke.py"
-                    "$<TARGET_FILE:cdin>")
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/tui_conpty_smoke.py")
         set_tests_properties(cdin_tui_live_conpty_smoke PROPERTIES
             ENVIRONMENT "CDIN_RUNTIME_ROOT=${CDIN_RUNTIME_SOURCE_DIR}/lua"
             TIMEOUT 90)

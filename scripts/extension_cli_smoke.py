@@ -8,6 +8,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from smoke_support import resolve_cdin_executable, resolve_runtime_root
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
@@ -45,52 +47,13 @@ return {
 """
 
 
-def is_within(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-        return True
-    except ValueError:
-        return False
-
-
-def resolve_executable(raw: str) -> Path:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        raise ValueError("CDIN executable path must be absolute")
-    executable = candidate.resolve(strict=True)
-    allowed_roots = (
-        BUILD_BIN.resolve(strict=False),
-        INSTALL_BIN.resolve(strict=False),
-    )
-    if not any(is_within(executable, root) for root in allowed_roots):
-        raise ValueError("CDIN executable must be inside the repository build/install bin directory")
-    if executable.name.lower() not in {"cdin", "cdin.exe"} or not executable.is_file():
-        raise ValueError("target must be the built CDIN executable")
-    return executable
-
-
-def resolve_runtime_root(raw: str) -> Path:
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        raise ValueError("Runtime root must be an absolute path")
-    runtime_root = candidate.resolve(strict=True)
-    expected_root = (ROOT / ".deps" / "src" / "runtime" / "lua").resolve(strict=True)
-    if runtime_root != expected_root or not runtime_root.is_dir():
-        raise ValueError("Runtime root must be the pinned Runtime Lua directory")
-    return runtime_root
-
-
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: extension_cli_smoke.py CDIN_EXECUTABLE", file=sys.stderr)
-        return 2
-    runtime_value = os.environ.get("CDIN_RUNTIME_ROOT")
-    if not runtime_value:
-        print("CDIN_RUNTIME_ROOT must identify the pinned Runtime Lua tree", file=sys.stderr)
+    if len(sys.argv) != 1:
+        print("usage: extension_cli_smoke.py", file=sys.stderr)
         return 2
     try:
-        executable = resolve_executable(sys.argv[1])
-        runtime_root = resolve_runtime_root(runtime_value)
+        executable = resolve_cdin_executable()
+        runtime_root = resolve_runtime_root()
     except (OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2
