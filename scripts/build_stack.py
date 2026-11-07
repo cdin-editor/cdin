@@ -198,19 +198,28 @@ def main() -> int:
         "-DCDIN_BUILD_BACKEND=ON", "-DCDIN_BUILD_INTEGRATION_TESTS=ON",
         "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
 
-    install_sdl3(env)
+    gui_enabled = PROFILE == "gui-sdl"
+    if gui_enabled:
+        install_sdl3(env)
     frontend = DEPS / "frontend"
-    cmake_component("frontend", frontend, options=["-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
-        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON", "-DCDIN_FRONTEND_BUILD_UI_SDL=ON",
-        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON", "-DCDIN_FRONTEND_BUILD_APPS=OFF",
-        "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF"], env=env)
+    frontend_options = [
+        "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
+        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
+        f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
+        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
+        "-DCDIN_FRONTEND_BUILD_APPS=OFF",
+        "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
+    ]
+    cmake_component("frontend", frontend, options=frontend_options, env=env)
 
     root_build = BUILD / "cdin"
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
-         "-DCDIN_INSTALL_RUNTIME=ON", "-DCDIN_ENABLE_GUI_SDL=ON", "-DBUILD_TESTING=ON",
+         "-DCDIN_INSTALL_RUNTIME=ON",
+         f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
+         "-DBUILD_TESTING=ON",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(root_build), "--output-on-failure"], env=env)
