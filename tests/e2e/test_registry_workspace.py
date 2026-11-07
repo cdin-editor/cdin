@@ -59,7 +59,34 @@ def main() -> int:
     if len(frontend_revisions) != 1:
         raise SystemExit("TUI and GUI-SDL variants must resolve to the same Frontend source revision")
 
+    def has_contract(component: dict, direction: str, contract_id: str,
+                     version: str | None = None) -> bool:
+        declarations = component.get("contracts", {}).get(direction, [])
+        return any(
+            item["contract_id"] == contract_id
+            and (version is None or item.get("version") == version)
+            for item in declarations
+        )
+
+    kernel = components[("kernel", "default")]
+    runtime = components[("runtime", "default")]
     backend = components[("backend", "default")]
+    if not has_contract(kernel, "provides", "org.cdin.kernel-abi", "1.1.0"):
+        raise SystemExit("Kernel ABI provider contract was not resolved")
+    if not has_contract(backend, "requires", "org.cdin.kernel-abi"):
+        raise SystemExit("Backend Kernel ABI requirement is missing")
+    if not has_contract(backend, "provides", "org.cdin.runtime-host-api", "1.0.0"):
+        raise SystemExit("Backend Runtime Host API provider contract is missing")
+    if not has_contract(runtime, "requires", "org.cdin.runtime-host-api"):
+        raise SystemExit("Runtime Host API requirement is missing")
+    if not has_contract(backend, "provides", "org.cdin.frontend-protocol", "1.0.0"):
+        raise SystemExit("Backend Frontend Protocol provider contract is missing")
+    for key, component in components.items():
+        if key[0] == "frontend" and not has_contract(
+            component, "requires", "org.cdin.frontend-protocol"
+        ):
+            raise SystemExit(f"Frontend {key[1]} Protocol requirement is missing")
+
     dependencies = {
         (item["component_id"], item["variant"], item["version"])
         for item in backend["dependencies"]
