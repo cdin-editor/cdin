@@ -32,7 +32,7 @@ local logger
 return {
   init = function(core)
     logger = core
-    core:commands:register("cdin.smoke.rollback", function() return true end)
+    core.commands:register("cdin.smoke.rollback", function() return true end)
     core:log("info", "CDIN_EXTENSION_INIT_FAILURE_SENTINEL_8427")
     error("intentional extension init failure")
   end,
@@ -170,7 +170,7 @@ def main() -> int:
             check=False,
             shell=False,
         )
-        failed_output = failed.stdout + "\\n" + failed.stderr
+        failed_output = failed.stdout + "\n" + failed.stderr
         if failed.returncode == 0:
             print("extension init failure unexpectedly succeeded", file=sys.stderr)
             return 1
