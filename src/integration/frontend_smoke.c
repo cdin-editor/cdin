@@ -1132,6 +1132,12 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
     int result = -1;
     uint64_t backend_session_id = 0u;
     uint64_t disconnected_client_id = 0u;
+    uint64_t recovered_document_version = 0u;
+    char recovered_document_path[128];
+    char recovered_view_id[64];
+    static const uint8_t recovered_bytes[] = "reconnect-content-8427";
+    uint8_t recovered_output[64];
+    size_t recovered_output_length = 0u;
 
     memset(&first, 0, sizeof(first));
     memset(&second, 0, sizeof(second));
@@ -1154,6 +1160,28 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
         cdin_frontend_session_send_key(&second.session, "left", 0u, "press") !=
             CDIN_FRONTEND_PROTOCOL_INVALID_ARGUMENT) {
         MMLLOG_ERROR(log->logger, "Initial Driver/Observer assignment or permission gate failed");
+        goto cleanup;
+    }
+
+    /* Create real Runtime-owned content before disconnecting the peer. The
+     * later reconnect must read the same exact bytes from the same Backend
+     * session, not merely reacquire a Driver lease. */
+    (void)snprintf(recovered_document_path, sizeof(recovered_document_path),
+                   "cdin-reconnect-recovery-%lu.txt", CDIN_SMOKE_PROCESS_ID());
+    (void)remove(recovered_document_path);
+    recovered_view_id[0] = '\\0';
+    if (send_command_and_drain(
+            &first.transport, &first.session, "document.new",
+            recovered_document_path, recovered_view_id,
+            sizeof(recovered_view_id), &recovered_document_version) != 0 ||
+        recovered_view_id[0] == '\\0' ||
+        cdin_frontend_session_send_text(
+            &first.session, recovered_bytes, sizeof(recovered_bytes) - 1u) !=
+            CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(
+            &first.transport, &first.session, "snapshot",
+            NULL, 0u, &recovered_document_version, NULL, 0u, NULL) != 0) {
+        MMLLOG_ERROR(log->logger, "Could not create and populate the Backend-owned reconnect fixture");
         goto cleanup;
     }
 
@@ -1218,6 +1246,23 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
                      "Reconnect did not create a fresh Observer client in the existing Backend session");
         goto cleanup;
     }
+
+    recovered_output_length = 0u;
+    memset(recovered_output, 0, sizeof(recovered_output));
+    if (cdin_frontend_session_request_lines(
+            &first.session, recovered_view_id, 0u, 1u,
+            recovered_document_version) != CDIN_FRONTEND_PROTOCOL_OK ||
+        drain_frontend_batch(
+            &first.transport, &first.session, "response",
+            NULL, 0u, NULL, recovered_output, sizeof(recovered_output),
+            &recovered_output_length) != 0 ||
+        recovered_output_length != sizeof(recovered_bytes) - 1u ||
+        memcmp(recovered_output, recovered_bytes, sizeof(recovered_bytes) - 1u) != 0) {
+        MMLLOG_ERROR(log->logger,
+                     "Backend-owned document content did not survive abrupt peer loss and same-session reconnect");
+        goto cleanup;
+    }
+
     if (cdin_multisession_peer_detach(&second) != 0 ||
         cdin_multisession_peer_expect_role(&first, 1) != 0 ||
         cdin_frontend_session_send_key(&first.session, "left", 0u, "press") !=
@@ -1230,7 +1275,7 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
     }
 
     MMLLOG_INFO(log->logger,
-                "Frontend multi-session smoke passed: Driver/Observer, negotiated promotion, detach/reattach, abrupt peer loss with queued UI work, same-session reconnect and lease reacquisition");
+                "Frontend multi-session smoke passed: Driver/Observer promotion, detach/reattach, abrupt peer loss with queued UI work, same-session reconnect, lease reacquisition and exact Backend-owned document content recovery");
     result = 0;
 
 cleanup:
