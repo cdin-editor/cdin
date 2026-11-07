@@ -1,10 +1,10 @@
-# Registry handoff update — 2026-11-07
+# Architecture audit
 
 The current Composition Root branch includes Registry-based component selection. Component-owned immutable metadata is published in Kernel, Runtime, Backend and Frontend; CDIN supplies TUI and GUI-SDL Product Definitions and a pinned Catalog Index input. The GUI-SDL product resolves the TUI base plus GUI-SDL adapter. Registry is pinned and built as a host tool, never linked into the editor.
 
 The stack task validates the Product Definition/Catalog, resolves Backend's Kernel/Runtime dependencies and ABI/Host API/Frontend Protocol contracts, prepares immutable sources, verifies/replays the Manifest, and feeds those source units to the component build. Package versions are passed to CMake from the Resolved Manifest. The TUI/GUI-SDL six-way native matrix and sanitizer run are not yet confirmed green; this is **IMPLEMENTED IN SOURCE / NOT VERIFIED**. See [Registry integration](../development/registry.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111).
 
-# Architecture audit
+# Registry handoff update — 2026-11-07
 
 **Current candidate:** CDIN PR [#110](https://github.com/cdin-editor/cdin/pull/110), branch feature/complete-composition-root-rewrite, head 634075a92aeb5a6e58b817d2045d653dfbf8bbf2. Current native/sanitizer CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) has been dispatched but its jobs have not started; the GUI live-session smoke is **NOT VERIFIED**. Earlier native attempts progressed through CDIN compilation and initial attach/snapshot, then failed to prove SDL text + Ctrl+S exact-byte save. Current fixes capture flush metadata before ACK reuses the protocol buffer, warm up SDL startup focus/resize events before synthetic input, and pin Frontend PR #17 candidate 1dd2fc0826d302883fa0e6bab0cbead3ec84a6d4, which dynamically binds the Runtime-generated view ID. No current-head GUI PASS is claimed.
 
