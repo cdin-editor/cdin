@@ -10,7 +10,8 @@ CDIN assembles independently maintained components. Registry resolves component 
 | Runtime | Lua 5.4 commands, keymaps, configuration, plugins, views and semantic UI policy. | Install Runtime assets and pass the module root/entry to Backend. |
 | Backend | Kernel adapter, Runtime Host, OS services, sessions, Protocol server, queues and worker wakeups. | Create/start/pump/shutdown/destroy through the public API; compose a Frontend transport. |
 | Frontend | Protocol client, input, semantic presentation model, visual layout, TUI event loop and rendering. | Consume the installed public Frontend Core/TUI package; do not copy its implementation. |
-| Registry | Validate Product Definitions/Catalogs, resolve component and contract graphs, collect immutable sources, emit Workspace and Resolved Manifest. | Build-time tooling only; never linked into the editor or a component. |\n| CDIN | Product Definitions, pinned Catalog Index input, build, package, launcher, diagnostics and process lifecycle. | Consume the Registry Workspace/Manifest, compose public APIs and own application-level resources and teardown order. |
+| Registry | Validate Product Definitions/Catalogs, resolve component and contract graphs, collect immutable sources, emit Workspace and Resolved Manifest. | Build-time tooling only; never linked into the editor or a component. |
+| CDIN | Product Definitions, pinned Catalog Index input, build, package, launcher, diagnostics and process lifecycle. | Consume the Registry Workspace/Manifest, compose public APIs and own application-level resources and teardown order. |
 
 ## 2. Executable paths
 
