@@ -12,6 +12,12 @@ if(NOT CDIN_REGISTRY_PROFILE STREQUAL "tui" AND
    NOT CDIN_REGISTRY_PROFILE STREQUAL "gui-sdl")
     message(FATAL_ERROR "CDIN_REGISTRY_PROFILE must be tui or gui-sdl")
 endif()
+if(CDIN_REGISTRY_PROFILE STREQUAL "gui-sdl" AND NOT CDIN_ENABLE_GUI_SDL)
+    message(FATAL_ERROR "The gui-sdl Registry profile requires CDIN_ENABLE_GUI_SDL=ON")
+endif()
+if(CDIN_REGISTRY_PROFILE STREQUAL "tui" AND CDIN_ENABLE_GUI_SDL)
+    message(FATAL_ERROR "The tui Registry profile must not enable the GUI-SDL adapter")
+endif()
 
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
@@ -83,7 +89,7 @@ if(CDIN_INSTALL_RUNTIME)
     set(CDIN_RUNTIME_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/src/runtime" CACHE PATH
         "Path to the pinned cdin-editor/runtime checkout")
     if(NOT EXISTS "${CDIN_RUNTIME_SOURCE_DIR}/lua/cdin/runtime.lua")
-        message(FATAL_ERROR "Pinned Runtime Lua modules are missing at ${CDIN_RUNTIME_SOURCE_DIR}; run make deps")
+        message(FATAL_ERROR "Pinned Runtime Lua modules are missing at ${CDIN_RUNTIME_SOURCE_DIR}; run make registry")
     endif()
     install(DIRECTORY "${CDIN_RUNTIME_SOURCE_DIR}/lua/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/cdin/lua")
