@@ -473,14 +473,20 @@ def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
             "TUI redraw after ConPTY resize",
         )
 
-        expected_payload = PAYLOAD * BURST_COUNT
-        for _ in range(BURST_COUNT):
+        # ConPTY redraws may insert ANSI cursor/control sequences between
+        # successive text bursts, so the raw terminal byte stream is not a
+        # contiguous representation of the document. Require a fresh render
+        # turn after every burst, then use the saved file below as the
+        # authoritative byte-exact assertion for all input.
+        for burst in range(BURST_COUNT):
+            output_mark = len(session.output)
             session.write(PAYLOAD)
-        session.read_until(
-            lambda output: expected_payload in output,
-            8.0,
-            "all burst text rendered without a lost wakeup",
-        )
+            session.read_until(
+                lambda output, mark=output_mark: len(output) > mark,
+                3.0,
+                f"TUI redraw after input burst {burst + 1}",
+            )
+        expected_payload = PAYLOAD * BURST_COUNT
         session.write(b"\x13\x11")  # Ctrl+S followed by Ctrl+Q.
         code = session.wait_exit(12.0)
         if code != 0:
