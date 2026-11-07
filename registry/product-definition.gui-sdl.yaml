@@ -7,6 +7,9 @@ components:
     variant: default
     version_constraint: "1.2.0"
   - component_id: frontend
+    variant: tui
+    version_constraint: "1.0.0"
+  - component_id: frontend
     variant: gui-sdl
     version_constraint: "1.0.0"
 environment_contracts: []
