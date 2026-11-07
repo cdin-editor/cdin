@@ -17,7 +17,8 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `include/cdin/` | Private headers shared by launcher modules. |
 | `scripts/deps.py` | Pinned non-component dependency checkout and materialization. |
 | `scripts/registry.py` | Build Registry, validate inputs, resolve, prepare, verify and replay the component workspace. |
-| `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |\n| `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
+| `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |
+| `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
 | `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
 | `src/integration/gui_sdl.c` | CDIN-owned Backend/Frontend Protocol transport and GUI-SDL process lifecycle composition. |
