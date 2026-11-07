@@ -2,9 +2,9 @@
 
 The composition root for the CDIN editor components.
 
-CDIN pins, builds, packages and launches the independent Kernel, Runtime,
-Backend and Frontend projects. It owns application composition and process
-lifecycle; editor behavior stays in the component that owns it.
+CDIN resolves, builds, packages and launches the independent Kernel, Runtime,
+Backend and Frontend projects through Registry. It owns product composition
+and process lifecycle; editor behavior stays in the component that owns it.
 
 ## Components
 
@@ -14,7 +14,8 @@ lifecycle; editor behavior stays in the component that owns it.
 | **Runtime** | Lua editor behavior: commands, keymaps, configuration and plugins. |
 | **Backend** | Sessions, OS services, Runtime host and Frontend Protocol server. |
 | **Frontend** | Input adapters, semantic UI presentation, layout and rendering. |
-| **CDIN** | Dependency pins, build, packaging, launcher and process lifecycle. |
+| **Registry** | Build-time release resolution, immutable source collection and Resolved Manifest; never a runtime dependency. |
+| **CDIN** | Product Definitions, Catalog Index input, build, packaging, launcher and process lifecycle. |
 
 ## Current status
 
