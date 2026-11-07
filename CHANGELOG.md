@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- Move the component Catalog Index out of the CDIN Composition Root and into the version-controlled Registry checkout, allowing CDIN to pin Registry plus its catalog snapshot without carrying component repository metadata.
+- Add an architecture regression test that prevents reintroducing a product-owned Catalog Index or component repository mapping in CDIN.
 - Add an experimental POSIX TUI launch path behind the explicit `CDIN_ENABLE_EXPERIMENTAL_TUI=1` opt-in, using Frontend's terminal/session/event-loop APIs and CDIN-owned wake/signal lifecycle.
 - Add a POSIX PTY acceptance harness for initial rendering, text input, SIGWINCH, save/quit with pending work, SIGTERM, startup failure and terminal restoration.
 - Add compiler-resolved include-graph auditing from CMake's `compile_commands.json`, rejecting private component source/build headers and allowing installed public headers.
@@ -11,6 +13,8 @@
 - Add CLI regression coverage for missing values, fail-closed launch behavior and the advertised `headless|tui` frontend choices.
 
 ### Changed
+- Make Registry the source of Catalog data for the pinned build-time resolver; CDIN now supplies Product Definitions only.
+- Update Registry integration and architecture documentation to match the Spec's Catalog, Release Metadata and consumer boundaries.
 - Correct the Composition Root boundary rule to permit the public Frontend TUI render adapter while continuing to reject direct SDL implementation calls.
 - Export the CMake compile database and run the compiler-resolved include audit as part of the architecture check.
 - Connect the CDIN logger to Frontend TUI Session/Model diagnostics.
