@@ -1,6 +1,6 @@
 # Composition Root architecture
 
-CDIN assembles independently maintained components. Registry resolves component releases and collects immutable source; CDIN owns Product Definitions, the pinned Catalog Index input, build/install orchestration, CLI and process composition—not editor-domain behavior.
+CDIN assembles independently maintained components. Registry owns Catalog ingestion, release discovery, resolution and immutable source collection; CDIN owns Product Definitions, build/install orchestration, CLI and process composition—not component discovery or editor-domain behavior.
 
 ## 1. Ownership
 
@@ -11,7 +11,7 @@ CDIN assembles independently maintained components. Registry resolves component 
 | Backend | Kernel adapter, Runtime Host, OS services, sessions, Protocol server, queues and worker wakeups. | Create/start/pump/shutdown/destroy through the public API; compose a Frontend transport. |
 | Frontend | Protocol client, input, semantic presentation model, visual layout, TUI event loop and rendering. | Consume the installed public Frontend Core/TUI package; do not copy its implementation. |
 | Registry | Validate Product Definitions/Catalogs, resolve component and contract graphs, collect immutable sources, emit Workspace and Resolved Manifest. | Build-time tooling only; never linked into the editor or a component. |
-| CDIN | Product Definitions, pinned Catalog Index input, build, package, launcher, diagnostics and process lifecycle. | Consume the Registry Workspace/Manifest, compose public APIs and own application-level resources and teardown order. |
+| CDIN | Product Definitions, build, package, launcher, diagnostics and process lifecycle. | Consume the Registry Workspace/Manifest, compose public APIs and own application-level resources and teardown order. |
 
 ## 2. Executable paths
 
@@ -53,13 +53,13 @@ Windows TUI remains fail-closed until a native Console readiness/input/restore b
 CDIN's component graph is selected by Registry Product Definitions, not by component source pins in `deps.lock`.
 
 - Kernel, Runtime, Backend and Frontend own immutable Release Metadata in their respective repositories.
-- The CDIN Catalog Index references those metadata documents by immutable raw-content URL and exact SHA-256 digest.
+- Registry maintains the version-controlled Catalog Index at `catalogs/cdin-components/catalog-index.json`. It references immutable component-owned Release Metadata by URI and exact SHA-256 digest. The Registry engine reads this data generically; no component repository map is stored in CDIN.
 - The TUI Product Definition selects Backend plus Frontend/TUI. The GUI-SDL Product Definition selects Backend plus both Frontend/TUI and Frontend/GUI-SDL variants; the latter is a superset product that preserves TUI fallback.
 - Backend's metadata declares Kernel and Runtime dependencies. Its contract declarations provide Runtime Host API and Frontend Protocol and require Kernel ABI. Runtime and Frontend require the corresponding contracts; Kernel provides its ABI.
-- The pinned Registry CLI validates the Product Definition/Catalog, resolves the graph, prepares immutable source units, verifies the Resolved Manifest and replays it into a second Workspace.
+- The pinned Registry CLI reads its checked-out Catalog snapshot, validates the Product Definition and Catalog, fetches and verifies Release Metadata, resolves the graph, prepares immutable source units, verifies the Resolved Manifest and replays it into a second Workspace.
 - CDIN's stack builder uses only the collected source units and obtains package versions from the Resolved Manifest. `deps.lock` retains non-component dependencies and build-tool revisions only.
 
-Registry is not part of the executable dependency graph. It is not linked, loaded, or called at runtime. Catalog publication is a separate responsibility; the committed Catalog Index is a reproducible product input, not a Registry-hosted Catalog.
+Registry is not part of the executable dependency graph. It is not linked, loaded, or called at runtime. The Catalog Index is versioned alongside Registry and is read from the exact Registry checkout pinned in `deps.lock`; CDIN only supplies Product Definitions and invokes the generic Registry CLI.
 
 The current Runtime release is `1.0.0-rc.1`, so both Product Definitions explicitly allow prereleases. This is transitional and must be disabled after a stable Runtime release is published. Registry source is pinned at an immutable commit and built/tested as a host tool.
 

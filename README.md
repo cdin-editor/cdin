@@ -2,9 +2,11 @@
 
 The composition root for the CDIN editor components.
 
-CDIN resolves, builds, packages and launches the independent Kernel, Runtime,
-Backend and Frontend projects through Registry. It owns product composition
-and process lifecycle; editor behavior stays in the component that owns it.
+CDIN supplies declarative Product Definitions and uses the independently
+maintained Registry tool to resolve, collect and verify component source. It
+builds, packages and launches the prepared product. It does not own a Catalog
+Index or component repository map; those are maintained with Registry and
+component release metadata, respectively.
 
 ## Components
 
@@ -15,14 +17,14 @@ and process lifecycle; editor behavior stays in the component that owns it.
 | **Backend** | Sessions, OS services, Runtime host and Frontend Protocol server. |
 | **Frontend** | Input adapters, semantic UI presentation, layout and rendering. |
 | **Registry** | Build-time release resolution, immutable source collection and Resolved Manifest; never a runtime dependency. |
-| **CDIN** | Product Definitions, Catalog Index input, build, packaging, launcher and process lifecycle. |
+| **CDIN** | Product Definitions, build, packaging, launcher and process lifecycle. |
 
 ## Current status
 
 - CDIN Composition Root and Registry handoff: [PR #110](https://github.com/cdin-editor/cdin/pull/110).
 - Product integration epic: [Issue #111](https://github.com/cdin-editor/cdin/issues/111).
 - Registry is a build-time delivery-plane tool. It resolves component versions and immutable source revisions, prepares the workspace and emits the Resolved Manifest. It is never linked into CDIN or any component at runtime.
-- Kernel, Runtime, Backend and Frontend own their own Registry Release Metadata. CDIN supplies TUI and GUI-SDL Product Definitions and a pinned Catalog Index.
+- Kernel, Runtime, Backend and Frontend own their own Registry Release Metadata. CDIN supplies TUI and GUI-SDL Product Definitions. The Catalog Index snapshot is versioned in the pinned Registry checkout; CDIN contains no component repository URLs or release metadata map.
 - The current Runtime candidate is 1.0.0-rc.1; prerelease selection is explicitly transitional and will be disabled after a stable Runtime release.
 - Registry implementation and the new product E2E tests are in the branch; the full current-head Linux/macOS/Windows and sanitizer CI matrix is still required before this integration is marked verified.
 - GUI-SDL remains experimental. The renderer is an ASCII/debug-text baseline; full PaneTree rendering, IME, shaping, bidi/Persian layout and recovery remain release gates.

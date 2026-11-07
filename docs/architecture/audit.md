@@ -1,6 +1,6 @@
 # Architecture audit
 
-The current Composition Root branch includes Registry-based component selection. Component-owned immutable metadata is published in Kernel, Runtime, Backend and Frontend; CDIN supplies TUI and GUI-SDL Product Definitions and a pinned Catalog Index input. The GUI-SDL product resolves the TUI base plus GUI-SDL adapter. Registry is pinned and built as a host tool, never linked into the editor.
+The current Composition Root branch includes Registry-based component selection. Component-owned immutable metadata is published in Kernel, Runtime, Backend and Frontend; CDIN supplies TUI and GUI-SDL Product Definitions. The Catalog Index snapshot is maintained in the pinned Registry checkout. The GUI-SDL product resolves the TUI base plus GUI-SDL adapter. Registry is pinned and built as a host tool, never linked into the editor.
 
 The stack task validates the Product Definition/Catalog, resolves Backend's Kernel/Runtime dependencies and ABI/Host API/Frontend Protocol contracts, prepares immutable sources, verifies/replays the Manifest, and feeds those source units to the component build. Package versions are passed to CMake from the Resolved Manifest. The TUI/GUI-SDL six-way native matrix and sanitizer run are not yet confirmed green; this is **IMPLEMENTED IN SOURCE / NOT VERIFIED**. See [Registry integration](../development/registry.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111).
 
@@ -17,7 +17,7 @@ Frontend component CI [42304001468](https://github.com/cdin-editor/frontend/acti
 - **Backend:** Runtime/Kernel hosting, sessions, Frontend Protocol server, file I/O and OS services.
 - **Frontend:** protocol client, physical input, semantic UI model, presentation layout and terminal/window rendering.
 - **Registry:** build-time Product Definition/Catalog validation, release/contract resolution, immutable source collection, Workspace and Resolved Manifest; no runtime linkage. 
-- **CDIN:** Product Definitions, pinned Catalog Index input, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
+- **CDIN:** Product Definitions, pinned Registry tooling, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
 
 CDIN must not copy document, keymap, plugin, session, protocol, input or renderer implementations from the component repositories. The GUI integration source constructs the transport and lifecycle only; SDL event translation and drawing remain in Frontend.
 
@@ -39,7 +39,7 @@ CDIN must not copy document, keymap, plugin, session, protocol, input or rendere
 
 | Capability | Status | Evidence / limitation |
 | --- | --- | --- |
-| Registry component resolution / stack orchestration | IMPLEMENTED / NOT VERIFIED | Component-owned release metadata, CDIN Catalog Index and Product Definitions, pinned Registry CLI, Resolved Manifest and source-workspace E2E. Full current-head native/sanitizer matrix is pending. `deps.lock` now retains non-component pins only. |
+| Registry component resolution / stack orchestration | IMPLEMENTED / NOT VERIFIED | Component-owned release metadata, Registry-owned versioned Catalog Index, CDIN Product Definitions, pinned Registry CLI, Resolved Manifest and source-workspace E2E. Full current-head native/sanitizer matrix is pending. `deps.lock` now retains non-component pins only. |
 | Backend/Runtime lifecycle and headless editing | VERIFIED ON PREVIOUS CANDIDATE | CDIN CI run 42265415995 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection before the newest GUI source was added. |
 | Frontend GUI-SDL package | VERIFIED AS COMPONENT | Frontend CI run 42295241142 passed native/Pipeline jobs, SDL3 AddressSanitizer tests, installed package and external CMake consumer. |
 | CDIN GUI-SDL live session | IMPLEMENTED / NOT VERIFIED | The source compiles on the prior candidate and live smoke reaches attach/snapshot. Current candidate captures flush metadata before ACK, warms the SDL event loop before synthetic input, and pins the dynamic-view-binding Frontend. Current native/sanitizer run 42304522348 has not started its jobs; exact-byte SDL text + Ctrl+S is not yet proven. |
