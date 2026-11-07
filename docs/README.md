@@ -25,6 +25,7 @@ CDIN is the composition root for the editor components. These guides describe th
 | Document | Contents |
 | --- | --- |
 | [Dependency matrix](development/dependency-matrix.md) | Immutable revisions and declared package contracts. |
+| [Registry integration](development/registry.md) | Product Definitions, Catalog Index, immutable component metadata and workspace handoff. |
 | [Integration status](development/integration-status.md) | Implemented behavior and outstanding release gates. |
 | [Tooling](development/tooling.md) | Pipeline, PSX, Gix and dependency checkout. |
 | [E2E plan](../tests/e2e/README.md) | Executable-level coverage and missing product workflows. |
