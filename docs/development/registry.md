@@ -17,7 +17,7 @@ No component imports, links or executes Registry. No Registry code is copied int
 ## Product profiles
 
 - `registry/product-definition.tui.yaml` selects Backend plus Frontend `tui`.
-- `registry/product-definition.gui-sdl.yaml` selects Backend plus Frontend `gui-sdl`.
+- `registry/product-definition.gui-sdl.yaml` selects Backend plus both Frontend `tui` and `gui-sdl` variants. The GUI-SDL product retains the TUI adapter as a supported fallback.
 - Backend release metadata declares Kernel and Runtime dependencies. It also declares the Kernel ABI, Runtime Host API and Frontend Protocol contracts that it provides or requires.
 - Runtime and Frontend release metadata require the corresponding host/protocol contracts; Kernel publishes its ABI contract.
 
@@ -52,6 +52,7 @@ Choose the product profile with:
 ```sh
 CDIN_FRONTEND_VARIANT=tui make registry
 CDIN_FRONTEND_VARIANT=gui-sdl make registry
+CDIN_FRONTEND_VARIANT=gui-sdl make stack-gui
 ```
 
 The Resolved Manifest is the authoritative record of selected component versions and source revisions. CDIN does not maintain a second component lockfile or independently discover component releases.
