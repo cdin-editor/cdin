@@ -138,6 +138,7 @@ def prepare(profile: str, binary: Path) -> None:
     # paths are a private build staging area, not a second dependency resolver.
     source_root = ROOT / ".deps" / "src"
     source_root.mkdir(parents=True, exist_ok=True)
+    frontend_revision: str | None = None
     for component in json.loads(original.decode("utf-8"))["components"]:
         component_id = component["component_id"]
         if component_id not in {"kernel", "runtime", "backend", "frontend"}:
@@ -153,15 +154,14 @@ def prepare(profile: str, binary: Path) -> None:
         source = workspace / source_unit["workspace_path"]
         destination = source_root / component_id
         if component_id == "frontend" and destination.exists():
-            existing_revision = getattr(prepare, "_frontend_revision", None)
-            if existing_revision != source_unit["revision"]:
+            if frontend_revision != source_unit["revision"]:
                 raise RuntimeError("selected Frontend variants do not share one source revision")
             continue
         if destination.exists():
             shutil.rmtree(destination)
         shutil.copytree(source, destination)
         if component_id == "frontend":
-            prepare._frontend_revision = source_unit["revision"]
+            frontend_revision = source_unit["revision"]
     print(f"Registry workspace ready: {workspace}", flush=True)
 
 
