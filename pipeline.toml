@@ -13,10 +13,16 @@ description = "Resolve and materialize every immutable source pin"
 command = ["python3", "scripts/deps.py"]
 timeout_seconds = 1200
 
-[tasks.stack]
-description = "Build, test, install and smoke-test the full pinned component stack"
-command = ["python3", "scripts/build_stack.py"]
+[tasks.registry]
+description = "Build Registry, resolve CDIN releases, prepare and replay the immutable source workspace"
+command = ["python3", "scripts/registry.py"]
 depends_on = ["dependencies"]
+timeout_seconds = 2400
+
+[tasks.stack]
+description = "Build, test, install and smoke-test the Registry-prepared component workspace"
+command = ["python3", "scripts/build_stack.py"]
+depends_on = ["registry"]
 timeout_seconds = 3600
 
 [tasks.check]
