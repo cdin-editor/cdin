@@ -83,10 +83,15 @@ def verify_workspace(binary: Path, profile: str) -> None:
     selected = {item["component_id"] for item in manifest["components"]}
     if selected != required:
         raise RuntimeError(f"Registry selected {sorted(selected)}, expected {sorted(required)}")
-    frontend = next(item for item in manifest["components"] if item["component_id"] == "frontend")
-    if frontend["variant"] != profile:
+    frontend_variants = {
+        item["variant"] for item in manifest["components"]
+        if item["component_id"] == "frontend"
+    }
+    expected_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    if frontend_variants != expected_variants:
         raise RuntimeError(
-            f"Registry selected Frontend variant {frontend['variant']!r}, expected {profile!r}"
+            f"Registry selected Frontend variants {sorted(frontend_variants)}, "
+            f"expected {sorted(expected_variants)}"
         )
     for component in manifest["components"]:
         for source in component["source_units"]:
@@ -144,11 +149,19 @@ def prepare(profile: str, binary: Path) -> None:
                 f"CDIN build adapter expects one source unit for {component_id}; "
                 "update the adapter explicitly for multi-source releases"
             )
-        source = workspace / component["source_units"][0]["workspace_path"]
+        source_unit = component["source_units"][0]
+        source = workspace / source_unit["workspace_path"]
         destination = source_root / component_id
+        if component_id == "frontend" and destination.exists():
+            existing_revision = getattr(prepare, "_frontend_revision", None)
+            if existing_revision != source_unit["revision"]:
+                raise RuntimeError("selected Frontend variants do not share one source revision")
+            continue
         if destination.exists():
             shutil.rmtree(destination)
         shutil.copytree(source, destination)
+        if component_id == "frontend":
+            prepare._frontend_revision = source_unit["revision"]
     print(f"Registry workspace ready: {workspace}", flush=True)
 
 
