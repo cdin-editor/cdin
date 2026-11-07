@@ -112,7 +112,7 @@ int main(int argc, char **argv)
     cdin_options options;
     cdin_options_status parsed;
     cdin_log log;
-    int result;
+    int result = EXIT_FAILURE;
     parsed = cdin_options_parse(argc, argv, &options);
     if (parsed == CDIN_OPTIONS_HELP) { (void)fputs(cdin_options_usage(), stdout); return EXIT_SUCCESS; }
     if (parsed == CDIN_OPTIONS_VERSION) {
