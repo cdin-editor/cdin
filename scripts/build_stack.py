@@ -14,6 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
+PROFILE = os.environ.get("CDIN_FRONTEND_VARIANT", "tui")
+WORKSPACE = ROOT / ".deps" / f"registry-workspace-{PROFILE}"
 PREFIX = ROOT / ".deps" / "install"
 BUILD = ROOT / "build" / "stack"
 LOCK = ROOT / "deps.lock"
@@ -108,11 +110,21 @@ def install_sdl3(env: dict[str, str]) -> None:
 
 
 def pinned_package_version(name: str) -> str:
-    lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
-    value = lock["dependencies"][name].get("version")
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"deps.lock is missing a package version for {name}")
-    return value
+    manifest_path = WORKSPACE / "registry-manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"Registry manifest is missing at {manifest_path}; run make registry"
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    matches = [
+        item["version"] for item in manifest["components"]
+        if item["component_id"] == name
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"Registry manifest must select exactly one {name} release; found {matches}"
+        )
+    return matches[0]
 
 
 def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
@@ -141,8 +153,9 @@ def main() -> int:
             print(f"missing required build tool: {tool}", file=sys.stderr)
             return 2
 
-    # Pipeline and make materialize dependencies before entering this script.
-    # Verify every tracked file before invoking a compiler.
+    # Registry owns component discovery and immutable source collection.
+    # The manifest, not deps.lock, is the authoritative component selection.
+    run([sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"])
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -195,6 +208,7 @@ def main() -> int:
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
+         f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
          "-DCDIN_INSTALL_RUNTIME=ON", "-DCDIN_ENABLE_GUI_SDL=ON", "-DBUILD_TESTING=ON",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
