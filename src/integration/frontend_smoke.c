@@ -1180,7 +1180,10 @@ static int cdin_frontend_multisession_smoke(cdin_backend *backend, cdin_log *log
             CDIN_FRONTEND_PROTOCOL_OK ||
         drain_frontend_batch(
             &first.transport, &first.session, "snapshot",
-            NULL, 0u, &recovered_document_version, NULL, 0u, NULL) != 0) {
+            NULL, 0u, &recovered_document_version, NULL, 0u, NULL) != 0 ||
+        /* Runtime document updates are broadcast to every attached view. Keep
+         * the Observer's ordered queue/ACK state current before lease changes. */
+        cdin_multisession_drain(&second) != 0) {
         MMLLOG_ERROR(log->logger, "Could not create and populate the Backend-owned reconnect fixture");
         goto cleanup;
     }
