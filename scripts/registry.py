@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 REGISTRY_SOURCE = ROOT / ".deps" / "tools" / "registry"
+REGISTRY_CATALOG = REGISTRY_SOURCE / "catalogs" / "cdin-components" / "catalog-index.json"
 REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
 
@@ -117,7 +118,9 @@ def verify_workspace(binary: Path, profile: str) -> None:
 
 def prepare(profile: str, binary: Path) -> None:
     product, workspace, replay = paths(profile)
-    catalog = ROOT / "registry" / "catalog-index.json"
+    catalog = REGISTRY_CATALOG
+    if not catalog.is_file():
+        raise RuntimeError(f"pinned Registry Catalog Index is missing: {catalog}")
     if workspace.exists() or replay.exists():
         raise RuntimeError(
             f"Registry output already exists for {profile}; remove {workspace} and {replay} "
