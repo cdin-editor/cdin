@@ -16,7 +16,8 @@ Frontend component CI [42304001468](https://github.com/cdin-editor/frontend/acti
 - **Runtime:** Lua 5.4 editor policy, commands, keymaps, configuration and extension execution.
 - **Backend:** Runtime/Kernel hosting, sessions, Frontend Protocol server, file I/O and OS services.
 - **Frontend:** protocol client, physical input, semantic UI model, presentation layout and terminal/window rendering.
-- **Registry:** build-time Product Definition/Catalog validation, release/contract resolution, immutable source collection, Workspace and Resolved Manifest; no runtime linkage.\n- **CDIN:** Product Definitions, pinned Catalog Index input, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
+- **Registry:** build-time Product Definition/Catalog validation, release/contract resolution, immutable source collection, Workspace and Resolved Manifest; no runtime linkage. 
+- **CDIN:** Product Definitions, pinned Catalog Index input, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
 
 CDIN must not copy document, keymap, plugin, session, protocol, input or renderer implementations from the component repositories. The GUI integration source constructs the transport and lifecycle only; SDL event translation and drawing remain in Frontend.
 
