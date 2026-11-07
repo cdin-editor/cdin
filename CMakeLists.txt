@@ -115,9 +115,13 @@ if(BUILD_TESTING)
     # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31
     set(CDIN_REGISTRY_WORKSPACE
         "${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}")
+    set(CDIN_REGISTRY_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry")
+    if(WIN32)
+        set(CDIN_REGISTRY_EXECUTABLE "${CDIN_REGISTRY_EXECUTABLE}.exe")
+    endif()
     add_test(NAME cdin_registry_manifest_verify
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"
-                --profile "${CDIN_REGISTRY_PROFILE}" --verify-workspace)
+        COMMAND "${CDIN_REGISTRY_EXECUTABLE}" manifest verify
+                --input "${CDIN_REGISTRY_WORKSPACE}/registry-manifest.json")
     add_test(NAME cdin_registry_workspace_e2e
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e/test_registry_workspace.py"
                 --workspace "${CDIN_REGISTRY_WORKSPACE}"
