@@ -8,7 +8,7 @@ The accepted boundary is defined by the [Registry architecture](https://github.c
 
 - Kernel, Runtime, Backend and Frontend own their release metadata under `registry/releases/` in their own repositories.
 - Each metadata document identifies the logical component, variant, package version, declared dependencies/contracts and immutable full Git source revision.
-- CDIN owns the product profiles and the Catalog Index used by its build. The Catalog Index points to immutable metadata commits; its SHA-256 values cover the exact metadata bytes.
+- CDIN owns the product profiles and pins a Catalog Index snapshot as a build input. The Catalog Index points to immutable metadata commits; its SHA-256 values cover the exact metadata bytes. The catalog publisher remains a separate responsibility and is not implemented by Registry or by the CDIN resolver.
 - Registry validates the public documents, resolves the dependency/contract graph, collects the exact source revisions and emits a Workspace, Resolved Manifest and Resolution Report.
 - CDIN consumes the prepared source units, builds the selected components, runs integration/E2E tests and packages the product.
 
@@ -72,4 +72,4 @@ A successful Registry resolution is not proof that the product builds or works. 
 
 A component maintainer must publish a new immutable metadata document for each new component release. The document must point to the full Git commit that contains the release source, not a branch name or shortened SHA. After the metadata is published, the Catalog Index is updated with the metadata URI and SHA-256 digest. Never edit a published metadata document in place; publish a new immutable metadata identity and update the Catalog Index.
 
-The current Catalog Index is a CDIN-owned product input. Registry itself does not publish component releases or host the Catalog.
+The current Catalog Index is committed as an immutable CDIN product input; this does not make CDIN the Catalog publisher. A separate catalog-publication workflow/owner remains to be established. Registry itself does not publish component releases or host the Catalog.
