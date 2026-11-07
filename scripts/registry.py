@@ -68,8 +68,15 @@ def build_registry(*, run_tests: bool = True) -> Path:
         run(["go", "test", "./..."], cwd=REGISTRY_SOURCE)
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
     binary = REGISTRY_BUILD / ("registry.exe" if os.name == "nt" else "registry")
-    if run_tests or not binary.is_file():
+    stamp = REGISTRY_BUILD / "registry-source.sha"
+    if (
+        run_tests
+        or not binary.is_file()
+        or not stamp.is_file()
+        or stamp.read_text(encoding="utf-8").strip() != revision
+    ):
         run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"], cwd=REGISTRY_SOURCE)
+        stamp.write_text(revision + "\\n", encoding="utf-8")
     return binary
 
 
