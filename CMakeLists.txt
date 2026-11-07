@@ -6,6 +6,12 @@ include(CTest)
 
 option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
 option(CDIN_ENABLE_GUI_SDL "Compose and test the installable Frontend GUI-SDL adapter" OFF)
+set(CDIN_REGISTRY_PROFILE "tui" CACHE STRING "Frontend variant selected by Registry")
+set_property(CACHE CDIN_REGISTRY_PROFILE PROPERTY STRINGS tui gui-sdl)
+if(NOT CDIN_REGISTRY_PROFILE STREQUAL "tui" AND
+   NOT CDIN_REGISTRY_PROFILE STREQUAL "gui-sdl")
+    message(FATAL_ERROR "CDIN_REGISTRY_PROFILE must be tui or gui-sdl")
+endif()
 
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
@@ -85,6 +91,17 @@ endif()
 
 if(BUILD_TESTING)
     find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
+    # ROOT-010: component selection and source collection are owned by Registry.
+    # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31
+    set(CDIN_REGISTRY_WORKSPACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}")
+    add_test(NAME cdin_registry_manifest_verify
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"
+                --profile "${CDIN_REGISTRY_PROFILE}" --verify-workspace)
+    add_test(NAME cdin_registry_workspace_e2e
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e/test_registry_workspace.py"
+                --workspace "${CDIN_REGISTRY_WORKSPACE}"
+                --profile "${CDIN_REGISTRY_PROFILE}")
     add_test(NAME cdin_cli_help
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 "$<TARGET_FILE:cdin>" 0 "Usage:" "-" --help)
