@@ -21,7 +21,7 @@ revision = "9f0867923177cef3cd36d980cc2b356a35bee507"
 
 [tooling.registry]
 repository = "https://github.com/cdin-editor/registry.git"
-revision = "484e15e14c0328d41b0ecd7e7ea5f9ccc8ec88bf"
+revision = "2b1373e3ee9cf166580c891d0331047e197501d1"
 version = "0.1.0-dev"
 
 [tooling.sdl3]
