@@ -1,3 +1,9 @@
+# Registry handoff update — 2026-11-07
+
+The current Composition Root branch includes Registry-based component selection. Component-owned immutable metadata is published in Kernel, Runtime, Backend and Frontend; CDIN supplies TUI and GUI-SDL Product Definitions and a pinned Catalog Index input. The GUI-SDL product resolves the TUI base plus GUI-SDL adapter. Registry is pinned and built as a host tool, never linked into the editor.
+
+The stack task validates the Product Definition/Catalog, resolves Backend's Kernel/Runtime dependencies and ABI/Host API/Frontend Protocol contracts, prepares immutable sources, verifies/replays the Manifest, and feeds those source units to the component build. Package versions are passed to CMake from the Resolved Manifest. The TUI/GUI-SDL six-way native matrix and sanitizer run are not yet confirmed green; this is **IMPLEMENTED IN SOURCE / NOT VERIFIED**. See [Registry integration](../development/registry.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111).
+
 # Architecture audit
 
 **Current candidate:** CDIN PR [#110](https://github.com/cdin-editor/cdin/pull/110), branch feature/complete-composition-root-rewrite, head 634075a92aeb5a6e58b817d2045d653dfbf8bbf2. Current native/sanitizer CI [42304522348](https://github.com/cdin-editor/cdin/actions/runs/42304522348) has been dispatched but its jobs have not started; the GUI live-session smoke is **NOT VERIFIED**. Earlier native attempts progressed through CDIN compilation and initial attach/snapshot, then failed to prove SDL text + Ctrl+S exact-byte save. Current fixes capture flush metadata before ACK reuses the protocol buffer, warm up SDL startup focus/resize events before synthetic input, and pin Frontend PR #17 candidate 1dd2fc0826d302883fa0e6bab0cbead3ec84a6d4, which dynamically binds the Runtime-generated view ID. No current-head GUI PASS is claimed.
@@ -10,7 +16,7 @@ Frontend component CI [42304001468](https://github.com/cdin-editor/frontend/acti
 - **Runtime:** Lua 5.4 editor policy, commands, keymaps, configuration and extension execution.
 - **Backend:** Runtime/Kernel hosting, sessions, Frontend Protocol server, file I/O and OS services.
 - **Frontend:** protocol client, physical input, semantic UI model, presentation layout and terminal/window rendering.
-- **CDIN:** immutable dependency pins, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
+- **Registry:** build-time Product Definition/Catalog validation, release/contract resolution, immutable source collection, Workspace and Resolved Manifest; no runtime linkage.\n- **CDIN:** Product Definitions, pinned Catalog Index input, stack orchestration, launcher, transport construction, application process lifecycle, integration tests and packaging.
 
 CDIN must not copy document, keymap, plugin, session, protocol, input or renderer implementations from the component repositories. The GUI integration source constructs the transport and lifecycle only; SDL event translation and drawing remain in Frontend.
 
@@ -32,7 +38,7 @@ CDIN must not copy document, keymap, plugin, session, protocol, input or rendere
 
 | Capability | Status | Evidence / limitation |
 | --- | --- | --- |
-| Immutable pins / stack orchestration | IMPLEMENTED | `deps.lock`, `scripts/deps.py`, Pipeline; includes SDL3 archive SHA-256. |
+| Registry component resolution / stack orchestration | IMPLEMENTED / NOT VERIFIED | Component-owned release metadata, CDIN Catalog Index and Product Definitions, pinned Registry CLI, Resolved Manifest and source-workspace E2E. Full current-head native/sanitizer matrix is pending. `deps.lock` now retains non-component pins only. |
 | Backend/Runtime lifecycle and headless editing | VERIFIED ON PREVIOUS CANDIDATE | CDIN CI run 42265415995 passed Linux, macOS, Windows and Linux ASan/UBSan/leak detection before the newest GUI source was added. |
 | Frontend GUI-SDL package | VERIFIED AS COMPONENT | Frontend CI run 42295241142 passed native/Pipeline jobs, SDL3 AddressSanitizer tests, installed package and external CMake consumer. |
 | CDIN GUI-SDL live session | IMPLEMENTED / NOT VERIFIED | The source compiles on the prior candidate and live smoke reaches attach/snapshot. Current candidate captures flush metadata before ACK, warms the SDL event loop before synthetic input, and pins the dynamic-view-binding Frontend. Current native/sanitizer run 42304522348 has not started its jobs; exact-byte SDL text + Ctrl+S is not yet proven. |
