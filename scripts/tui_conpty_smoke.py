@@ -21,6 +21,7 @@ INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
 
 SCRATCH_RE = re.compile(rb"cdin-untitled-[0-9]+-[0-9]+-[0-9]+\.cdin")
 PAYLOAD = b"WIN_CONPTY_EDIT_8427"
+BURST_COUNT = 4
 LIVE_PLUGIN_INIT = b"CDIN_TUI_EXTENSION_INIT_8427"
 LIVE_PLUGIN_UNLOAD = b"CDIN_TUI_EXTENSION_UNLOAD_8427"
 LIVE_PLUGIN_SOURCE = """\
@@ -472,11 +473,13 @@ def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
             "TUI redraw after ConPTY resize",
         )
 
-        session.write(PAYLOAD)
+        expected_payload = PAYLOAD * BURST_COUNT
+        for _ in range(BURST_COUNT):
+            session.write(PAYLOAD)
         session.read_until(
-            lambda output: PAYLOAD in output,
+            lambda output: expected_payload in output,
             8.0,
-            "edited text rendered by the Frontend",
+            "all burst text rendered without a lost wakeup",
         )
         session.write(b"\x13\x11")  # Ctrl+S followed by Ctrl+Q.
         code = session.wait_exit(12.0)
@@ -484,7 +487,7 @@ def run_editor(executable: Path, runtime_root: Path, working: Path) -> None:
             raise RuntimeError(
                 f"CDIN TUI exited with {code}; output={bytes(session.output)!r}"
             )
-        if not scratch_path.is_file() or scratch_path.read_bytes() != PAYLOAD:
+        if not scratch_path.is_file() or scratch_path.read_bytes() != expected_payload:
             raise AssertionError("ConPTY TUI did not persist the exact edited bytes")
         missing = [token for token in RESTORE if token not in session.output]
         if missing:
