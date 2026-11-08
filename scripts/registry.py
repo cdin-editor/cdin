@@ -19,9 +19,37 @@ REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
 
 
-def run(command: list[str], *, cwd: Path = ROOT) -> None:
+def run(
+    command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None
+) -> None:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def registry_go_environment() -> dict[str, str]:
+    """Use the canonical Go proxy by default, with an explicit local override.
+
+    The Registry module pins its Go toolchain in go.mod. Go downloads that
+    toolchain through GOPROXY, so inheriting an unreliable third-party proxy
+    can make an otherwise valid Registry build fail before tests start.
+    """
+    environment = os.environ.copy()
+    environment["GOPROXY"] = os.environ.get(
+        "CDIN_GOPROXY", "https://proxy.golang.org,direct"
+    )
+    environment.setdefault("GOTOOLCHAIN", "auto")
+    return environment
+
+
+def run_registry_go(command: list[str]) -> None:
+    try:
+        run(command, cwd=REGISTRY_SOURCE, env=registry_go_environment())
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "Registry Go command failed. The pinned Go toolchain is selected "
+            "from go.mod; check network access to proxy.golang.org or set "
+            "CDIN_GOPROXY to a reachable Go module proxy."
+        ) from error
 
 
 def profile_name(value: str) -> str:
@@ -66,7 +94,7 @@ def build_registry(*, run_tests: bool = True) -> Path:
         if actual != revision:
             checkout_registry()
     if run_tests:
-        run(["go", "test", "./..."], cwd=REGISTRY_SOURCE)
+        run_registry_go(["go", "test", "./..."])
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
     binary = REGISTRY_BUILD / ("registry.exe" if os.name == "nt" else "registry")
     stamp = REGISTRY_BUILD / "registry-source.sha"
@@ -76,7 +104,7 @@ def build_registry(*, run_tests: bool = True) -> Path:
         or not stamp.is_file()
         or stamp.read_text(encoding="utf-8").strip() != revision
     ):
-        run(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"], cwd=REGISTRY_SOURCE)
+        run_registry_go(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"])
         stamp.write_text(revision + "\n", encoding="utf-8")
     return binary
 
