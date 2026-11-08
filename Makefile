@@ -9,20 +9,19 @@ PREFIX ?= $(CURDIR)/.deps/install
 CDIN_FRONTEND_VARIANT ?= tui
 
 help:
-	@printf '%s\n' 'make deps         checkout immutable non-component build dependencies' \
-	  'make registry     resolve and prepare the selected Registry component workspace' \
-	  'make registry-gui resolve and prepare the GUI-SDL + TUI workspace' \
-	  'make stack        build/test/install the selected component profile' \
-	  'make stack-gui    build/test/install the GUI-SDL + TUI profile' \
-	  'make configure    configure the selected Composition Root profile' \
-	  'make build        build cdin (requires installed components)' \
-	  'make install      install cdin and pinned Runtime Lua modules' \
-	  'make test         run full-stack integration and lifecycle E2E tests' \
-	  'make check        run Pipeline checks and architecture boundaries' \
-	  'make integration  run installed Backend/Runtime lifecycle smoke test' \
-	  'make package      create a source archive' \\
-\t  'make instal       compatibility alias for install'
-
+	@echo "make deps         checkout immutable non-component build dependencies"
+	@echo "make registry     resolve and prepare the selected Registry component workspace"
+	@echo "make registry-gui resolve and prepare the GUI-SDL + TUI workspace"
+	@echo "make stack        build/test/install the selected component profile"
+	@echo "make stack-gui    build/test/install the GUI-SDL + TUI profile"
+	@echo "make configure    configure the selected Composition Root profile"
+	@echo "make build        build cdin (requires installed components)"
+	@echo "make install      install cdin and pinned Runtime Lua modules"
+	@echo "make instal       compatibility alias for install"
+	@echo "make test         run full-stack integration and lifecycle E2E tests"
+	@echo "make check        run Pipeline checks and architecture boundaries"
+	@echo "make integration  run installed Backend/Runtime lifecycle smoke test"
+	@echo "make package      create a source archive"
 deps:
 	$(PYTHON) scripts/deps.py
 
