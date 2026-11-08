@@ -2,36 +2,32 @@
 
 ## Supported Versions
 
-We release patches for security vulnerabilities. Which versions are eligible for
-receiving such patches depends on the CVSS v3.0 Rating:
+CDIN is currently in pre-1.0 development (the in-tree CMake project version is
+0.2.0). No stable release series has been declared.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| Source | Security-fix status |
+| --- | --- |
+| Latest `main` branch | Tracked for security fixes |
+| Earlier commits, topic branches and source snapshots | Not guaranteed to receive fixes |
+| Stable release tags | None published |
+
+Once a stable release series is published, this table will be updated with
+explicit supported versions.
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities to: bitsgenix@gmail.com
+Please report security vulnerabilities privately to: **bitsgenix@gmail.com**
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+Do not report security vulnerabilities through public GitHub issues or pull
+requests. Include the affected revision, configuration, reproduction steps,
+impact assessment and a proof of concept where practical. Avoid including
+real credentials, customer data or unrelated personal information.
 
-You should receive a response within 48 hours. If for some reason you do not, please follow up to ensure we received your original message.
-
-Please include the following information in your report:
-
-- Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
-- Full paths of source file(s) related to the manifestation of the issue
-- The location of the affected source code (tag/branch/commit or direct URL)
-- Any special configuration required to reproduce the issue
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit it
-
-## Preferred Languages
-
-We prefer all communications to be in English.
+A maintainer will review reports as soon as practical. The project does not
+currently publish a guaranteed response-time SLA.
 
 ## Policy
 
-We follow the principle of Coordinated Vulnerability Disclosure.
+CDIN follows coordinated vulnerability disclosure. Please allow maintainers
+reasonable time to investigate and prepare a fix before publicly disclosing an
+unresolved vulnerability.

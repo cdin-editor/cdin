@@ -1,0 +1,37 @@
+schema_version = 1
+
+[project]
+name = "cdin"
+description = "Composition Root build, pinned stack verification and lifecycle E2E"
+
+[defaults]
+timeout_seconds = 3600
+fail_fast = true
+
+[tasks.dependencies]
+description = "Materialize immutable non-component build dependencies"
+command = ["python3", "scripts/deps.py"]
+timeout_seconds = 1200
+
+[tasks.registry]
+description = "Build Registry, resolve CDIN releases, prepare and replay the immutable source workspace"
+command = ["python3", "scripts/registry.py"]
+depends_on = ["dependencies"]
+timeout_seconds = 2400
+
+[tasks.stack]
+description = "Build, test, install and smoke-test the selected Registry-prepared product profile"
+command = ["python3", "scripts/build_stack.py"]
+depends_on = ["registry"]
+timeout_seconds = 3600
+
+[tasks.check]
+description = "Run the full pinned stack and architecture boundary checks"
+command = ["python3", "scripts/check_boundaries.py"]
+depends_on = ["stack"]
+timeout_seconds = 120
+
+[tasks.package]
+description = "Create a source archive for review"
+command = ["python3", "scripts/package.py"]
+timeout_seconds = 120

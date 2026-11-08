@@ -1,47 +1,16 @@
 version: 2
 
 updates:
-  # ── GitHub Actions ─────────────────────────────────────────────────────────
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-      timezone: "Asia/Tehran"
+      timezone: "Europe/Berlin"
     commit-message:
       prefix: "chore(ci)"
     labels:
       - "dependencies"
       - "ci"
-    open-pull-requests-limit: 5
-
-  # ── Docker ─────────────────────────────────────────────────────────────────
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tehran"
-    commit-message:
-      prefix: "chore(docker)"
-    labels:
-      - "dependencies"
-      - "docker"
-    open-pull-requests-limit: 5
-
-  # ── npm (website) ──────────────────────────────────────────────────────────
-  - package-ecosystem: "npm"
-    directory: "/website"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Tehran"
-    commit-message:
-      prefix: "chore(website)"
-    labels:
-      - "dependencies"
-      - "website"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10

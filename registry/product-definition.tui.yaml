@@ -1,0 +1,14 @@
+schema_version: "1.0.0"
+product:
+  id: com.cdin.editor
+  name: CDIN
+components:
+  - component_id: backend
+    variant: default
+    version_constraint: "1.2.0"
+  - component_id: frontend
+    variant: tui
+    version_constraint: "1.0.1"
+environment_contracts: []
+policy:
+  allow_prerelease: true

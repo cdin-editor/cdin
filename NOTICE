@@ -1,41 +1,34 @@
 NOTICE
 ======
 
-cdin — Copyright (c) 2026 m-mdy-m
+CDIN — Copyright (c) 2026 m-mdy-m
+
 Project license: GNU General Public License v3.0 or later (GPL-3.0-or-later).
-See LICENSE for the full license text.
+See LICENSE for the complete license text.
 
-The project license does not replace or remove the licenses of third-party
-components. Preserve their applicable notices when redistributing those parts.
+## Component dependencies
 
--------------------------------------------------------------------------------
+The immutable source revisions used by the development stack are recorded in
+`deps.lock`. Component sources are checked out into the ignored `.deps/src/`
+directory and are not vendored into this repository.
 
-This project is a fork of lite by rxi.
+The independently maintained Kernel, Runtime, Backend and Frontend projects
+carry their own GPL-3.0 license files and notices. When redistributing binaries
+that include those components, preserve the notices and source obligations
+required by each component's license.
 
-  lite — Copyright (c) 2020 rxi
-  Source:  https://github.com/rxi/lite
-  Original license: MIT
+## Other build dependencies
 
-  The original lite source provided the foundational editor loop, renderer
-  pipeline, Lua embedding model, and core document/view architecture. Portions
-  of that code remain in cdin, modified and extended. The original MIT notice
-  remains applicable to the original lite portions; the combined cdin project
-  is distributed under GPL-3.0-or-later.
+- **m-mdy-m/log.c** — MIT License. Copyright (c) 2020 rxi and 2026 m-mdy-m
+  contributors. The original license text is retained in that component's
+  source repository and installed license directory.
+- **PUC Lua 5.4** — MIT License. Used by Backend's Runtime host; CDIN does not
+  embed a separate Lua editor implementation.
 
--------------------------------------------------------------------------------
+## Removed legacy attribution
 
-This project uses the following third-party libraries:
-
-  SDL3 — Simple DirectMedia Layer
-  Source:  https://www.libsdl.org
-  License: zlib
-
-  stb_truetype — TrueType font rasterization
-  Source:  https://github.com/nothings/stb
-  License: MIT / public-domain dedication, as stated by upstream.
-
-  Lua — Lua programming language
-  Source:  https://www.lua.org
-  License: MIT
-
--------------------------------------------------------------------------------
+This Composition Root revision no longer contains the former lite-derived
+editor loop, SDL renderer, `stb_truetype` integration or website source. The
+old lite, SDL3 and stb_truetype notices are therefore not listed as active
+third-party source in this repository. The CDIN website is maintained
+separately at https://github.com/cdin-editor/cdin-editor.github.io.

@@ -1,108 +1,223 @@
-# AGENTS.md — rules for working on cdin (the runtime)
+# AGENTS.md — CDIN Architecture and Engineering Rules
 
-## 1. What this repository is
+## Mission
 
-cdin: a C11 + Lua 5.4 editor runtime. C is the mechanism (buffer, events, jobs, syntax tokens, fonts, graphics, filesystem); Lua (`data/core/`) is the policy. cdin-x (separate repository) holds the package manager and every optional feature. cdin knows nothing about cdin-x and runs with an empty site directory.
+You are the principal engineer responsible for the complete CDIN rewrite.
 
-Master prompt: `PROMPT_CDIN_MASTER.md`. Architecture, budgets, phases and open decisions are there.
+Repository: https://github.com/cdin-editor/cdin
 
-## 2. Hard rules
+Working branch: `feature/complete-composition-root-rewrite`
 
-1. **Never edit cdin-x or `website/`.** Report what cdin-x must do under `CDIN-X SIDE`.
-2. **Never break the extension contract** (`docs/architecture/extension-contract.md`) unless an owner-approved decision says so. A removed or changed API stays as a shim that logs one deprecation per process.
-3. **Lua state is single-threaded. Workers never touch Lua.** They work on immutable, ref-counted snapshots.
-4. **No unbounded growth.** Every cache, queue, buffer and history has a byte cap and an eviction or refusal policy. No fixed ceiling that silently drops data (`push_command` returning NULL and losing a font is the bug to never repeat).
-5. **Every handle has one owner and a defined lifetime.** Userdata with `__gc` and an explicit `close()`. A C object that Lua can reach cannot be freed while Lua can still use it.
-6. **Bytes round-trip.** The buffer stores bytes. Never "sanitize" or rewrite file content (NUL, invalid UTF-8, BOM, EOL) on load; a decoder substitutes only for display.
-7. **Never block the frame.** No `fread`/`popen`/`waitpid`/`sleep` loops on the main thread for anything unbounded.
-8. **Never spawn through a shell.** `argv` arrays only.
-9. **Do not run destructive commands. Do not commit unless asked.**
-10. The editor must **build and start after every step**.
+CDIN is the composition root of independently maintained components. It is not the editor engine, Runtime, Backend or Frontend. Its responsibility is to assemble, build, package, launch and release those components through public contracts.
 
-## 3. Priorities when they conflict
+This is an owner-approved breaking rewrite. Do not preserve the legacy architecture for compatibility.
 
-correctness and data safety > memory safety (no UB, no leaks) > bounded memory > latency > simplicity > modularity > brevity. Say so in the report when you chose between two.
+## 1. Source of truth
 
-## 4. What you write and what the owner writes
+Inspect and follow these repositories:
 
-You write: C and Lua code, tests (unit, model-based, fuzz, soak, bench), harnesses, build/CI changes, LuaLS annotations, comments in code. The owner writes: documentation, README, changelog, guides. Where a doc is now wrong, list the passage under `OPEN`; do not edit it.
+- Specification: https://github.com/cdin-editor/spec
+- Kernel: https://github.com/cdin-editor/kernel
+- Backend: https://github.com/cdin-editor/backend
+- Runtime: https://github.com/cdin-editor/runtime
+- Frontend: https://github.com/cdin-editor/frontend
 
-## 5. When to ask
+The latest canonical Spec and accepted ADRs define cross-component contracts. Inspect implementation code and public headers before relying on documentation.
 
-Ask for: the open decisions in the master prompt (section 7); anything that would break a contract promise; a new external dependency not on the master prompt's list; any deletion of user-visible behaviour; any ambiguity where a wrong guess is expensive to undo. Otherwise decide from the code and say what you decided.
+When sources disagree:
 
-Format (always this shape, one question at a time):
+1. Identify the conflicting requirement and implementation.
+2. Check the latest Spec revision and accepted ADR.
+3. Check public APIs and actual component versions.
+4. Record the discrepancy in the architecture audit.
+5. Never silently choose an incompatible interpretation.
 
-```text
-CONTEXT   what you are doing and what you found
-DECISION  the one question
-OPTIONS   A) ... (cost/benefit)  B) ...  C) ...
-RECOMMEND the option and why
-DEFAULT   what you will do if the owner does not answer
+Distinguish these statuses in documentation: `ACCEPTED`, `PROPOSED`, `EXISTING`, `DEFERRED`, `IMPLEMENTED`, `PARTIAL`, `NOT IMPLEMENTED` and `NOT VERIFIED`. A documented feature is not automatically implemented.
+
+## 2. Component ownership
+
+### Kernel
+
+Owns canonical document bytes, document versions, transactions, snapshots, undo/redo and text operations. CDIN consumes it through Backend's public integration and the published Kernel ABI. Never reimplement Kernel functionality.
+
+### Backend
+
+Owns Kernel integration, Runtime hosting, OS services, sessions, the Frontend Protocol server, transport, sequencing, queues and backpressure.
+
+### Runtime
+
+Owns Lua 5.4 editor policy, commands, keymaps, configuration, plugin lifecycle, syntax policy, logical views and semantic UI state. Runtime accesses documents only through Backend's Runtime Host API.
+
+### Frontend
+
+Owns input adaptation, visual layout, text presentation and rendering. TUI, GUI-SDL and Headless are peer adapters using the Frontend Protocol.
+
+### CDIN
+
+Owns:
+- Dependency and ABI compatibility checks.
+- Component assembly.
+- Build orchestration.
+- Runtime and Frontend packaging.
+- Frontend selection.
+- Application launcher.
+- Release and installer workflows.
+- Developer tooling.
+
+CDIN must contain no editor-domain implementation.
+
+## 3. Dependency rules
+
+Follow the Spec's ARCH-040 through ARCH-046 boundaries and the owner-approved rewrite decision.
+
+- No component may depend on CDIN.
+- Kernel must not depend on Backend, Runtime or Frontend.
+- Backend is the only component that directly integrates Kernel.
+- Runtime must not directly link to Kernel.
+- Frontends must not access private Backend, Runtime or Kernel APIs.
+- The Composition Root may assemble components through public interfaces.
+- No circular dependencies.
+- No duplicated component responsibilities.
+
+Use published, explicitly pinned component packages for production consumption. The pinned source checkouts used by the development stack builder are build inputs for verification; CDIN source must not include private headers or compile copied component implementation.
+
+Never depend on floating branches, download unverified source during builds, use private headers, or silently bypass ABI/protocol checks. If a required package is unavailable, record the exact blocker and define a reproducible release path.
+
+## 4. Complete legacy removal
+
+Remove the old architecture completely. Audit each former surface: `src/`, `data/`, `assets/`, `lib/`, `mk/`, `website/`, `tests/`, `scripts/`, `docs/`, `CMakeLists.txt`, `Makefile`, `Dockerfile`, `docker-compose.yml`, `.github/`, `.gix/`, dependency configuration, packaging and release configuration. Replace legacy contents with the new composition-only implementation where the same directory name is still useful; do not retain old SDL/Lua/editor-domain modules beside their replacements.
+
+The website belongs exclusively to:
+
+https://github.com/cdin-editor/cdin-editor.github.io
+
+Remove website source, assets, dependencies and deployment workflows from CDIN. Do not modify the website repository from this project.
+
+Do not delete technical documentation that still describes a current CDIN responsibility. Do not keep a legacy implementation beside its replacement. No compatibility shims are required for removed private APIs.
+
+A directory name may remain when it holds the new Composition Root implementation. Review ownership and contents, not names alone.
+
+## 5. Modularity
+
+Every module has one responsibility and a clear interface.
+
+- No duplicated business logic or utilities.
+- No unnecessary global state or hidden dependencies.
+- No monolithic source files or circular imports.
+- No unnecessary abstraction layers, placeholders or dead code.
+- No silent error suppression.
+
+When repeated logic appears, extract it only when the result is a useful reusable module. Reuse existing component APIs instead of copying implementations.
+
+## 6. Technology and tooling
+
+Use these projects according to their actual interfaces:
+
+- PSX: https://github.com/m-mdy-m/psx — repository structure and project conventions.
+- Gix: https://github.com/m-mdy-m/gix — Git branch workflow.
+- Pipeline: https://github.com/m-mdy-m/pipeline — local tasks and CI task graph.
+- Logger: https://github.com/m-mdy-m/log.c — logging implementation through the appropriate component-owned boundary.
+
+Pipeline task definitions are the source of truth. CI workflows must invoke Pipeline instead of duplicating build and test commands.
+
+Use meaningful component tags where the component actually emits a record: `[CDIN]`, `[BACKEND]`, `[FRONTEND]`, `[RUNTIME]` and `[KERNEL]`. Do not invent records or claim that a component logs through CDIN when it does not. Do not introduce another logger when an existing component provides the required service.
+
+## 7. Documentation and source comments
+
+All source comments, documentation, READMEs and project instructions are written in English.
+
+Write for someone who has never used CDIN. Explain the purpose first, then the interface and implementation details. Prefer plain language, practical commands and real examples. Avoid filler, unexplained jargon and claims that are not supported by the current code.
+
+Important architectural implementation must reference its source requirement with an exact URL and line range. Example:
+
+```c
+/*
+ * Implements ARCH-043.
+ * https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md#L68-L68
+ */
 ```
 
-## 6. C style
+Use the actual current line range after inspecting the Spec. Do not invent requirement IDs or line numbers. Comments explain ownership, invariants and non-obvious decisions; they do not narrate obvious code.
 
-- C11. Warnings: `-Wall -Wextra -Wshadow -Wconversion -Wstrict-prototypes -Wformat=2`, new code warning-free. `-Werror` on CI for `src/` files you touched.
-- `snake_case`; module prefix on every public symbol (`buf_`, `rope_`, `evt_`, `job_`, `font_`, `gfx_`, `fs_`); types `CamelCase` typedefs (`Rope`, `Snapshot`, `Mark`); macros `UPPER_CASE`; no leading-underscore identifiers.
-- One header per module with only what callers need; opaque types (`typedef struct Rope Rope;`) and constructor/destructor pairs: `x_new`/`x_free`, `x_open`/`x_close`. No struct fields poked from outside the module.
-- Return values: a `CdinErr` or a negative errno-style code for fallible functions, out-parameters for results; never `abort()`/`exit()` outside `main` and a tiny, documented set of unrecoverable startup failures.
-- Sizes are `size_t`, offsets are `int64_t` (files can exceed 2 GB), counts that cross the Lua boundary are `lua_Integer`. Check every arithmetic that can overflow before allocating or indexing. No `int` for a byte offset.
-- Banned: `strcpy`, `strcat`, `sprintf`, `gets`, `atoi`, VLAs, `alloca`, bare `malloc/calloc/realloc/free` (use `cdin_*`), `static` mutable state without a comment saying who owns it and which thread touches it, `volatile` as synchronisation, `goto` other than the single-exit cleanup pattern.
-- Cleanup: one exit label per function that frees in reverse order; no leak on any error path (verify with ASan leak checks and the fault-injection allocator, which fails the Nth allocation).
-- Concurrency: a data structure is either owned by one thread or immutable and ref-counted. Atomics only in `loop/queue.c` and the ref counts, with comments naming the memory order. Locks are leaf locks; never call back into Lua or user callbacks while holding one.
-- Lua bindings: validate every argument with `luaL_check*`/`luaL_opt*`; push exactly the documented results; no `lua_error`/`luaL_error` between a resource's allocation and its attachment to a userdata (a longjmp leaks it); use `lua_newuserdatauv` + metatable + `__gc` first, then fill; callbacks into Lua through one helper that does `pcall` + traceback + logging.
-- Comments: one block comment at the top of each file saying what the file does and who owns what; inside, a comment only for a non-obvious invariant, a unit, an ownership rule, a memory order, or a reason a "wrong-looking" line is right. No narrating comments, no commented-out code, no TODOs without an owner decision.
-- Formatting: `clang-format` with a checked-in config (4-space indent, 100 columns, braces on the same line); do not reformat code you are not changing.
+## 8. Testing
 
-## 7. Lua style
+Verify the CDIN product primarily through:
 
-Same as the repository today (snake_case, modules return tables, classes through `core.utils.object`, strict globals, `core.add_thread` for background work, command/keymap registration paired with removal) plus: annotate public functions and types with LuaLS; `luacheck` clean with a checked-in `.luacheckrc` declaring the host globals; no per-line or per-token tables for text; no unbounded caches (weak tables or explicit caps); modules' top level is declarations, registration happens in `init`.
+- End-to-end tests.
+- Cross-component integration tests.
+- Protocol conformance tests.
+- Startup and shutdown tests.
+- Real editing workflows.
+- Failure and recovery tests.
+- Cross-platform tests.
+- Resource and lifecycle stress tests.
 
-## 8. Memory and performance discipline
+Do not create isolated Composition Root unit suites as a substitute for real application verification. Do not remove useful tests, fuzzers or conformance suites from independent component repositories.
 
-- Allocate through `cdin_alloc` with the subsystem tag. Report per-subsystem peak bytes in every phase report.
-- No allocation in the steady-state draw path or in the per-keystroke path; verify with the accounting allocator (counter must not move across 1000 frames of typing).
-- Prefer snapshots and views over copies. Copy only at an ownership boundary and say why.
-- Streams over slurps: read in chunks, write in chunks, bound every intermediate.
-- Choose the data structure by the 1 GB case, not the 1 KB case.
-- Benchmarks live in `tests/bench/` and print numbers; a regression of more than 10% against the recorded baseline fails the phase.
+The product verification plan must cover:
 
-## 9. Verification (run all of these yourself before every report)
+1. Application startup and shutdown.
+2. Kernel document creation and editing.
+3. Save and reopen workflows.
+4. Undo and redo.
+5. Runtime command and keymap execution.
+6. TUI interaction.
+7. GUI interaction when the production GUI is ready.
+8. Frontend connection and disconnection.
+9. Multiple frontend sessions.
+10. Runtime and Backend failure handling.
+11. Protocol errors and recovery.
+12. Plugin loading and isolation.
 
-```text
-make                       # release build, no new warnings
-make debug                 # -O0 -g3 build
-make debug-san             # ASan + UBSan; run the suites under it
-make test                  # C unit + model + Lua suites
-make check                 # static analysis + luacheck
-make bench                 # numbers vs baseline
-# cross-repo (need a cdin-x checkout, read-only for you):
-make test-plugins          # test_commands.lua + test_lua.lua
-make test-site-dir
-make test-workflows        # only the known cdin-x name failures may remain; list them
-```
+Tests must exercise real public interfaces. Never use fake success results or report unexecuted checks as passing.
 
-Additionally per phase: TSan for anything with threads; Valgrind for the code ASan cannot cover; fuzz runs for every external-input parser you wrote or changed (state duration and corpus size); the soak script when memory-related code changed. A check you could not run is listed as NOT RUN with the reason. Never claim a check passed that you did not run.
+## 9. Cross-platform quality
 
-## 10. Git conventions
+Support Linux, macOS and Windows according to the capabilities of the pinned components.
 
-Conventional commits (`feat(buffer): ...`, `fix(loop): ...`), imperative, under 72 characters, one topic each. Pure moves are separate commits from edits. Commit only when asked. End commit messages with the attribution lines the session provides.
+Verify native dependency discovery, compiler compatibility, packaging, application startup, resource cleanup, process lifecycle and platform-specific transport. Run sanitizers where supported. Use strict compiler warnings and fix newly introduced warnings.
 
-## 11. Final report format (after every phase)
+## 10. Git workflow
 
-```text
-DONE        what changed, by subsystem, in plain words
-DECISIONS   choices you made and why (and the owner's decisions you consumed)
-MEASURED    numbers vs the baseline: memory per MB of text, open time, edit latency,
-            frame time, idle CPU, startup, per-subsystem peak bytes
-SANITIZERS  ASan / UBSan / TSan / Valgrind: what ran, result
-FUZZ/SOAK   targets, duration, corpus size, findings fixed
-COMPAT      contract rows touched; which suites ran; known cdin-x name failures
-API ADDED   new functions/events/options (names)
-DEPRECATED  shims kept, replacement named, planned removal
-EDGE CASES  from the master prompt list that applied: handled or not, and how
-CDIN-X SIDE what cdin-x must do or can now simplify
-OPEN        stale docs, unresolved questions, risks
-NEXT        the next phase and anything it depends on
-```
+Continue on:
+
+`feature/complete-composition-root-rewrite`
+
+Do not create another branch. Follow the actual Gix configuration. Use focused, descriptive commits. Do not force-update the branch, and never merge the PR without explicit authorization.
+
+## 11. Execution discipline
+
+Work autonomously. Do not stop at proposals, architecture diagrams or empty scaffolding. Do not ask for approval for ordinary implementation decisions.
+
+For each implementation slice:
+
+1. Inspect the existing code and relevant contracts.
+2. Identify ownership and reusable public modules.
+3. Define integration and failure requirements.
+4. Implement working functionality.
+5. Execute the relevant real tests.
+6. Update documentation and traceability.
+7. Remove the replaced legacy behavior.
+
+Keep the repository buildable. Record blockers honestly.
+
+## 12. Completion criteria
+
+The rewrite is complete only when:
+
+- The legacy architecture is removed.
+- The Composition Root is functional.
+- Components are assembled through public interfaces.
+- Dependencies are pinned and reproducible.
+- ABI and protocol compatibility are checked.
+- Runtime is hosted by Backend.
+- Frontends communicate through the real Protocol and Transport.
+- Real editing workflows work.
+- E2E and integration tests pass.
+- Supported platforms are verified.
+- Docker, CI and release workflows reflect the new architecture.
+- Website code is completely separate.
+- Documentation describes the actual implementation.
+- No obsolete architecture or duplicated component logic remains.
+
+Report actual commits, changed files, test commands, results and outstanding blockers. Never present a planned or unrun check as a result.

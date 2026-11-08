@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: cdin-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  full-stack-e2e:
+    name: Pinned stack + E2E / ${{ matrix.os }} / ${{ matrix.profile }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: bash
+            profile: tui
+          - os: macos-latest
+            shell: bash
+            profile: tui
+          - os: windows-latest
+            shell: msys2 {0}
+            profile: tui
+          - os: ubuntu-latest
+            shell: bash
+            profile: gui-sdl
+          - os: macos-latest
+            shell: bash
+            profile: gui-sdl
+          - os: windows-latest
+            shell: msys2 {0}
+            profile: gui-sdl
+    runs-on: ${{ matrix.os }}
+    env:
+      CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.os != 'Windows'
+        with:
+          go-version: "1.27.3"
+      - name: Set up MSYS2 toolchain (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-lua54
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-go
+      - name: Select Lua 5.4 for Windows (UCRT64)
+        if: runner.os == 'Windows'
+        run: |
+          pkg-config --modversion lua5.4
+          echo "CDIN_LUA_INCLUDE_DIR=$(cygpath -m /ucrt64/include/lua5.4)" >> "$GITHUB_ENV"
+          echo "CDIN_LUA_LIBRARY=$(cygpath -m /ucrt64/lib/liblua5.4.dll.a)" >> "$GITHUB_ENV"
+      - name: Install native build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake git make pkg-config liblua5.4-dev python3 python3-pip
+      - name: Install native build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake make pkg-config lua@5.4
+          echo "$(brew --prefix lua@5.4)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+      - name: Install Python (Linux/macOS)
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Prepare Git identity and base branch for gix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main:refs/remotes/origin/main
+          if ! git show-ref --verify --quiet refs/heads/main; then
+            git branch --track main origin/main
+          fi
+      - name: Install pinned Pipeline, psx and gix
+        run: |
+          python -m pip install "git+https://github.com/m-mdy-m/pipeline.git@79169afc4f9f74ee46c52be2bf6974f8544c7db1"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            export GOBIN=/ucrt64/bin
+          fi
+          go install github.com/m-mdy-m/psx/cmd/psx@e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df
+          go install github.com/m-mdy-m/gix/cmd/gix@9f0867923177cef3cd36d980cc2b356a35bee507
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            command -v psx
+            command -v gix
+          else
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Verify repository shape and Git flow
+        run: |
+          psx check
+          gix doctor
+      - name: Build all pinned components and run E2E
+        run: pipeline run check
+      - name: Measure headless integration latency and sampled RSS
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            CDIN_EXECUTABLE=".deps/install/bin/cdin.exe"
+          else
+            CDIN_EXECUTABLE=".deps/install/bin/cdin"
+          fi
+          python3 scripts/benchmark.py \
+            --executable "$CDIN_EXECUTABLE" \
+            --warmup 2 \
+            --iterations 10 \
+            --sample-interval-ms 10 \
+            --timeout-seconds 60 \
+            --output dist/cdin-headless-benchmark.json
+      - name: Upload headless benchmark report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdin-headless-benchmark-${{ runner.os }}-${{ matrix.profile }}
+          path: dist/cdin-headless-benchmark.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Create and validate reproducible source snapshot
+        run: |
+          pipeline run package
+          python -m zipfile -t dist/cdin-composition-root-source.zip
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          archive = Path("dist/cdin-composition-root-source.zip")
+          checksum_file = archive.with_suffix(archive.suffix + ".sha256")
+          expected = checksum_file.read_text(encoding="ascii").split()[0]
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if expected != actual:
+              raise SystemExit(f"source snapshot checksum mismatch: expected {expected}, got {actual}")
+          print(f"Verified SHA-256: {actual}")
+          PY
+      - name: Upload source snapshot and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdin-source-snapshot-${{ runner.os }}-${{ matrix.profile }}
+          path: |
+            dist/cdin-composition-root-source.zip
+            dist/cdin-composition-root-source.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  attest-source-snapshot:
+    name: Attest trusted main-branch source snapshot
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [full-stack-e2e, sanitizers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout verified main commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Recreate and validate source snapshot
+        run: |
+          python scripts/package.py
+          python -m zipfile -t dist/cdin-composition-root-source.zip
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          archive = Path("dist/cdin-composition-root-source.zip")
+          checksum_file = archive.with_suffix(archive.suffix + ".sha256")
+          expected = checksum_file.read_text(encoding="ascii").split()[0]
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if expected != actual:
+              raise SystemExit(f"source snapshot checksum mismatch: expected {expected}, got {actual}")
+          print(f"Verified attestation subject SHA-256: {actual}")
+          PY
+      - name: Attest source snapshot provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/cdin-composition-root-source.zip
+
+  sanitizers:
+    name: Full stack / ASan + UBSan + leak detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake git make pkg-config liblua5.4-dev
+      - name: Install Pipeline
+        run: python -m pip install "git+https://github.com/m-mdy-m/pipeline.git@79169afc4f9f74ee46c52be2bf6974f8544c7db1"
+      - name: Run instrumented full-stack verification
+        env:
+          CDIN_FRONTEND_VARIANT: gui-sdl
+          CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+          CXXFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer
+          LDFLAGS: -fsanitize=address,undefined
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: pipeline run check
