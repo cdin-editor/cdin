@@ -8,7 +8,7 @@ components:
     version_constraint: "1.2.0"
   - component_id: frontend
     variant: tui
-    version_constraint: "1.0.1"
+    version_constraint: "1.0.2"
   - component_id: frontend
     variant: gui-sdl
     version_constraint: "1.0.1"
