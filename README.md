@@ -21,13 +21,17 @@ component release metadata, respectively.
 
 ## Current status
 
-- CDIN Composition Root and Registry handoff: [PR #110](https://github.com/cdin-editor/cdin/pull/110).
+- CDIN Composition Root and Registry handoff: [PR #110](https://github.com/cdin-editor/cdin/pull/110), merged on 2026-11-08 as `e2ea9f74bf247a1b1104cded53255ac4a34551a0`.
 - Product integration epic: [Issue #111](https://github.com/cdin-editor/cdin/issues/111).
 - Registry is a build-time delivery-plane tool. It resolves component versions and immutable source revisions, prepares the workspace and emits the Resolved Manifest. It is never linked into CDIN or any component at runtime.
 - Kernel, Runtime, Backend and Frontend own their own Registry Release Metadata. CDIN supplies TUI and GUI-SDL Product Definitions. The Catalog Index snapshot is versioned in the pinned Registry checkout; CDIN contains no component repository URLs or release metadata map.
 - The current Registry integration candidate is Runtime `1.0.0-rc.2`, which provides `org.cdin.runtime-extension-contract` 1.0.0, plus Frontend TUI/GUI-SDL `1.0.1`. Runtime prerelease selection remains explicitly transitional until a stable Runtime release.
-- Registry implementation and the new product E2E tests are in the branch; the full current-head Linux/macOS/Windows and sanitizer CI matrix is still required before this integration is marked verified.
-- GUI-SDL remains experimental. The renderer is an ASCII/debug-text baseline; full PaneTree rendering, IME, shaping, bidi/Persian layout and recovery remain release gates.
+- Current Registry pin: `2a611eca830c0f235dacab04a1d006a8fd46e586`; selected packages are Kernel `1.2.1`, Backend `1.2.0`, Frontend TUI/GUI-SDL `1.0.1`, and Runtime `1.0.0-rc.2`.
+- Runtime RC2 provides `org.cdin.runtime-extension-contract@1.0.0`; prerelease selection remains transitional until a stable Runtime release.
+- Runtime #7, Backend #19, Spec #16 and Spec #23 are closed. Frontend #24 remains open only for the formal v1.0.1 tag/release decision; Frontend #15 and CDIN #111 retain product gates.
+- The JavaScript/TypeScript CodeQL no-source analyzer requires a repository Settings language-selection update tracked by [Issue #113](https://github.com/cdin-editor/cdin/issues/113); no dummy source is added.
+- The Composition Root and Registry handoff are merged and verified: [exact-head CI run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) passed all six Linux/macOS/Windows × TUI/GUI-SDL jobs and the full-stack ASan/UBSan/leak job. Registry Go tests, schema validation, resolve/prepare/replay, Manifest verification and product E2E passed.
+- GUI-SDL remains experimental. PaneTree/multi-pane geometry and live-session smoke pass, but the renderer is still an ASCII/debug-text baseline; production Unicode shaping/bidi/Persian text, IME, panels/scrolling, FE-019 stress and supported release-mode launch remain gates.
 
 ## Build
 

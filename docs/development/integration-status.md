@@ -1,3 +1,83 @@
+## Current integration verification — 2026-11-08
+
+**Status: VERIFIED INTEGRATION CANDIDATE.** CDIN Composition Root [PR #110](https://github.com/cdin-editor/cdin/pull/110) was merged to `main` at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`. The exact tested source head was `a937947ce2a2ec06e6eed549672a585b10e2c3fb`; [CI run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) completed successfully.
+
+### Immutable dependency set
+
+The pinned Registry Catalog is `2a611eca830c0f235dacab04a1d006a8fd46e586`. It retains previous metadata identities and adds the immutable Frontend 1.0.1 TUI/GUI-SDL and Runtime RC2 entries.
+
+| Component | Resolved package | Relevant contract |
+| --- | --- | --- |
+| Kernel | `1.2.1` | Kernel ABI `1.1.0` |
+| Backend | `1.2.0` | Runtime Host API `1.0.0`; Frontend Protocol `1.0.0` |
+| Runtime | `1.0.0-rc.2` | Provides `org.cdin.runtime-extension-contract@1.0.0` |
+| Frontend TUI | `1.0.1` | Requires Frontend Protocol `1.0.0` |
+| Frontend GUI-SDL | `1.0.1` | Requires Frontend Protocol `1.0.0` |
+
+Backend's existing Runtime dependency range selects RC2. `allow_prerelease: true`
+remains deliberate and transitional; do not switch to stable-only until a
+stable Runtime package is published. Previously published Frontend 1.0.0 and
+Runtime RC1 metadata, digests and source pins remain unchanged.
+
+### Exact-head verification
+
+All seven required jobs in [run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) passed:
+
+- Linux, macOS and Windows TUI product profiles.
+- Linux, macOS and Windows GUI-SDL + TUI fallback profiles.
+- Full-stack AddressSanitizer, UndefinedBehaviorSanitizer and leak-detection job.
+
+In each of the six native profile/OS jobs, the Registry CLI ran its Go suite,
+Catalog/Product Definition schema validation, resolve, prepare, Manifest
+replay, Manifest verification and workspace E2E. The resolver selected the
+five exact package versions in the table above; older Frontend 1.0.0
+candidates were rejected by the explicit 1.0.1 constraints. Runtime startup
+logged `version=1.0.0-rc.2`, matching the Resolved Manifest, on Linux,
+macOS and Windows in both profiles.
+
+The native tests also passed the GUI-SDL live-session smoke, document
+text/paste, undo/redo, atomic save, close/open and exact-byte persistence,
+filesystem failure/recovery, byte-preservation fixtures, multi-session
+Driver/Observer promotion, detach/reattach, abrupt peer loss with queued UI
+work, same-session reconnect, lease reacquisition and exact Backend-owned
+document content recovery. Compiler-resolved include checks found no private
+component source/build headers. Full-stack ASan/UBSan/leak detection passed.
+
+### Measured, but not release-grade, performance evidence
+
+The CI benchmark runs ten iterations of the named `cdin --check`
+headless-composition-root smoke and records p50/p95/p99 wall time plus sampled
+peak RSS. It is not per-keystroke/input-to-visible or save latency, is not a
+representative editing workload, and is not a soak or release baseline.
+Allocator peak, operation-level budgets, repeatable editing workload and
+documented soak/leak acceptance remain open in issue #111. Raw benchmark and
+source-snapshot artifacts were attached to the native workflow.
+
+### Remaining product/release gates
+
+The CI success validates the integrated composition slice; it does not make
+CDIN a stable editor release. Issue [#111](https://github.com/cdin-editor/cdin/issues/111)
+remains open for FE-019 lost-wakeup/readiness and Windows CTRL-event stress,
+supported non-experimental launch, live plugin capability/permission and
+failure-lifecycle tests, Backend/Runtime process failure recovery, soak and
+operation-level performance baselines, clean-machine application installers,
+signed release artifacts and component Catalog publication automation.
+
+The JavaScript/TypeScript CodeQL analyzer still reports no source on this
+repository. C/C++, Python, Actions and the top-level CodeQL check pass; the
+post-merge Default Setup language-selection adjustment is tracked in
+[CDIN #113](https://github.com/cdin-editor/cdin/issues/113) and requires
+repository Settings access. No fake JS/TS source or legacy website has been
+reintroduced.
+
+Cross-repository status: Runtime #7, Backend #19, Spec #16 and Spec #23 are
+closed. Frontend #24 has its 1.0.1 package identity, immutable metadata,
+Catalog entries and full CDIN matrix verified; its formal tag/release decision
+remains open. Frontend #15 and Spec #14, #20, #21 and #25 remain open as
+presentation, IME, splitter-resize and byte-anchor contract gates.
+
+---
+
 ## Registry integration update — 2026-11-07
 ## Cross-repository version synchronization — 2026-11-08
 
@@ -27,7 +107,7 @@ a stable Runtime release exists; it must not be disabled merely because RC2
 is now selected.
 
 
-The Composition Root feature branch now contains the Registry-based component selection and source handoff described by [Registry integration](registry.md) and [Spec ROOT-010](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31).
+The Composition Root implementation is merged to `main` in [PR #110](https://github.com/cdin-editor/cdin/pull/110) and uses the Registry-based component selection and source handoff described by [Registry integration](registry.md) and [Spec ROOT-010](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31).
 
 - Kernel, Runtime, Backend and Frontend own immutable release metadata in their component repositories. Frontend TUI and GUI-SDL are separately declared variants.
 - CDIN contains only the TUI and GUI-SDL Product Definitions. The versioned Catalog Index now lives in the pinned Registry checkout at `catalogs/cdin-components/catalog-index.json`; the CDIN repository no longer stores component metadata URIs, repository URLs or a Catalog Index.
@@ -36,17 +116,17 @@ The Composition Root feature branch now contains the Registry-based component se
 - Component versions and source revisions are read from the Resolved Manifest; component entries have been removed from `deps.lock`.
 - The native CI matrix now includes TUI and GUI-SDL product profiles on Linux, macOS and Windows. The sanitizer job uses the GUI-SDL superset profile, exercising TUI, GUI-SDL and headless paths together.
 
-**Status: INTEGRATION CANDIDATE / CURRENT-HEAD VERIFICATION PENDING.** The exact Catalog pin and package selectors have now been updated in this sync PR. Do not mark Registry integration accepted until the resulting PR head and the composed PR #110 head pass all six native profile/OS jobs and the sanitizer job. The Runtime prerelease allowance is transitional. A separate Catalog publisher/release publication workflow remains outstanding.
+**Status: VERIFIED INTEGRATION CANDIDATE.** The Registry pin and package selectors passed the exact-head six-job native matrix and full-stack ASan/UBSan/leak verification in [run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569). The Runtime prerelease allowance remains transitional. A separate Catalog publisher/release publication workflow remains outstanding.
 
 ## Current verification update — 2026-11-07
 
-PR #110 is the active Draft integration candidate; consult the PR page for its current head SHA.
+PR #110 was merged to `main` on 2026-11-08 at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`; its exact tested head was `a937947ce2a2ec06e6eed549672a585b10e2c3fb`.
 
 - Frontend PR #19 is merged at `1373715c23eb965445caa926de3a99d9c0246f81`; Registry selects this immutable source through the Frontend Release Metadata referenced by its Catalog Index rather than a component entry in CDIN's `deps.lock`.
 - Runtime sandbox capability-denial unit coverage is in Runtime commit `e2f19e279e3194a6615ce213331639fde4f42e87`; Runtime CI run [42315040626](https://github.com/cdin-editor/runtime/actions/runs/42315040626) passed Linux, Windows, macOS, Pipeline quality and docs/workflow validation.
 - CDIN's trusted extension CLI and PTY/ConPTY fixtures were corrected after the prior run exposed invalid Python triple-quoted Lua source. Current CLI/PTY/ConPTY fixtures now use one line-continuation backslash; the accidental duplicate ConPTY source block and stale capability sentinel were removed.
 - The multi-session smoke now verifies exact Backend-owned document bytes survive abrupt peer loss and a new Protocol client reconnecting to the same Backend session (commit `6eb58fd`). This test is not accepted until the current matrix passes.
-- Current native + ASan/UBSan/leak matrix: see the latest CI run attached to [PR #110](https://github.com/cdin-editor/cdin/pull/110); only the run for the current head is acceptance evidence.
+- Current native + ASan/UBSan/leak matrix: [CDIN run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) passed all six profile/OS jobs and the full-stack sanitizer job on the exact tested head.
 - Frontend SDL renderer device-loss recovery is verified in Frontend CI [42315157831](https://github.com/cdin-editor/frontend/actions/runs/42315157831); the broader GUI-SDL and IME release work remains open in [Frontend Issue #15](https://github.com/cdin-editor/frontend/issues/15).
 
 The interactive TUI launch remains experimental/fail-closed. Do not mark FE-019, Windows ConPTY, plugin lifecycle/capability integration, document reconnect recovery, or product release gates complete until current CDIN test evidence is inspected.
@@ -71,15 +151,168 @@ The product epic and acceptance criteria are tracked in [issue #111](https://git
 
 - The previous CDIN candidate passed the headless editing/persistence workflow, POSIX PTY, multiple Frontend Driver/Observer roles, detach/reattach lease reacquisition, byte-preservation fixtures, filesystem failure recovery, compiler-resolved include graph, reproducible source snapshot and Linux ASan/UBSan/leak detection in [run 42182694691](https://github.com/cdin-editor/cdin/actions/runs/42182694691).
 - GUI-SDL live-session text input and exact-byte save smoke passed on Linux/macOS/Windows in [run 42310020078](https://github.com/cdin-editor/cdin/actions/runs/42310020078). That run used the prior Frontend pin and is not a substitute for the new run above. GUI-SDL remains experimental; complete PaneTree rendering, IME, shaping/bidi/Persian, device-loss recovery and full session recovery are still open.
-- The current CDIN ConPTY failure before PR #19 was isolated to the readiness wait using a different handle from the terminal adapter's `CONIN$` read handle. PR #19 aligns the wait and read handles and restores the original standard input handle on teardown. The correction is merged and component-tested; CDIN acceptance is pending.
+- The previous CDIN ConPTY failure was isolated to the readiness wait using a different handle from the terminal adapter's `CONIN## Current integration verification — 2026-11-08
+
+**Status: VERIFIED INTEGRATION CANDIDATE.** CDIN Composition Root [PR #110](https://github.com/cdin-editor/cdin/pull/110) was merged to `main` at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`. The exact tested source head was `a937947ce2a2ec06e6eed549672a585b10e2c3fb`; [CI run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) completed successfully.
+
+### Immutable dependency set
+
+The pinned Registry Catalog is `2a611eca830c0f235dacab04a1d006a8fd46e586`. It retains previous metadata identities and adds the immutable Frontend 1.0.1 TUI/GUI-SDL and Runtime RC2 entries.
+
+| Component | Resolved package | Relevant contract |
+| --- | --- | --- |
+| Kernel | `1.2.1` | Kernel ABI `1.1.0` |
+| Backend | `1.2.0` | Runtime Host API `1.0.0`; Frontend Protocol `1.0.0` |
+| Runtime | `1.0.0-rc.2` | Provides `org.cdin.runtime-extension-contract@1.0.0` |
+| Frontend TUI | `1.0.1` | Requires Frontend Protocol `1.0.0` |
+| Frontend GUI-SDL | `1.0.1` | Requires Frontend Protocol `1.0.0` |
+
+Backend's existing Runtime dependency range selects RC2. `allow_prerelease: true`
+remains deliberate and transitional; do not switch to stable-only until a
+stable Runtime package is published. Previously published Frontend 1.0.0 and
+Runtime RC1 metadata, digests and source pins remain unchanged.
+
+### Exact-head verification
+
+All seven required jobs in [run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) passed:
+
+- Linux, macOS and Windows TUI product profiles.
+- Linux, macOS and Windows GUI-SDL + TUI fallback profiles.
+- Full-stack AddressSanitizer, UndefinedBehaviorSanitizer and leak-detection job.
+
+In each of the six native profile/OS jobs, the Registry CLI ran its Go suite,
+Catalog/Product Definition schema validation, resolve, prepare, Manifest
+replay, Manifest verification and workspace E2E. The resolver selected the
+five exact package versions in the table above; older Frontend 1.0.0
+candidates were rejected by the explicit 1.0.1 constraints. Runtime startup
+logged `version=1.0.0-rc.2`, matching the Resolved Manifest, on Linux,
+macOS and Windows in both profiles.
+
+The native tests also passed the GUI-SDL live-session smoke, document
+text/paste, undo/redo, atomic save, close/open and exact-byte persistence,
+filesystem failure/recovery, byte-preservation fixtures, multi-session
+Driver/Observer promotion, detach/reattach, abrupt peer loss with queued UI
+work, same-session reconnect, lease reacquisition and exact Backend-owned
+document content recovery. Compiler-resolved include checks found no private
+component source/build headers. Full-stack ASan/UBSan/leak detection passed.
+
+### Measured, but not release-grade, performance evidence
+
+The CI benchmark runs ten iterations of the named `cdin --check`
+headless-composition-root smoke and records p50/p95/p99 wall time plus sampled
+peak RSS. It is not per-keystroke/input-to-visible or save latency, is not a
+representative editing workload, and is not a soak or release baseline.
+Allocator peak, operation-level budgets, repeatable editing workload and
+documented soak/leak acceptance remain open in issue #111. Raw benchmark and
+source-snapshot artifacts were attached to the native workflow.
+
+### Remaining product/release gates
+
+The CI success validates the integrated composition slice; it does not make
+CDIN a stable editor release. Issue [#111](https://github.com/cdin-editor/cdin/issues/111)
+remains open for FE-019 lost-wakeup/readiness and Windows CTRL-event stress,
+supported non-experimental launch, live plugin capability/permission and
+failure-lifecycle tests, Backend/Runtime process failure recovery, soak and
+operation-level performance baselines, clean-machine application installers,
+signed release artifacts and component Catalog publication automation.
+
+The JavaScript/TypeScript CodeQL analyzer still reports no source on this
+repository. C/C++, Python, Actions and the top-level CodeQL check pass; the
+post-merge Default Setup language-selection adjustment is tracked in
+[CDIN #113](https://github.com/cdin-editor/cdin/issues/113) and requires
+repository Settings access. No fake JS/TS source or legacy website has been
+reintroduced.
+
+Cross-repository status: Runtime #7, Backend #19, Spec #16 and Spec #23 are
+closed. Frontend #24 has its 1.0.1 package identity, immutable metadata,
+Catalog entries and full CDIN matrix verified; its formal tag/release decision
+remains open. Frontend #15 and Spec #14, #20, #21 and #25 remain open as
+presentation, IME, splitter-resize and byte-anchor contract gates.
+
+---
+
+## Registry integration update — 2026-11-07
+## Cross-repository version synchronization — 2026-11-08
+
+The Registry Catalog snapshot pinned by this candidate is
+`2a611eca830c0f235dacab04a1d006a8fd46e586`. It preserves the previous
+immutable entries and adds:
+
+- Backend `1.2.0` (existing)
+- Kernel `1.2.1` (existing)
+- Runtime `1.0.0-rc.2` with the provider contract
+  `org.cdin.runtime-extension-contract@1.0.0`
+- Frontend TUI `1.0.1`
+- Frontend GUI-SDL `1.0.1`
+
+The exact Frontend and Runtime metadata URI/digest pairs are stored in the
+Catalog at that pinned commit. The Product Definitions select Frontend
+`1.0.1`; Backend `1.2.0` resolves Runtime RC2 through its declared
+dependency range. The Resolved Manifest remains authoritative for every
+selected package and source revision. This sync PR deliberately does not
+change Backend or Kernel package identities.
+
+The exact current-head Linux/macOS/Windows TUI/GUI-SDL product matrix and
+full-stack ASan/UBSan/leak job must pass before this cross-repository update
+is accepted. A prior successful run against Frontend 1.0.0 / Runtime RC1 is
+historical evidence only. Runtime prerelease selection remains enabled until
+a stable Runtime release exists; it must not be disabled merely because RC2
+is now selected.
+
+
+The Composition Root implementation is merged to `main` in [PR #110](https://github.com/cdin-editor/cdin/pull/110) and uses the Registry-based component selection and source handoff described by [Registry integration](registry.md) and [Spec ROOT-010](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31).
+
+- Kernel, Runtime, Backend and Frontend own immutable release metadata in their component repositories. Frontend TUI and GUI-SDL are separately declared variants.
+- CDIN contains only the TUI and GUI-SDL Product Definitions. The versioned Catalog Index now lives in the pinned Registry checkout at `catalogs/cdin-components/catalog-index.json`; the CDIN repository no longer stores component metadata URIs, repository URLs or a Catalog Index.
+- The GUI-SDL product resolves both the TUI base adapter and GUI-SDL adapter, matching the current executable composition.
+- Registry is pinned as a host build tool, runs its Go tests, validates the product/catalog documents, resolves and prepares sources, verifies and replays the Manifest. It is not a runtime dependency.
+- Component versions and source revisions are read from the Resolved Manifest; component entries have been removed from `deps.lock`.
+- The native CI matrix now includes TUI and GUI-SDL product profiles on Linux, macOS and Windows. The sanitizer job uses the GUI-SDL superset profile, exercising TUI, GUI-SDL and headless paths together.
+
+**Status: VERIFIED INTEGRATION CANDIDATE.** The Registry pin and package selectors passed the exact-head six-job native matrix and full-stack ASan/UBSan/leak verification in [run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569). The Runtime prerelease allowance remains transitional. A separate Catalog publisher/release publication workflow remains outstanding.
+
+## Current verification update — 2026-11-07
+
+PR #110 was merged to `main` on 2026-11-08 at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`; its exact tested head was `a937947ce2a2ec06e6eed549672a585b10e2c3fb`.
+
+- Frontend PR #19 is merged at `1373715c23eb965445caa926de3a99d9c0246f81`; Registry selects this immutable source through the Frontend Release Metadata referenced by its Catalog Index rather than a component entry in CDIN's `deps.lock`.
+- Runtime sandbox capability-denial unit coverage is in Runtime commit `e2f19e279e3194a6615ce213331639fde4f42e87`; Runtime CI run [42315040626](https://github.com/cdin-editor/runtime/actions/runs/42315040626) passed Linux, Windows, macOS, Pipeline quality and docs/workflow validation.
+- CDIN's trusted extension CLI and PTY/ConPTY fixtures were corrected after the prior run exposed invalid Python triple-quoted Lua source. Current CLI/PTY/ConPTY fixtures now use one line-continuation backslash; the accidental duplicate ConPTY source block and stale capability sentinel were removed.
+- The multi-session smoke now verifies exact Backend-owned document bytes survive abrupt peer loss and a new Protocol client reconnecting to the same Backend session (commit `6eb58fd`). This test is not accepted until the current matrix passes.
+- Current native + ASan/UBSan/leak matrix: [CDIN run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) passed all six profile/OS jobs and the full-stack sanitizer job on the exact tested head.
+- Frontend SDL renderer device-loss recovery is verified in Frontend CI [42315157831](https://github.com/cdin-editor/frontend/actions/runs/42315157831); the broader GUI-SDL and IME release work remains open in [Frontend Issue #15](https://github.com/cdin-editor/frontend/issues/15).
+
+The interactive TUI launch remains experimental/fail-closed. Do not mark FE-019, Windows ConPTY, plugin lifecycle/capability integration, document reconnect recovery, or product release gates complete until current CDIN test evidence is inspected.
+
+
+# Integration status and release gates
+
+This document reports capabilities exercised by the CDIN Composition Root, not merely features exposed by a component. A green component build does not prove that the complete editor is usable.
+
+The product epic and acceptance criteria are tracked in [issue #111](https://github.com/cdin-editor/cdin/issues/111). The current integration candidate is developed on `feature/complete-composition-root-rewrite` through [PR #110](https://github.com/cdin-editor/cdin/pull/110), which remains Draft. The current branch includes the merged Frontend ConPTY correction and the immutable dependency pin recorded below.
+
+## Current verification update — 2026-11-07
+
+### Frontend ConPTY correction
+
+- Frontend [PR #19](https://github.com/cdin-editor/frontend/pull/19) merged at `1373715c23eb965445caa926de3a99d9c0246f81`.
+- Frontend CI [run 42312049293](https://github.com/cdin-editor/frontend/actions/runs/42312049293) passed all five jobs: Linux native TUI, macOS native TUI, Windows native TUI, SDL3 production adapter/installed consumer, and Pipeline quality.
+- CDIN `deps.lock` pins that exact merge commit. The pin update is [commit ab9d854](https://github.com/cdin-editor/cdin/commit/ab9d85455c78200e2cccd7df50e5f65bbf70b6c9).
+- CDIN full-stack + sanitizer verification for that exact pin is [run 42312594183](https://github.com/cdin-editor/cdin/actions/runs/42312594183). At the time of this document update, its Linux, macOS, Windows and ASan/UBSan/leak-detection jobs are still running. The Windows `cdin_tui_live_conpty_smoke` must pass before the cross-repository ConPTY gate is checked off.
+
+### Current verified boundary
+
+- The previous CDIN candidate passed the headless editing/persistence workflow, POSIX PTY, multiple Frontend Driver/Observer roles, detach/reattach lease reacquisition, byte-preservation fixtures, filesystem failure recovery, compiler-resolved include graph, reproducible source snapshot and Linux ASan/UBSan/leak detection in [run 42182694691](https://github.com/cdin-editor/cdin/actions/runs/42182694691).
+- GUI-SDL live-session text input and exact-byte save smoke passed on Linux/macOS/Windows in [run 42310020078](https://github.com/cdin-editor/cdin/actions/runs/42310020078). That run used the prior Frontend pin and is not a substitute for the new run above. GUI-SDL remains experimental; complete PaneTree rendering, IME, shaping/bidi/Persian, device-loss recovery and full session recovery are still open.
+-  read handle. Frontend PR #19 aligned the wait and read handles and restores the original standard input handle on teardown. The exact current CDIN Windows TUI/GUI-SDL jobs passed in run 42447891569; interactive launch remains experimental until FE-019 readiness and CTRL-event stress gates pass.
 - PR #110 remains Draft. No supported release-mode interactive launch, complete plugin capability policy, process recovery, product-grade performance/soak evidence or native application installers are claimed.
 
 ## 1. Verified in CDIN
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Registry component selection and immutable workspace | IMPLEMENTED / NOT VERIFIED | Component-owned `registry/releases/*.json`, Registry-owned Catalog Index, CDIN Product Definitions, `scripts/registry.py`, Resolved Manifest and product E2E assertions. Full current-head native/sanitizer CI is pending. |
-| Registry release/contract resolution and package compatibility | IMPLEMENTED / NOT VERIFIED | Registry resolves Backend → Kernel/Runtime and the ABI/Host API/Protocol contracts; CMake and Runtime lifecycle checks consume versions from the Resolved Manifest. Current-head CI is pending. |
+| Registry component selection and immutable workspace | VERIFIED | Exact Catalog pin, Product Definitions, source collection, Resolved Manifest and workspace replay/verify pass on all six native product jobs in run 42447891569. |
+| Registry release/contract resolution and package compatibility | VERIFIED | Exact versions/contract metadata resolve on all six native jobs; Runtime startup reports `1.0.0-rc.2`, matching the Resolved Manifest. |
 | Backend lifecycle | VERIFIED | `--check` calls Backend create/start/pump/shutdown/destroy and routes Backend log callbacks into the CDIN logger. |
 | Headless Frontend Protocol | PASS on Linux/macOS/Windows | HELLO/HELLO_ACK, ATTACH, ordered UI snapshot, `ui.flush`/ACK, queue release and resize are exercised over the public Frontend session API. |
 | Document editing workflow | PASS on Linux/macOS/Windows | `document.new/open/close`, text and binary paste, undo/redo, atomic save and version-pinned line readback run through Frontend → Backend → Runtime → Kernel. |
@@ -120,7 +353,7 @@ The live path opens the terminal, installs SIGWINCH/SIGTERM/SIGINT wakeup handli
 
 Frontend PR [#11](https://github.com/cdin-editor/frontend/pull/11) fixed the earlier version-pinned line-request lifecycle defect and merged as `e29df5118e7b822912724b15c0c963b0b99f2f8a`. The current candidate also includes [Frontend PR #14](https://github.com/cdin-editor/frontend/pull/14), merged as `eaadc442e04020b0dd209f89c1b94cdb1d3aa7b3`; it exposes a newly granted Driver role during `ATTACH_SENT` while keeping input APIs gated until `ATTACHED`. Backend [PR #12](https://github.com/cdin-editor/backend/pull/12) is merged and implements capability-gated lease reacquisition. Backend [PR #13](https://github.com/cdin-editor/backend/pull/13) corrects the per-connection event-sequence assertion and is now merged at `3764128a13051c1a16683ef201a391b026a93e6f`; CDIN `deps.lock` has been refreshed to this actual merge commit. The two-Frontend integration path now passes on the current CDIN candidate in run 42182694691.
 
-Windows TUI remains fail-closed until a native Console readiness/restore adapter is implemented. GUI-SDL launch is implemented in the current Composition Root candidate behind `CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1`, with a deterministic `--check` smoke. It is **NOT VERIFIED** until the current candidate compiles and that smoke passes on the native matrix and sanitizer job.
+Windows TUI remains fail-closed for supported release-mode launch; the current ConPTY smoke passes on the exact Linux/macOS/Windows matrix but FE-019 readiness/CTRL-event stress is still open. GUI-SDL is behind `CDIN_ENABLE_EXPERIMENTAL_GUI_SDL=1`; its live-session, editing and save smoke pass on the full native matrix and sanitizer job, but this does not establish a production Unicode renderer or stable GUI release.
 
 ## 3. Architecture and security checks
 
@@ -147,10 +380,10 @@ The reproducible source snapshot and trusted-main provenance flow are source-dis
 | Area | Status | Remaining work |
 | --- | --- | --- |
 | Live experimental TUI on POSIX | PASS on Linux/macOS | The current PTY smoke passes initial render, input, SIGWINCH, save/quit, signal shutdown, startup failure and terminal restoration. Launch remains opt-in with `CDIN_ENABLE_EXPERIMENTAL_TUI=1`; this is not a supported release-mode launch. |
-| Windows TUI | PARTIAL / BLOCKED | Frontend PR #16 adds the ConPTY console-buffer fallback. CDIN can enter the initial screen, but the current ConPTY smoke still fails to observe edited text; input delivery, Protocol ACK/redraw and terminal restoration must pass before launch can be enabled. |
-| GUI-SDL | IMPLEMENTED IN CANDIDATE / NOT VERIFIED | `src/integration/gui_sdl.c` composes Backend, Frontend Protocol Session and the installable SDL adapter; `cdin_gui_sdl_live_session_smoke` verifies Runtime document creation, SDL text input, Ctrl+S and exact-byte save. Current run 42296140965 stops at a missing private include path before this test executes. Interactive launch remains experimental and the current renderer is ASCII/debug text. |
+| Windows TUI | EXPERIMENTAL SMOKE PASS / LAUNCH GATED | The exact current Windows TUI and GUI-SDL jobs passed ConPTY/Console input, document and save smoke in run 42447891569. Supported non-experimental launch remains gated on FE-019 wakeup/CTRL-event stress and full product acceptance. |
+| GUI-SDL | LIVE SESSION SMOKE PASS / PRODUCT INCOMPLETE | Exact current run 42447891569 passed the GUI-SDL product matrix on Linux/macOS/Windows, including SDL live-session, document input/save and multi-session reconnect smoke. Interactive launch remains experimental; renderer is ASCII/debug text and IME/Unicode/presentation product gates remain open. |
 | Runtime/plugin lifecycle | HEADLESS LIVE SMOKE PASS ON LINUX/MACOS; FULL RELEASE ACCEPTANCE OPEN | CDIN accepts `--extension-root` and repeated `--load-extension`; `cdin_trusted_extension_cli_smoke` creates a temporary extension and verifies its real Lua init/unload sentinels through the trusted Backend C API. This CTest passed on Linux/macOS in run `42199285019`; Linux ASan/UBSan/leak detection passed. The TUI launcher also calls the same trusted load/unload helpers, but no dedicated TUI-plus-extension PTY assertion is present. Capability allow/deny, failed-init/runtime failure isolation and Windows integration remain unverified. Runtime PR #6 and Backend PR #16 are merged; `deps.lock` now pins their merge commits. |
-| Multiple Frontends and recovery | PARTIALLY VERIFIED | Two concurrent Frontend sessions, Driver/Observer permissions, negotiated promotion, detach/reattach lease reacquisition and input pass on Linux/macOS/Windows. Transport disconnect/reconnect while work is pending, document/session continuity under transport loss, process failure recovery, partial startup and repeated shutdown remain open. |
+| Multiple Frontends and recovery | CONTROLLED RECONNECT VERIFIED / FAILURE RECOVERY OPEN | Exact run 42447891569 passes Driver/Observer promotion, detach/reattach, abrupt peer loss with queued UI work, same-session reconnect, lease reacquisition and exact Backend-owned document recovery across Linux/macOS/Windows. Backend/Runtime process failure, owner-loop wakeup stress, partial startup and repeated shutdown remain open. |
 | Performance | PARTIAL / NOT A BASELINE | Short headless smoke reports per-platform sampled RSS and p50/p95/p99; allocator peak, defined editing workloads, input-to-visible/save latency, budgets and soak/leak workload remain open. |
 | Application installers | NOT IMPLEMENTED | Native Linux/macOS/Windows packages, runtime discovery, clean-machine install/upgrade/uninstall and checksums/provenance. |
 | Stable release | NOT READY | Requires all interactive, recovery, security, performance and packaging gates above. |
@@ -168,7 +401,7 @@ Historical note: this sentence predates the Registry handoff implementation. The
 7. In Settings → Security → Code quality, deselect JavaScript/TypeScript and retain Python. CodeQL already passed C/C++, Python and Actions on the current SHA.
 8. Keep CDIN PR #110 under independent review. Backend PR #13 is merged; the current dependency pin now uses its merge commit.
 
-The PR remains Draft and issue #111 remains open; this work proves the current tested integration slice, not a stable editor release.
+PR #110 is merged. Issue #111 remains open; this work proves the tested integration slice, not a stable editor release.
 
 The epic remains open until these release gates are verified. Configured workflows, partial output or a green component suite must not be marked as product-level PASS.
 
