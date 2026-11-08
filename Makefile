@@ -43,7 +43,7 @@ stack-gui: registry-gui
 	$(PYTHON) scripts/build_stack.py --profile gui-sdl
 
 configure: registry
-	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --prefix "$(PREFIX)" --profile "$(CDIN_FRONTEND_VARIANT)"
+	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"
 
 build: configure
 	cmake --build "$(BUILD_DIR)" --parallel
