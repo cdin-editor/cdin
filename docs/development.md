@@ -108,6 +108,10 @@ CDIN_FRONTEND_VARIANT=gui-sdl make registry
 make stack-gui
 ```
 
+On Windows PowerShell, the same Makefile entry point selects `python`. When your Python installation is exposed only through the Python launcher, use `make PYTHON="py -3" install`. The historical typo `make instal` is retained as an alias for `make install`; the canonical target is `install`.
+
+Registry builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. For a private mirror, set `CDIN_GOPROXY` explicitly.
+
 Registry refuses to overwrite an existing workspace or replay destination. Remove the generated `.deps/registry-workspace-<profile>` and `.deps/registry-replay-<profile>` directories (or use `make clean`) before preparing the same profile again.
 
 ## 4. Local task graph
@@ -129,6 +133,8 @@ psx check
 gix doctor
 pipeline run check
 ```
+
+For a release candidate, use `pipeline run pre-release`. This task depends on the complete `check` graph and reproducible `package` task, verifies the Registry Resolved Manifest and source archive checksum, and writes `dist/cdin-pre-release.json`. The GitHub pre-release workflow runs the same verification graph for `v*-rc*` tags. Its current source-only artifact is not an application installer.
 
 Pipeline is the standard local/CI entry point. Its tasks are declared in `pipeline.toml`; GitHub Actions should set up the native toolchain and invoke Pipeline rather than implement a second build graph.
 
