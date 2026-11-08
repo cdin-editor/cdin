@@ -238,7 +238,7 @@ def main() -> int:
          f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
-         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
+         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
          "-DBUILD_TESTING=ON",
