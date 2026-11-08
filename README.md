@@ -25,7 +25,7 @@ component release metadata, respectively.
 - Product integration epic: [Issue #111](https://github.com/cdin-editor/cdin/issues/111).
 - Registry is a build-time delivery-plane tool. It resolves component versions and immutable source revisions, prepares the workspace and emits the Resolved Manifest. It is never linked into CDIN or any component at runtime.
 - Kernel, Runtime, Backend and Frontend own their own Registry Release Metadata. CDIN supplies TUI and GUI-SDL Product Definitions. The Catalog Index snapshot is versioned in the pinned Registry checkout; CDIN contains no component repository URLs or release metadata map.
-- The current Runtime candidate is 1.0.0-rc.1; prerelease selection is explicitly transitional and will be disabled after a stable Runtime release.
+- The current Registry integration candidate is Runtime `1.0.0-rc.2`, which provides `org.cdin.runtime-extension-contract` 1.0.0, plus Frontend TUI/GUI-SDL `1.0.1`. Runtime prerelease selection remains explicitly transitional until a stable Runtime release.
 - Registry implementation and the new product E2E tests are in the branch; the full current-head Linux/macOS/Windows and sanitizer CI matrix is still required before this integration is marked verified.
 - GUI-SDL remains experimental. The renderer is an ASCII/debug-text baseline; full PaneTree rendering, IME, shaping, bidi/Persian layout and recovery remain release gates.
 
