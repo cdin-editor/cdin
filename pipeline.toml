@@ -36,8 +36,13 @@ description = "Create a source archive for review"
 command = ["python3", "scripts/package.py"]
 timeout_seconds = 120
 
+[tasks.bootstrap-tests]
+description = "Test portable Python and Registry Go toolchain environment selection"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_bootstrap.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package"]
+depends_on = ["check", "package", "bootstrap-tests"]
 timeout_seconds = 180
