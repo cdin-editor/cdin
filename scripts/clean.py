@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def remove(path: Path) -> None:
-    resolved = path.resolve()
+    resolved = path.absolute()
     try:
         resolved.relative_to(ROOT)
     except ValueError as exc:
