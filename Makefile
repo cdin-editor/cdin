@@ -69,4 +69,4 @@ package:
 	$(PYTHON) scripts/package.py
 
 clean:
-	$(PYTHON) scripts/clean.py --build-dir "$(BUILD_DIR)" --prefix "$(PREFIX)"
+	$(PYTHON) scripts/clean.py --build-dir "$(BUILD_DIR)"
