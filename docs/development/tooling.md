@@ -36,7 +36,7 @@ The current flow uses `main` as the base branch and topic branches with `feature
 
 ## 4. Dependencies
 
-`deps.lock` pins each component and tool to an immutable commit. `scripts/deps.py` checks out the exact source revision; `scripts/build_stack.py` builds and tests the component stack in dependency order.
+`deps.lock` pins each component and tool to an immutable commit. `scripts/deps.py` checks out the exact source revision; `scripts/build_stack.py` builds and tests the component stack in dependency order. The Makefile selects `python3` on Unix-like hosts and `python` on Windows; override it with `make PYTHON="py -3" ...` when your Python launcher is named differently. The Registry Go wrapper uses `https://proxy.golang.org,direct` by default for the toolchain and module downloads; set `CDIN_GOPROXY` to override it.
 
 ```sh
 python3 scripts/deps.py
