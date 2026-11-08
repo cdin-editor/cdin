@@ -126,6 +126,8 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+          if (-not $env:ComSpec) { throw "ComSpec must be available to native GNU Make" }
+          Remove-Item Env:OS -ErrorAction SilentlyContinue
           python --version
           make --version
           # Exercise GNU Make's native environment detection instead of
