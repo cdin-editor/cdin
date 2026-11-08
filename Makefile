@@ -43,7 +43,7 @@ configure: registry
 	  -DCDIN_RUNTIME_SOURCE_DIR="$(CURDIR)/.deps/src/runtime" \
 	  -DCDIN_REGISTRY_PROFILE="$(CDIN_FRONTEND_VARIANT)" \
 	  -DCDIN_BACKEND_PACKAGE_VERSION="$$($(PYTHON) scripts/registry_version.py backend --profile $(CDIN_FRONTEND_VARIANT))" \
-	  -DCDIN_FRONTEND_PACKAGE_VERSION="$$($(PYTHON) scripts/registry_version.py frontend --variant tui --profile $(CDIN_FRONTEND_VARIANT))" \
+	  -DCDIN_FRONTEND_PACKAGE_VERSION="$$($(PYTHON) scripts/registry_version.py frontend --variant $(CDIN_FRONTEND_VARIANT) --profile $(CDIN_FRONTEND_VARIANT))" \
 	  -DCDIN_ENABLE_GUI_SDL="$(if $(filter gui-sdl,$(CDIN_FRONTEND_VARIANT)),ON,OFF)"
 
 build: configure
