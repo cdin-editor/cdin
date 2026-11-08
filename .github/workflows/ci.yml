@@ -128,6 +128,8 @@ jobs:
           $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
           python --version
           make --version
+          make -n help OS=Windows_NT
+          make -n instal OS=Windows_NT
           make -n deps OS=Windows_NT
           make deps OS=Windows_NT
       - name: Build all pinned components and run E2E
