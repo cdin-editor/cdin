@@ -5,7 +5,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from scripts.configure import selected_package_version\nfrom scripts.registry import registry_go_environment
+from scripts.configure import selected_package_version
+from scripts.registry import registry_go_environment
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
