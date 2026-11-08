@@ -25,7 +25,7 @@
 - Connect the CDIN logger to Frontend TUI Session/Model diagnostics.
 - Document the two current execution modes: headless integration and opt-in experimental POSIX TUI.
 - Refresh architecture audit, Spec traceability, E2E, benchmark, installation and user guides against current code and CI evidence.
-- Keep Backend 1.0.2 and Frontend 1.0.0 package identity and immutable component pins explicit.
+- Keep Registry-selected Backend 1.2.0, Frontend 1.0.2 (per TUI/GUI-SDL variant), and Runtime 1.0.0-rc.2 candidates tied to immutable Release Metadata; the Registry Resolved Manifest remains authoritative for the selected stack.
 
 ### Verification notes
 - CDIN CI run [42117574266](https://github.com/cdin-editor/cdin/actions/runs/42117574266) passed the full Windows stack, 9/9 CDIN CTest tests, six architecture tests and compiler-resolved include graph for four CDIN translation units. The headless document/file/failure fixtures passed.
