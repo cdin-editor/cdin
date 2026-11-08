@@ -78,7 +78,11 @@ def main() -> int:
     commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
     ).strip()
-    version = os.environ.get("CDIN_PRERELEASE_VERSION", f"0.0.0-dev.{commit[:12]}")
+    tag_name = os.environ.get("GITHUB_REF_NAME", "")
+    tag_version = tag_name[1:] if tag_name.startswith("v") else ""
+    version = os.environ.get(
+        "CDIN_PRERELEASE_VERSION", tag_version or f"0.0.0-dev.{commit[:12]}"
+    )
     report = {
         "schema_version": "1.0.0",
         "product": "com.cdin.editor",
@@ -108,7 +112,7 @@ def main() -> int:
     output = DIST / "cdin-pre-release.json"
     temporary = output.with_name(output.name + ".tmp")
     temporary.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\\n",
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     temporary.replace(output)
