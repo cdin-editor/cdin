@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+- Select `python` on native Windows when GNU Make does not import `OS=Windows_NT`, using `ComSpec` as a second platform signal.
+- Replace Bash-style command substitution in the Make `configure` target with a Python helper that reads exact package versions from the Registry manifest and invokes CMake directly.
+- Make `make install` build, test and install the complete pinned profile instead of configuring CDIN before its component packages are installed.
+
 ### Added
 - Move the component Catalog Index out of the CDIN Composition Root and into the version-controlled Registry checkout, allowing CDIN to pin Registry plus its catalog snapshot without carrying component repository metadata.
 - Add an architecture regression test that prevents reintroducing a product-owned Catalog Index or component repository mapping in CDIN.
