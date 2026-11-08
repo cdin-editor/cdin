@@ -126,12 +126,18 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;$env:PATH"
+          if (-not $env:ComSpec) { throw "ComSpec must be available to native GNU Make" }
+          Remove-Item Env:OS -ErrorAction SilentlyContinue
           python --version
           make --version
-          make -n help OS=Windows_NT
-          make -n instal OS=Windows_NT
-          make -n deps OS=Windows_NT
-          make deps OS=Windows_NT
+          # Exercise GNU Make's native environment detection instead of
+          # masking a missing OS variable with an explicit command-line value.
+          make -n help
+          make -n instal
+          make -n install
+          make -n configure
+          make -n deps
+          make deps
       - name: Build all pinned components and run E2E
         run: pipeline run pre-release
       - name: Measure headless integration latency and sampled RSS

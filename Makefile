@@ -1,6 +1,10 @@
 .PHONY: help deps registry registry-gui stack stack-gui configure build install instal test check integration clean package
 BUILD_DIR ?= build
+# Native Windows shells may not expose the OS variable to GNU Make consistently.
+# ComSpec is a second reliable signal; keep python3 for Unix environments.
 ifeq ($(OS),Windows_NT)
+PYTHON ?= python
+else ifneq ($(strip $(ComSpec)),)
 PYTHON ?= python
 else
 PYTHON ?= python3
@@ -14,14 +18,15 @@ help:
 	@echo "make registry-gui resolve and prepare the GUI-SDL + TUI workspace"
 	@echo "make stack        build/test/install the selected component profile"
 	@echo "make stack-gui    build/test/install the GUI-SDL + TUI profile"
-	@echo "make configure    configure the selected Composition Root profile"
+	@echo "make configure    configure CDIN after its components are installed"
 	@echo "make build        build cdin (requires installed components)"
-	@echo "make install      install cdin and pinned Runtime Lua modules"
+	@echo "make install      build, test and install the complete selected profile"
 	@echo "make instal       compatibility alias for install"
 	@echo "make test         run full-stack integration and lifecycle E2E tests"
 	@echo "make check        run Pipeline checks and architecture boundaries"
 	@echo "make integration  run installed Backend/Runtime lifecycle smoke test"
 	@echo "make package      create a source archive"
+
 deps:
 	$(PYTHON) scripts/deps.py
 
@@ -38,19 +43,17 @@ stack-gui: registry-gui
 	$(PYTHON) scripts/build_stack.py --profile gui-sdl
 
 configure: registry
-	cmake -S . -B "$(BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release \
-	  -DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
-	  -DCDIN_RUNTIME_SOURCE_DIR="$(CURDIR)/.deps/src/runtime" \
-	  -DCDIN_REGISTRY_PROFILE="$(CDIN_FRONTEND_VARIANT)" \
-	  -DCDIN_BACKEND_PACKAGE_VERSION="$$($(PYTHON) scripts/registry_version.py backend --profile $(CDIN_FRONTEND_VARIANT))" \
-	  -DCDIN_FRONTEND_PACKAGE_VERSION="$$($(PYTHON) scripts/registry_version.py frontend --variant $(CDIN_FRONTEND_VARIANT) --profile $(CDIN_FRONTEND_VARIANT))" \
-	  -DCDIN_ENABLE_GUI_SDL="$(if $(filter gui-sdl,$(CDIN_FRONTEND_VARIANT)),ON,OFF)"
+	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"
 
 build: configure
 	cmake --build "$(BUILD_DIR)" --parallel
 
-install: build
-	cmake --install "$(BUILD_DIR)"
+# build_stack.py owns the full ordered component build, tests, CDIN build and
+# installation. Make the common install entry point perform that complete
+# operation rather than trying to configure CDIN before its component packages
+# have been built and installed.
+install: stack
+	@echo "CDIN profile $(CDIN_FRONTEND_VARIANT) installed in $(PREFIX)"
 
 instal: install
 
@@ -66,4 +69,4 @@ package:
 	$(PYTHON) scripts/package.py
 
 clean:
-	rm -rf "$(BUILD_DIR)" "$(BUILD_DIR)-tests" dist .deps/registry-workspace-* .deps/registry-replay-*
+	$(PYTHON) scripts/clean.py --build-dir "$(BUILD_DIR)"
