@@ -22,7 +22,7 @@ No component imports, links or executes Registry. No Registry code is copied int
 - Backend Release Metadata declares Kernel and Runtime dependencies. It also declares Kernel ABI, Runtime Host API and Frontend Protocol contract relationships.
 - Runtime and Frontend Release Metadata require the corresponding host/protocol contracts; Kernel publishes its ABI contract.
 
-The current Runtime release is `1.0.0-rc.1`, so the Product Definitions explicitly allow prereleases. This is transitional and must be tightened after a stable Runtime release is published.
+The synchronized integration candidate selects Runtime `1.0.0-rc.2`, whose immutable Release Metadata provides `org.cdin.runtime-extension-contract` version `1.0.0`. Both Frontend TUI and GUI-SDL variants resolve to `1.0.1`. The Product Definitions explicitly allow prereleases while Runtime remains an RC; this is transitional and must be tightened after a stable Runtime release is published.
 
 ## Commands
 

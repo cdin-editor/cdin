@@ -1,4 +1,31 @@
 ## Registry integration update — 2026-11-07
+## Cross-repository version synchronization — 2026-11-08
+
+The Registry Catalog snapshot pinned by this candidate is
+`2a611eca830c0f235dacab04a1d006a8fd46e586`. It preserves the previous
+immutable entries and adds:
+
+- Backend `1.2.0` (existing)
+- Kernel `1.2.1` (existing)
+- Runtime `1.0.0-rc.2` with the provider contract
+  `org.cdin.runtime-extension-contract@1.0.0`
+- Frontend TUI `1.0.1`
+- Frontend GUI-SDL `1.0.1`
+
+The exact Frontend and Runtime metadata URI/digest pairs are stored in the
+Catalog at that pinned commit. The Product Definitions select Frontend
+`1.0.1`; Backend `1.2.0` resolves Runtime RC2 through its declared
+dependency range. The Resolved Manifest remains authoritative for every
+selected package and source revision. This sync PR deliberately does not
+change Backend or Kernel package identities.
+
+The exact current-head Linux/macOS/Windows TUI/GUI-SDL product matrix and
+full-stack ASan/UBSan/leak job must pass before this cross-repository update
+is accepted. A prior successful run against Frontend 1.0.0 / Runtime RC1 is
+historical evidence only. Runtime prerelease selection remains enabled until
+a stable Runtime release exists; it must not be disabled merely because RC2
+is now selected.
+
 
 The Composition Root feature branch now contains the Registry-based component selection and source handoff described by [Registry integration](registry.md) and [Spec ROOT-010](https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31).
 
@@ -9,7 +36,7 @@ The Composition Root feature branch now contains the Registry-based component se
 - Component versions and source revisions are read from the Resolved Manifest; component entries have been removed from `deps.lock`.
 - The native CI matrix now includes TUI and GUI-SDL product profiles on Linux, macOS and Windows. The sanitizer job uses the GUI-SDL superset profile, exercising TUI, GUI-SDL and headless paths together.
 
-**Status: IMPLEMENTED IN SOURCE / NOT VERIFIED.** The latest branch commits have not yet produced a confirmed successful full current-head CI run. Do not mark Registry integration accepted until all six native profile/OS jobs and the sanitizer job pass. The Runtime prerelease allowance is transitional. A separate Catalog publisher/release publication workflow remains outstanding.
+**Status: INTEGRATION CANDIDATE / CURRENT-HEAD VERIFICATION PENDING.** The exact Catalog pin and package selectors have now been updated in this sync PR. Do not mark Registry integration accepted until the resulting PR head and the composed PR #110 head pass all six native profile/OS jobs and the sanitizer job. The Runtime prerelease allowance is transitional. A separate Catalog publisher/release publication workflow remains outstanding.
 
 ## Current verification update — 2026-11-07
 

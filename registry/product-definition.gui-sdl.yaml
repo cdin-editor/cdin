@@ -8,10 +8,10 @@ components:
     version_constraint: "1.2.0"
   - component_id: frontend
     variant: tui
-    version_constraint: "1.0.0"
+    version_constraint: "1.0.1"
   - component_id: frontend
     variant: gui-sdl
-    version_constraint: "1.0.0"
+    version_constraint: "1.0.1"
 environment_contracts: []
 policy:
   allow_prerelease: true
