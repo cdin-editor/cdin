@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
 concurrency:
   group: cdin-ci-${{ github.workflow }}-${{ github.ref }}
@@ -120,8 +121,17 @@ jobs:
         run: |
           psx check
           gix doctor
+      - name: Verify the native PowerShell Make bootstrap (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\\msys64\\ucrt64\\bin;C:\\msys64\\usr\\bin;$env:PATH"
+          python --version
+          make --version
+          make -n deps OS=Windows_NT
+          make deps OS=Windows_NT
       - name: Build all pinned components and run E2E
-        run: pipeline run check
+        run: pipeline run pre-release
       - name: Measure headless integration latency and sampled RSS
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
@@ -143,9 +153,9 @@ jobs:
           path: dist/cdin-headless-benchmark.json
           if-no-files-found: error
           retention-days: 30
-      - name: Create and validate reproducible source snapshot
+      - name: Validate reproducible source pre-release outputs
         run: |
-          pipeline run package
+          test -s dist/cdin-pre-release.json
           python -m zipfile -t dist/cdin-composition-root-source.zip
           python - <<'PY'
           from pathlib import Path
@@ -166,6 +176,7 @@ jobs:
           path: |
             dist/cdin-composition-root-source.zip
             dist/cdin-composition-root-source.zip.sha256
+            dist/cdin-pre-release.json
           if-no-files-found: error
           retention-days: 14
 
