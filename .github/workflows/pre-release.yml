@@ -1,0 +1,90 @@
+name: Pre-release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/pre-release.yml"
+      - "pipeline.toml"
+      - "scripts/pre_release.py"
+      - "scripts/registry.py"
+      - "Makefile"
+  push:
+    tags:
+      - "v*-rc*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Full product verification before pre-release
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  attest:
+    name: Attest verified pre-release source snapshot
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+    needs: [verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download Linux TUI verification artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${GITHUB_RUN_ID}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
+      - name: Verify pre-release manifest and source checksum
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import json
+
+          root = Path("release-assets")
+          archive = root / "cdin-composition-root-source.zip"
+          checksum = root / "cdin-composition-root-source.zip.sha256"
+          report = root / "cdin-pre-release.json"
+          expected = checksum.read_text(encoding="ascii").split()[0]
+          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if expected != actual:
+              raise SystemExit(f"source archive checksum mismatch: expected {expected}, got {actual}")
+          data = json.loads(report.read_text(encoding="utf-8"))
+          if data.get("channel") != "pre-release" or data.get("artifacts", [{}])[0].get("installable_application") is not False:
+              raise SystemExit("pre-release report is missing the source-only release declaration")
+          print(f"Verified source snapshot SHA-256: {actual}")
+          PY
+      - name: Attest source snapshot provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release-assets/cdin-composition-root-source.zip
+
+  publish:
+    name: Publish GitHub pre-release
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified source artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${GITHUB_RUN_ID}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
+      - name: Publish source-only pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release-assets/cdin-composition-root-source.zip \
+            release-assets/cdin-composition-root-source.zip.sha256 \
+            release-assets/cdin-pre-release.json \
+            --prerelease \
+            --title "CDIN ${GITHUB_REF_NAME}" \
+            --generate-notes
