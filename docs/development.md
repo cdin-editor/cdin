@@ -108,7 +108,7 @@ CDIN_FRONTEND_VARIANT=gui-sdl make registry
 make stack-gui
 ```
 
-On Windows PowerShell, the same Makefile entry point selects `python`. When your Python installation is exposed only through the Python launcher, use `make PYTHON="py -3" install`. The historical typo `make instal` is retained as an alias for `make install`; the canonical target is `install`.
+On Windows PowerShell, the same Makefile entry point selects `python`. When your Python installation is exposed only through the Python launcher, use `make PYTHON="py -3" install`.
 
 Registry builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. For a private mirror, set `CDIN_GOPROXY` explicitly.
 

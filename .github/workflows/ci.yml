@@ -133,7 +133,6 @@ jobs:
           # Exercise GNU Make's native environment detection instead of
           # masking a missing OS variable with an explicit command-line value.
           make -n help
-          make -n instal
           make -n install
           make -n configure
           make -n deps

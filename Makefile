@@ -1,4 +1,4 @@
-.PHONY: help deps registry registry-gui stack stack-gui configure build install instal test check integration clean package
+.PHONY: help deps registry registry-gui stack stack-gui configure build install test check integration clean package
 BUILD_DIR ?= build
 # Native Windows shells may not expose the OS variable to GNU Make consistently.
 # ComSpec is a second reliable signal; keep python3 for Unix environments.
@@ -21,7 +21,6 @@ help:
 	@echo "make configure    configure CDIN after its components are installed"
 	@echo "make build        build cdin (requires installed components)"
 	@echo "make install      build, test and install the complete selected profile"
-	@echo "make instal       compatibility alias for install"
 	@echo "make test         run full-stack integration and lifecycle E2E tests"
 	@echo "make check        run Pipeline checks and architecture boundaries"
 	@echo "make integration  run installed Backend/Runtime lifecycle smoke test"
@@ -54,8 +53,6 @@ build: configure
 # have been built and installed.
 install: stack
 	@echo "CDIN profile $(CDIN_FRONTEND_VARIANT) installed in $(PREFIX)"
-
-instal: install
 
 test: stack
 
