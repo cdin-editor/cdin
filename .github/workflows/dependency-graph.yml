@@ -1,0 +1,19 @@
+name: Dependency graph
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deps.lock
+      - .github/workflows/dependency-graph.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  log-c:
+    uses: m-mdy-m/log.c/.github/workflows/dependency-submission.yml@master
+    with:
+      dependency-version: "0.1.0"
+      manifest-path: "deps.lock"
