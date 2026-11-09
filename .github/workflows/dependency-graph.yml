@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   log-c:
-    uses: m-mdy-m/log.c/.github/workflows/dependency-submission.yml@master
+    uses: m-mdy-m/log.c/.github/workflows/dependency-submission.yml@c194db4b3d9eacbd5f2e99d10c999a9f90a07a6c
     with:
       dependency-version: "0.1.0"
       manifest-path: "deps.lock"
