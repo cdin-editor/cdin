@@ -1,0 +1,107 @@
+name: SDL3 SDK
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/sdl3-sdk.yml"
+      - "scripts/package_sdl3_sdk.py"
+      - "deps.lock"
+      - "tests/test_sdl3_sdk.py"
+  push:
+    tags: ["sdl3-sdk-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: SDL3 SDK / \${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-24.04
+            shell: bash
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            shell: bash
+          - target: macos-x86_64
+            os: macos-15-intel
+            shell: bash
+          - target: macos-arm64
+            os: macos-15
+            shell: bash
+          - target: windows-x86_64
+            os: windows-latest
+            shell: msys2 {0}
+    runs-on: \${{ matrix.os }}
+    defaults:
+      run:
+        shell: \${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+      - if: runner.os == 'Linux'
+        name: Install SDL3 Linux development dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+            libdecor-0-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libgl1-mesa-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
+            libasound2-dev libpulse-dev
+      - if: runner.os != 'Windows'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Verify Python package builder
+        run: python -m unittest discover -s tests -p test_sdl3_sdk.py
+      - name: Build and verify target-native SDK
+        run: python scripts/package_sdl3_sdk.py --output-dir dist
+      - name: Upload immutable SDK package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdl3-sdk-\${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish pinned SDL3 SDK release assets
+    if: startsWith(github.ref, 'refs/tags/sdl3-sdk-v')
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download all verified target SDK packages
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: gh run download "\${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets
+      - name: Publish prerelease assets
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          gh release create "\${GITHUB_REF_NAME}" release-assets/* \
+            --verify-tag \
+            --prerelease \
+            --title "CDIN SDL3 SDK \${GITHUB_REF_NAME#sdl3-sdk-v}" \
+            --notes "Target-native, static SDL3 SDK packages built from the source digest pinned in CDIN deps.lock. Each archive includes its target manifest and a SHA-256 sidecar."
