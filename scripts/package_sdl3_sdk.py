@@ -175,6 +175,31 @@ def verify_prefix(prefix: Path) -> None:
         raise RuntimeError("SDL3 SDK install contains no SDL3 library")
 
 
+def verify_consumer(prefix: Path, work_dir: Path) -> None:
+    consumer = work_dir / "consumer"
+    build = work_dir / "consumer-build"
+    consumer.mkdir(parents=True, exist_ok=True)
+    (consumer / "CMakeLists.txt").write_text(
+        "cmake_minimum_required(VERSION 3.22)\n"
+        "project(cdin_sdl3_sdk_consumer LANGUAGES C)\n"
+        "find_package(SDL3 3.4 CONFIG REQUIRED)\n"
+        "add_executable(cdin_sdl3_sdk_consumer main.c)\n"
+        "target_link_libraries(cdin_sdl3_sdk_consumer PRIVATE SDL3::SDL3)\n",
+        encoding="utf-8",
+    )
+    (consumer / "main.c").write_text(
+        "#include <SDL3/SDL.h>\n"
+        "int main(void) { return SDL_Init(0) ? 1 : 0; }\n",
+        encoding="utf-8",
+    )
+    run([
+        "cmake", "-S", str(consumer), "-B", str(build),
+        f"-DCMAKE_PREFIX_PATH={prefix}",
+        "-DCMAKE_BUILD_TYPE=Release",
+    ])
+    run(["cmake", "--build", str(build), "--config", "Release", "--parallel"])
+
+
 def build_archive(prefix: Path, output: Path) -> str:
     output.parent.mkdir(parents=True, exist_ok=True)
     raw = io.BytesIO()
@@ -247,6 +272,7 @@ def main() -> int:
     run(["cmake", "--install", str(build), "--config", "Release"])
     write_manifest(prefix, spec["version"], os_name, arch, spec["sha256"])
     verify_prefix(prefix)
+    verify_consumer(prefix, args.work_dir)
 
     output = args.output_dir / f"sdl3-sdk-{spec['version']}-{os_name}-{arch}.tar.gz"
     digest = build_archive(prefix, output)
