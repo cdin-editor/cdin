@@ -96,6 +96,7 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
     top_levels: set[str] = set()
+    seen_paths: set[str] = set()
     extracted_bytes = 0
     with tarfile.open(archive_path, "r:gz") as archive:
         members = archive.getmembers()
@@ -103,8 +104,14 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
             raise RuntimeError("SDL3 source archive has an invalid member count")
         for member in members:
             name = PurePosixPath(member.name)
-            if name.is_absolute() or not name.parts or any(part in ("", ".", "..") for part in name.parts):
+            if (name.is_absolute() or not name.parts or
+                    any(part in ("", ".", "..") for part in name.parts) or
+                    "\\" in member.name or ":" in name.parts[0]):
                 raise RuntimeError(f"unsafe SDL3 source archive path: {member.name!r}")
+            normalized_name = name.as_posix().rstrip("/")
+            if normalized_name in seen_paths:
+                raise RuntimeError(f"duplicate SDL3 source archive path: {member.name!r}")
+            seen_paths.add(normalized_name)
             if not (member.isdir() or member.isfile()):
                 raise RuntimeError(f"unsupported SDL3 source archive entry: {member.name!r}")
             if member.size < 0 or member.size > MAX_SOURCE_BYTES:
