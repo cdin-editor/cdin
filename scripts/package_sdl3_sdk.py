@@ -21,6 +21,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 MAX_SOURCE_BYTES = 128 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 512 * 1024 * 1024
 
 
 def run(command: list[str], *, cwd: Path | None = None) -> None:
@@ -95,6 +96,7 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
     top_levels: set[str] = set()
+    extracted_bytes = 0
     with tarfile.open(archive_path, "r:gz") as archive:
         members = archive.getmembers()
         if not members or len(members) > 100_000:
@@ -107,6 +109,9 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
                 raise RuntimeError(f"unsupported SDL3 source archive entry: {member.name!r}")
             if member.size < 0 or member.size > MAX_SOURCE_BYTES:
                 raise RuntimeError(f"invalid SDL3 source member size: {member.name!r}")
+            extracted_bytes += member.size
+            if extracted_bytes > MAX_EXTRACTED_BYTES:
+                raise RuntimeError("SDL3 source archive expands beyond the 512 MiB limit")
             top_levels.add(name.parts[0])
             target = (destination / Path(*name.parts)).resolve()
             if target != root and root not in target.parents:
