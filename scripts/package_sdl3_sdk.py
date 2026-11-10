@@ -16,6 +16,7 @@ import subprocess
 import tarfile
 import tempfile
 import tomllib
+import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +60,18 @@ def load_source_pin() -> dict[str, str]:
     return {key: spec[key] for key in required}
 
 
+class TrustedSDLRedirectHandler(urllib.request.HTTPRedirectHandler):
+    allowed_hosts = {"github.com", "release-assets.githubusercontent.com"}
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        parsed = urllib.parse.urlparse(new_url)
+        if parsed.scheme != "https" or parsed.hostname not in self.allowed_hosts:
+            raise RuntimeError(f"untrusted SDL3 source redirect: {new_url!r}")
+        return super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
+        )
+
+
 def download_source(spec: dict[str, str], destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file():
@@ -66,10 +79,18 @@ def download_source(spec: dict[str, str], destination: Path) -> Path:
         if actual == spec["sha256"]:
             return destination
         destination.unlink()
+    source_url = urllib.parse.urlparse(spec["archive"])
+    if (source_url.scheme != "https" or source_url.hostname != "github.com" or
+            source_url.username is not None or source_url.password is not None):
+        raise RuntimeError("SDL3 source URL must be a trusted HTTPS GitHub release URL")
     request = urllib.request.Request(
         spec["archive"], headers={"User-Agent": "cdin-sdl3-sdk-builder/1"}
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    opener = urllib.request.build_opener(TrustedSDLRedirectHandler())
+    with opener.open(request, timeout=60) as response:
+        final_url = urllib.parse.urlparse(response.geturl())
+        if final_url.scheme != "https" or final_url.hostname not in TrustedSDLRedirectHandler.allowed_hosts:
+            raise RuntimeError("SDL3 source download ended at an untrusted host")
         if response.status != 200:
             raise RuntimeError(f"SDL3 source download returned HTTP {response.status}")
         total = 0
