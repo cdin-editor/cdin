@@ -1,3 +1,20 @@
+## Current integration update — 2026-11-10
+
+**Authoritative current state:** the Composition Root foundation is on `main`; the component/asset merges below expand that foundation but do not complete the product/release epic.
+
+- Composition Root PR #110 merged at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`.
+- Backend UI-presentation/1 validation PR [Backend #33](https://github.com/cdin-editor/backend/pull/33) merged at `785aedc1fc7d649e1e702bbaa700142683b5d1e6`. Its exact-head Linux/macOS/Windows protocol CI, Runtime integration, native stress (ASan/UBSan/TSan), quality and docs checks passed.
+- Frontend byte-anchored line-window PR [Frontend #46](https://github.com/cdin-editor/frontend/pull/46) merged at `abcd1b087718b9c9fc866d38121c31222a7bc4f7`. This is a narrow transport/model capability, not completion of Frontend #15.
+- CDIN SDL3 SDK producer PR [#126](https://github.com/cdin-editor/cdin/pull/126) merged at `f12f1fca4ca1d4fb5060a802549596085e3172d2`. On exact tested head `0e1a074311e0489662e6a2896d0c5aef6c459372`, all five target-native SDK builds and clean CMake consumer links passed; CDIN's seven CI jobs, seven pre-release product jobs, CodeQL and Pipeline quality passed. The main-branch push CI is separately running; the PR evidence is complete.
+- SDL3 SDK release is **not yet published**. The publisher expects tag `sdl3-sdk-v3.4.16`; CDIN #124 remains open and `scripts/build_stack.py::install_sdl3` still downloads/extracts/builds the SDL source tarball.
+- The artifact-first migration #122 remains **OPEN**. Registry #121 is blocked by the existing `v0.1.0-dev` executable assets having incorrect ARM mappings. Runtime #16 needs an immutable source/package identity decision because RC2 metadata pins an older source revision than current Runtime main. Backend #25 needs its 1.2.1 binary assets/metadata; Frontend #40 still publishes source-only release archives instead of Core/TUI/GUI-SDL target packages.
+- Do not advertise `ime-composition/1` or `pane-splitter-resize/1` on the currently pinned product candidates. CDIN #118 records the mismatch between Registry-selected immutable component source revisions and current component mainlines. New immutable Backend/Frontend/Runtime candidates and Product/Catalog pins must precede live product E2E.
+- Product integration epic [#111](https://github.com/cdin-editor/cdin/issues/111) remains OPEN. The current issue body begins with the updated status correction; historical candidate sections are kept for traceability, not as current branch state.
+
+The earlier verification sections below describe the 2026-11-08 Registry-integrated source-build candidate and remain historical evidence for that exact package/source set. They must not be interpreted as evidence that the artifact-first migration, IME/PaneTree product capability gates, or release packaging are complete.
+
+---
+
 ## Current integration verification — 2026-11-08
 
 **Status: VERIFIED INTEGRATION CANDIDATE.** CDIN Composition Root [PR #110](https://github.com/cdin-editor/cdin/pull/110) was merged to `main` at `e2ea9f74bf247a1b1104cded53255ac4a34551a0`. The exact tested source head was `a937947ce2a2ec06e6eed549672a585b10e2c3fb`; [CI run 42447891569](https://github.com/cdin-editor/cdin/actions/runs/42447891569) completed successfully.
