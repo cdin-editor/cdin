@@ -108,7 +108,7 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
                     any(part in ("", ".", "..") for part in name.parts) or
                     "\\" in member.name or ":" in name.parts[0]):
                 raise RuntimeError(f"unsafe SDL3 source archive path: {member.name!r}")
-            normalized_name = name.as_posix().rstrip("/")
+            normalized_name = name.as_posix().rstrip("/").casefold()
             if normalized_name in seen_paths:
                 raise RuntimeError(f"duplicate SDL3 source archive path: {member.name!r}")
             seen_paths.add(normalized_name)
