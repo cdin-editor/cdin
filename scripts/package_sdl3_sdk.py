@@ -81,8 +81,9 @@ def download_source(spec: dict[str, str], destination: Path) -> Path:
         destination.unlink()
     source_url = urllib.parse.urlparse(spec["archive"])
     if (source_url.scheme != "https" or source_url.hostname != "github.com" or
+            not source_url.path.startswith("/libsdl-org/SDL/releases/download/") or
             source_url.username is not None or source_url.password is not None):
-        raise RuntimeError("SDL3 source URL must be a trusted HTTPS GitHub release URL")
+        raise RuntimeError("SDL3 source URL must be a trusted HTTPS SDL GitHub release URL")
     request = urllib.request.Request(
         spec["archive"], headers={"User-Agent": "cdin-sdl3-sdk-builder/1"}
     )
