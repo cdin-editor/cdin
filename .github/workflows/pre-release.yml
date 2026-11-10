@@ -36,6 +36,7 @@ jobs:
     needs: [verify]
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       id-token: write
       attestations: write
@@ -44,7 +45,7 @@ jobs:
       - name: Download Linux TUI verification artifact
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${GITHUB_RUN_ID}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
+        run: gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
       - name: Verify pre-release manifest and source checksum
         run: |
           python - <<'PY'
@@ -76,12 +77,13 @@ jobs:
     needs: [verify, attest]
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Download verified source artifacts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${GITHUB_RUN_ID}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
+        run: gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
       - name: Publish source-only pre-release
         env:
           GH_TOKEN: ${{ github.token }}
