@@ -85,9 +85,9 @@ jobs:
     if: needs.create-development-tag.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@ee02d9903561d081bf1262c9b44ffd31c203f375
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
     with:
-      pipeline-ref: ee02d9903561d081bf1262c9b44ffd31c203f375
+      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
@@ -107,7 +107,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_sha == 'ab4a3311280b7e535fdf8d85a3452cb94e4fcc0c'
+      github.event.workflow_run.head_sha == '6eae69536c9cf408546bf33609c1df977cd9228d'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -158,12 +158,12 @@ jobs:
     needs: [inspect-legacy-alpha-release]
     if: >-
       needs.inspect-legacy-alpha-release.outputs.repair_required == 'true' &&
-      github.event.workflow_run.head_sha == 'ab4a3311280b7e535fdf8d85a3452cb94e4fcc0c'
+      github.event.workflow_run.head_sha == '6eae69536c9cf408546bf33609c1df977cd9228d'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@ee02d9903561d081bf1262c9b44ffd31c203f375
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
     with:
-      pipeline-ref: ee02d9903561d081bf1262c9b44ffd31c203f375
+      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
       source-ref: refs/tags/v0.3.0-alpha.1
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
