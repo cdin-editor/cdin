@@ -96,10 +96,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets --repo "${GITHUB_REPOSITORY}"
-      - name: Flatten target artifact directories
+      - name: Flatten and verify target artifact set
         run: |
           find release-assets -mindepth 2 -type f -exec mv -t release-assets {} +
           find release-assets -mindepth 1 -type d -empty -delete
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 10
+          for target in linux-x86_64 linux-arm64 macos-x86_64 macos-arm64 windows-x86_64; do
+            archive="sdl3-sdk-3.4.16-${target}.tar.gz"
+            test -s "release-assets/$archive"
+            test -s "release-assets/$archive.sha256"
+            (cd release-assets && sha256sum -c "$archive.sha256")
+          done
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
