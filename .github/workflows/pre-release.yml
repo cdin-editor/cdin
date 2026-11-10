@@ -12,6 +12,8 @@ on:
       - "Makefile"
   push:
     tags:
+      - "v*-alpha*"
+      - "v*-beta*"
       - "v*-rc*"
   workflow_dispatch:
 
@@ -30,7 +32,7 @@ jobs:
 
   attest:
     name: Attest verified pre-release source snapshot
-    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+    if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc'))
     needs: [verify]
     runs-on: ubuntu-latest
     permissions:
@@ -70,7 +72,7 @@ jobs:
 
   publish:
     name: Publish GitHub pre-release
-    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-rc')
+    if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc'))
     needs: [verify, attest]
     runs-on: ubuntu-latest
     permissions:
