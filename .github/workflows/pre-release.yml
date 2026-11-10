@@ -94,4 +94,5 @@ jobs:
             release-assets/cdin-pre-release.json \
             --prerelease \
             --title "CDIN ${GITHUB_REF_NAME}" \
-            --generate-notes
+            --generate-notes \
+            --repo "${GITHUB_REPOSITORY}"
