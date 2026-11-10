@@ -7,6 +7,13 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- Publish a unique source-only development pre-release for each successful pushed-branch commit, tied to the exact commit that passed CI.
+- Publish pushed version tags as tag-backed GitHub Releases using the matching changelog section and verified source assets.
+
 ## [0.3.0-alpha.1] - 2026-11-10
 
 ### ⚠️ Breaking changes

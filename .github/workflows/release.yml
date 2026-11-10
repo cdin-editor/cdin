@@ -1,0 +1,33 @@
+name: Versioned GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the exact tagged commit
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish the tag-backed GitHub Release
+    needs: [verify]
+    if: needs.verify.result == 'success'
+    permissions:
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+    with:
+      pipeline-ref: 540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+      source-ref: ${{ github.ref }}
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      release-notes-mode: section
+      changelog-asset-mode: archive-only
+      source-archive-name: "cdin-composition-root-{tag}-source.zip"
+      source-submodules: fail-if-present

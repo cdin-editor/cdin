@@ -1,98 +1,133 @@
-name: Pre-release
+name: Pre-release every pushed commit
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/pre-release.yml"
-      - "pipeline.toml"
-      - "scripts/pre_release.py"
-      - "scripts/registry.py"
-      - "Makefile"
-  push:
-    tags:
-      - "v*-alpha*"
-      - "v*-beta*"
-      - "v*-rc*"
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Full product verification before pre-release
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-
-  attest:
-    name: Attest verified pre-release source snapshot
-    if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc'))
-    needs: [verify]
+  create-development-tag:
+    name: Create a unique development tag for the verified commit
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
-      actions: read
-      contents: read
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    steps:
-      - name: Download Linux TUI verification artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
-      - name: Verify pre-release manifest and source checksum
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import hashlib
-          import json
-
-          root = Path("release-assets")
-          archive = root / "cdin-composition-root-source.zip"
-          checksum = root / "cdin-composition-root-source.zip.sha256"
-          report = root / "cdin-pre-release.json"
-          expected = checksum.read_text(encoding="ascii").split()[0]
-          actual = hashlib.sha256(archive.read_bytes()).hexdigest()
-          if expected != actual:
-              raise SystemExit(f"source archive checksum mismatch: expected {expected}, got {actual}")
-          data = json.loads(report.read_text(encoding="utf-8"))
-          if data.get("channel") != "pre-release" or data.get("artifacts", [{}])[0].get("installable_application") is not False:
-              raise SystemExit("pre-release report is missing the source-only release declaration")
-          print(f"Verified source snapshot SHA-256: {actual}")
-          PY
-      - name: Attest source snapshot provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: release-assets/cdin-composition-root-source.zip
-
-  publish:
-    name: Publish GitHub pre-release
-    if: startsWith(github.ref, 'refs/tags/v') && (contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc'))
-    needs: [verify, attest]
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
       contents: write
+    outputs:
+      source_ref: ${{ steps.tag.outputs.source_ref }}
     steps:
-      - name: Download verified source artifacts
+      - name: Check out the exact commit that passed CI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Create or verify the unique development tag
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name "cdin-source-snapshot-Linux-tui" --dir release-assets
-      - name: Publish source-only pre-release
-        env:
-          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        shell: bash
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            release-assets/cdin-composition-root-source.zip \
-            release-assets/cdin-composition-root-source.zip.sha256 \
-            release-assets/cdin-pre-release.json \
-            --prerelease \
-            --title "CDIN ${GITHUB_REF_NAME}" \
-            --generate-notes \
-            --repo "${GITHUB_REPOSITORY}"
+          set -euo pipefail
+          [[ "$SOURCE_RUN_NUMBER" =~ ^[0-9]+$ ]]
+          tag="v0.0.0-dev.$SOURCE_RUN_NUMBER"
+
+          if current_sha="$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null)"; then
+            if [[ "$current_sha" != "$SOURCE_SHA" ]]; then
+              echo "Development tag $tag already exists at $current_sha, not $SOURCE_SHA." >&2
+              exit 1
+            fi
+            echo "Development tag $tag already points to the verified commit."
+          else
+            gh api --method POST "repos/$REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$tag" \
+              -f "sha=$SOURCE_SHA" >/dev/null
+            echo "Created $tag for $SOURCE_SHA."
+          fi
+
+          printf 'source_ref=refs/tags/%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+  publish-development-prerelease:
+    name: Publish source-only development pre-release
+    needs: [create-development-tag]
+    if: needs.create-development-tag.result == 'success'
+    permissions:
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+    with:
+      pipeline-ref: 540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+      source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      release-notes-mode: section
+      changelog-asset-mode: archive-only
+      source-archive-name: "cdin-composition-root-{tag}-source.zip"
+      source-submodules: fail-if-present
+
+  inspect-legacy-alpha-release:
+    name: Detect the incorrectly-created alpha.1 release
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      repair_required: ${{ steps.inspect.outputs.repair_required }}
+    steps:
+      - name: Inspect the legacy release record
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: v0.3.0-alpha.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          releases="$(gh api "repos/$REPOSITORY/releases?per_page=100")"
+          release="$(jq -c --arg tag "$TAG_NAME" '[.[] | select(.tag_name == $tag)][0] // empty' <<<"$releases")"
+
+          if [[ -z "$release" ]]; then
+            echo "The legacy Release is absent; it must be recreated."
+            echo "repair_required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_id="$(jq -r '.id' <<<"$release")"
+          release_url="$(jq -r '.html_url' <<<"$release")"
+          draft="$(jq -r '.draft' <<<"$release")"
+
+          if [[ "$draft" == "true" || "$release_url" == *"/untagged-"* ]]; then
+            echo "Removing malformed legacy Release $release_id ($release_url)."
+            gh api --method DELETE "repos/$REPOSITORY/releases/$release_id"
+            echo "repair_required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Legacy Release already has a tag-backed published URL: $release_url"
+            echo "repair_required=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  repair-legacy-alpha-release:
+    name: Rebuild v0.3.0-alpha.1 from its tagged changelog section
+    needs: [inspect-legacy-alpha-release]
+    if: needs.inspect-legacy-alpha-release.outputs.repair_required == 'true'
+    permissions:
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+    with:
+      pipeline-ref: 540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+      source-ref: refs/tags/v0.3.0-alpha.1
+      changelog-path: CHANGELOG.md
+      changelog-missing-policy: fail
+      release-notes-mode: section
+      changelog-asset-mode: archive-only
+      source-archive-name: "cdin-composition-root-{tag}-source.zip"
+      source-submodules: fail-if-present
