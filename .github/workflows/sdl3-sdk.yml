@@ -96,6 +96,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh run download "${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets --repo "${GITHUB_REPOSITORY}"
+      - name: Flatten target artifact directories
+        run: |
+          find release-assets -mindepth 2 -type f -exec mv -t release-assets {} +
+          find release-assets -mindepth 1 -type d -empty -delete
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
