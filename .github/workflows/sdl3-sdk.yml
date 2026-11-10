@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    name: SDL3 SDK / \${{ matrix.target }}
+    name: SDL3 SDK / ${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
@@ -37,10 +37,10 @@ jobs:
           - target: windows-x86_64
             os: windows-latest
             shell: msys2 {0}
-    runs-on: \${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
-        shell: \${{ matrix.shell }}
+        shell: ${{ matrix.shell }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - if: runner.os == 'Windows'
@@ -79,7 +79,7 @@ jobs:
       - name: Upload immutable SDK package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: sdl3-sdk-\${{ matrix.target }}
+          name: sdl3-sdk-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
           retention-days: 14
@@ -94,14 +94,14 @@ jobs:
     steps:
       - name: Download all verified target SDK packages
         env:
-          GH_TOKEN: \${{ github.token }}
-        run: gh run download "\${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets
       - name: Publish prerelease assets
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "\${GITHUB_REF_NAME}" release-assets/* \
+          gh release create "${GITHUB_REF_NAME}" release-assets/* \
             --verify-tag \
             --prerelease \
-            --title "CDIN SDL3 SDK \${GITHUB_REF_NAME#sdl3-sdk-v}" \
+            --title "CDIN SDL3 SDK ${GITHUB_REF_NAME#sdl3-sdk-v}" \
             --notes "Target-native, static SDL3 SDK packages built from the source digest pinned in CDIN deps.lock. Each archive includes its target manifest and a SHA-256 sidecar."
