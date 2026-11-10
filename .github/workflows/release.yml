@@ -21,9 +21,9 @@ jobs:
     if: needs.verify.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
     with:
-      pipeline-ref: 540d0eae0388a1373a0a23ada1d41ed7a2c56b70
+      pipeline-ref: 65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
       source-ref: ${{ github.ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
