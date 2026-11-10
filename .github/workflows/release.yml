@@ -9,21 +9,40 @@ permissions:
   contents: read
 
 jobs:
+  validate-release-credential:
+    name: Validate the release credential
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require a token that can publish this tagged source
+        env:
+          RELEASE_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "::error title=Missing CDIN_RELEASE_TOKEN::Create repository secret CDIN_RELEASE_TOKEN using a fine-grained token with Contents: Read and write and Workflows: Read and write."
+            exit 1
+          fi
+          echo "CDIN_RELEASE_TOKEN is configured."
+
   verify:
     name: Verify the exact tagged commit
+    needs: [validate-release-credential]
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
   publish:
     name: Publish the tag-backed GitHub Release
-    needs: [verify]
+    needs: [verify, validate-release-credential]
     if: needs.verify.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@ee02d9903561d081bf1262c9b44ffd31c203f375
     with:
-      pipeline-ref: 65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+      pipeline-ref: ee02d9903561d081bf1262c9b44ffd31c203f375
       source-ref: ${{ github.ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
@@ -31,3 +50,5 @@ jobs:
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
+    secrets:
+      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}

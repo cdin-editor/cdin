@@ -9,9 +9,33 @@ permissions:
   contents: read
 
 jobs:
+  validate-release-credential:
+    name: Validate the release credential
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require a token that can create tags and tag-backed releases
+        env:
+          RELEASE_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "::error title=Missing CDIN_RELEASE_TOKEN::Create repository secret CDIN_RELEASE_TOKEN using a fine-grained token with Contents: Read and write and Workflows: Read and write."
+            exit 1
+          fi
+          echo "CDIN_RELEASE_TOKEN is configured."
+
   create-development-tag:
     name: Create a unique development tag for the verified commit
+    needs: [validate-release-credential]
     if: >-
+      needs.validate-release-credential.result == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -30,7 +54,7 @@ jobs:
       - name: Create or verify the unique development tag
         id: tag
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
@@ -61,9 +85,9 @@ jobs:
     if: needs.create-development-tag.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@ee02d9903561d081bf1262c9b44ffd31c203f375
     with:
-      pipeline-ref: 65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+      pipeline-ref: ee02d9903561d081bf1262c9b44ffd31c203f375
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
@@ -71,10 +95,14 @@ jobs:
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
+    secrets:
+      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
 
   inspect-legacy-alpha-release:
     name: Detect the incorrectly-created alpha.1 release
+    needs: [validate-release-credential]
     if: >-
+      needs.validate-release-credential.result == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
@@ -89,7 +117,7 @@ jobs:
       - name: Inspect the legacy release record
         id: inspect
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           TAG_NAME: v0.3.0-alpha.1
         shell: bash
@@ -133,9 +161,9 @@ jobs:
       github.event.workflow_run.head_sha == 'ab4a3311280b7e535fdf8d85a3452cb94e4fcc0c'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@ee02d9903561d081bf1262c9b44ffd31c203f375
     with:
-      pipeline-ref: 65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
+      pipeline-ref: ee02d9903561d081bf1262c9b44ffd31c203f375
       source-ref: refs/tags/v0.3.0-alpha.1
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
@@ -143,3 +171,5 @@ jobs:
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
+    secrets:
+      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
