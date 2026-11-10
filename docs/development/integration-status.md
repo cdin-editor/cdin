@@ -1,3 +1,33 @@
+## Current integration update — 2026-11-11
+
+**Authoritative live audit:** the Composition Root and several component capabilities are merged, but the installed product is still in DEVELOPMENT. The previous 2026-11-10 section below is retained as history; this section supersedes its component publisher, dependency and release statements.
+
+### Component publisher state
+
+- **Runtime:** [Runtime PR #23](https://github.com/cdin-editor/runtime/pull/23) merged the ADR-0028 generated Release Metadata publisher. Its exact tested PR head `0d4a33d8fa009072a67a39aef0efb8a695f335e0` passed [CI run 42898507156](https://github.com/cdin-editor/runtime/actions/runs/42898507156). Runtime #16 remains open: RC1/RC2 historical bytes are unchanged, and a new exact-tag package Release with canonical `runtime-<version>.json` metadata plus CDIN consumption is still required.
+- **Backend:** [Backend PR #36](https://github.com/cdin-editor/backend/pull/36) merged the ADR-0028 publisher and exact-tag metadata generator; its three PR CI runs [42898128085](https://github.com/cdin-editor/backend/actions/runs/42898128085), [42898127992](https://github.com/cdin-editor/backend/actions/runs/42898127992) and [42898128501](https://github.com/cdin-editor/backend/actions/runs/42898128501) passed. Backend #35 remains open until a new immutable package Release publishes its canonical metadata asset. Backend #25 is closed/historical and is not the current follow-up.
+- **Frontend:** [Frontend PR #47](https://github.com/cdin-editor/frontend/pull/47) contains the prepared Core/TUI/GUI-SDL variant packages, five-target release matrix and ADR-0028 metadata generation. Exact head `d4adbb1aaea5fac60bc2479f5be5d3d7fee790cc` passed [CI run 42910723045](https://github.com/cdin-editor/frontend/actions/runs/42910723045); the preceding native matrix [run 42910404067](https://github.com/cdin-editor/frontend/actions/runs/42910404067) also passed. PR #47 remains open because Codex's automated review hit its usage limit; it has not been merged or released. Frontend #40 remains open.
+- **Registry:** ADR-0028 discovery implementation is already on main and Registry #53 is closed. [Registry PR #57](https://github.com/cdin-editor/registry/pull/57) adds test-only explicit coverage for a 101-release/two-page inventory and asset-identity-bound metadata fetch. Exact head `608a8d1e205678f8e2adb019513cf8b5b4cc5b9e` passed Registry quality, docs/YAML, static analysis, secret scanning and Linux/macOS/Windows workspace integration ([quality #42911895962](https://github.com/cdin-editor/registry/actions/runs/42911895962), [workspace #42911894895](https://github.com/cdin-editor/registry/actions/runs/42911894895), [static analysis #42911887263](https://github.com/cdin-editor/registry/actions/runs/42911887263)). Codex review also hit its usage limit, so PR #57 remains open.
+
+### SDK and Registry executable release status
+
+- CDIN SDK producer [PR #126](https://github.com/cdin-editor/cdin/pull/126) is merged at `f12f1fca4ca1d4fb5060a802549596085e3172d2`; exact head `0e1a074311e0489662e6a2896d0c5aef6c459372` passed five target-native SDK builds and external CMake consumer/link tests. The expected `sdl3-sdk-v3.4.16` tag/Release assets are still absent. CDIN #124 remains open.
+- Registry's only published executable Release remains `v0.1.0-dev`. Its Linux amd64/arm64 assets share a digest and its macOS amd64/arm64 assets share a digest, so these are not safe target-specific binaries. Registry main reports `0.2.0-dev.1`, but no corresponding immutable target-correct executable Release exists. CDIN #121 remains open.
+- The GitHub integration available for this audit can create branches/PRs and update files/issues, but it does not expose a create-tag/publish-release operation. No tag, digest, SDK asset or Registry executable asset has been fabricated.
+
+### Current CDIN consumer path and product gates
+
+- CDIN `deps.lock` still pins Registry `0.1.0-dev`; `scripts/registry.py` still clones Registry, runs `go test ./...` and builds the CLI.
+- The standard `scripts/build_stack.py` path still builds the Runtime/Backend/Frontend source stack and SDL3 from source. Artifact-first installation is not implemented; CDIN #122 remains open.
+- The exact Catalog/Product Definition pins remain the older Backend 1.2.0, Frontend 1.0.2 and Runtime RC2 candidates. New component Releases and SDK assets must be published and verified before Product Definitions/Manifest can safely move.
+- IME/PaneTree source implementations and component-level tests do not establish a live product capability. No exact new immutable stack E2E has been run; CDIN #118 remains open.
+- Product Releases remain the older `0.2.1-beta.*` series. There is no fixed `latest` rolling prerelease with real runnable TUI/GUI-SDL target distributions and a verified exact-commit product manifest.
+- Full production Unicode shaping/BiDi and Persian/Arabic interaction, complete six-platform profile acceptance, performance/soak/recovery evidence, and clean-machine install/upgrade/uninstall are not yet proven.
+
+**Current product state: DEVELOPMENT.** Historical evidence below is retained without upgrading its scope: passing source-build integration tests or component CI does not prove artifact-first installation, published application distributions or stable product readiness.
+
+---
+
 ## Current integration update — 2026-11-10
 
 **Authoritative current state:** the Composition Root foundation is on `main`; the component/asset merges below expand that foundation but do not complete the product/release epic.
