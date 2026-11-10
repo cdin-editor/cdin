@@ -75,6 +75,17 @@ class SafeSourceExtractionTests(unittest.TestCase):
             finally:
                 archive.unlink(missing_ok=True)
 
+    def test_rejects_case_insensitive_path_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            archive_path = Path(temporary) / "collision.tar.gz"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                for name in ("SDL3-3.4.16/Readme", "SDL3-3.4.16/README"):
+                    member = tarfile.TarInfo(name)
+                    member.size = 1
+                    archive.addfile(member, BytesIO(b"x"))
+            with self.assertRaises(RuntimeError):
+                sdk.safe_extract(archive_path, Path(temporary) / "source")
+
     def test_rejects_symlink_members(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             archive = self._archive("SDL3-3.4.16/link", kind="symlink")
