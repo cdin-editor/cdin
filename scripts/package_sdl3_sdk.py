@@ -14,7 +14,6 @@ import shutil
 import stat
 import subprocess
 import tarfile
-import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
