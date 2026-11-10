@@ -77,7 +77,9 @@ jobs:
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == 'ab4a3311280b7e535fdf8d85a3452cb94e4fcc0c'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -105,20 +107,30 @@ jobs:
           release_id="$(jq -r '.id' <<<"$release")"
           release_url="$(jq -r '.html_url' <<<"$release")"
           draft="$(jq -r '.draft' <<<"$release")"
+          has_changelog="$(jq -r '(.body // "") | contains("## [0.3.0-alpha.1] - 2026-11-10")' <<<"$release")"
+          has_manifest="$(jq -r '[.assets[].name] | index("manifest.json") != null' <<<"$release")"
+          has_checksums="$(jq -r '[.assets[].name] | index("SHA256SUMS") != null' <<<"$release")"
 
-          if [[ "$draft" == "true" || "$release_url" == *"/untagged-"* ]]; then
+          if [[ "$draft" == "true" ||
+                "$release_url" == *"/untagged-"* ||
+                "$has_changelog" != "true" ||
+                "$has_manifest" != "true" ||
+                "$has_checksums" != "true" ]]; then
             echo "Removing malformed legacy Release $release_id ($release_url)."
+            echo "Required changelog and Pipeline manifest/checksum assets are missing."
             gh api --method DELETE "repos/$REPOSITORY/releases/$release_id"
             echo "repair_required=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Legacy Release already has a tag-backed published URL: $release_url"
+            echo "Legacy Release is correctly tag-backed and contains the exact changelog section and Pipeline assets: $release_url"
             echo "repair_required=false" >> "$GITHUB_OUTPUT"
           fi
 
   repair-legacy-alpha-release:
     name: Rebuild v0.3.0-alpha.1 from its tagged changelog section
     needs: [inspect-legacy-alpha-release]
-    if: needs.inspect-legacy-alpha-release.outputs.repair_required == 'true'
+    if: >-
+      needs.inspect-legacy-alpha-release.outputs.repair_required == 'true' &&
+      github.event.workflow_run.head_sha == 'ab4a3311280b7e535fdf8d85a3452cb94e4fcc0c'
     permissions:
       contents: write
     uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@65ec5eb0eddc2d569ab5e8df67b93504e3bb538f
