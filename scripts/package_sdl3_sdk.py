@@ -247,6 +247,11 @@ def main() -> int:
 
     os_name, arch = target_identity()
     spec = load_source_pin()
+    release_tag = os.environ.get("GITHUB_REF_NAME", "")
+    if release_tag.startswith("sdl3-sdk-v") and release_tag != f"sdl3-sdk-v{spec['version']}":
+        raise RuntimeError(
+            f"release tag {release_tag} does not match pinned SDL3 version {spec['version']}"
+        )
     source_archive = args.work_dir / "downloads" / f"SDL3-{spec['version']}.tar.gz"
     source_archive = download_source(spec, source_archive)
     source = safe_extract(source_archive, args.work_dir / "source")
