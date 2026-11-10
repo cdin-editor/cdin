@@ -95,13 +95,14 @@ jobs:
       - name: Download all verified target SDK packages
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets
+        run: gh run download "${GITHUB_RUN_ID}" --pattern "sdl3-sdk-*" --dir release-assets --repo "${GITHUB_REPOSITORY}"
       - name: Publish prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" release-assets/* \
             --verify-tag \
+            --repo "${GITHUB_REPOSITORY}" \
             --prerelease \
             --title "CDIN SDL3 SDK ${GITHUB_REF_NAME#sdl3-sdk-v}" \
             --notes "Target-native, static SDL3 SDK packages built from the source digest pinned in CDIN deps.lock. Each archive includes its target manifest and a SHA-256 sidecar."
