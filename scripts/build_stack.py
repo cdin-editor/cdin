@@ -550,14 +550,26 @@ def main() -> int:
         env = pkg_env(additional_prefixes=frontend_prefixes)
 
     root_build = BUILD / "cdin"
+    frontend_cmake_options = [
+        f"-DCDIN_FRONTEND_SPLIT_PACKAGES={'OFF' if args.registry_source_build else 'ON'}",
+        f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
+    ]
+    if not args.registry_source_build:
+        frontend_cmake_options.extend((
+            f"-DCDIN_FRONTEND_CORE_PACKAGE_VERSION={pinned_package_version('frontend', 'core')}",
+            f"-DCDIN_FRONTEND_TUI_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
+        ))
+        if gui_enabled:
+            frontend_cmake_options.append(
+                f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl')}"
+            )
+
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
-         f"-DCDIN_FRONTEND_CORE_PACKAGE_VERSION={pinned_package_version('frontend', 'core') if not args.registry_source_build else pinned_package_version('frontend', 'tui')}",
-         f"-DCDIN_FRONTEND_TUI_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
-         f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl') if gui_enabled else ''}",
+         *frontend_cmake_options,
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
          f"-DCDIN_DEVELOPER_SOURCE_COMPONENTS={'ON' if args.registry_source_build else 'OFF'}",
