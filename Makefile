@@ -1,4 +1,4 @@
-.PHONY: help deps registry registry-gui registry-dev registry-gui-dev stack stack-gui configure build install test check integration clean package
+.PHONY: help deps registry registry-gui registry-dev registry-gui-dev stack stack-gui stack-dev stack-gui-dev configure build install test check integration clean package
 BUILD_DIR ?= build
 # Native Windows shells may not expose the OS variable to GNU Make consistently.
 # ComSpec is a second reliable signal; keep python3 for Unix environments.
