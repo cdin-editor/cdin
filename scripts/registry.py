@@ -371,9 +371,16 @@ def prepare(profile: str, binary: Path) -> None:
             if destination.exists():
                 shutil.rmtree(destination)
             shutil.copytree(source, destination)
+    resolved_components = json.loads(original.decode("utf-8"))["components"]
+    backend_versions = [
+        item["version"] for item in resolved_components
+        if item["component_id"] == "backend" and item["variant"] == "default"
+    ]
+    if len(backend_versions) != 1:
+        raise RuntimeError("Resolved Manifest does not contain exactly one Backend version")
     print(
         f"Registry workspace ready: {workspace} "
-        f"(delivery=artifact-or-source, backend={backend['version']}, target={target})",
+        f"(delivery=artifact-or-source, backend={backend_versions[0]}, target={target})",
         flush=True,
     )
 
@@ -396,7 +403,7 @@ def main() -> int:
         offline=args.offline or os.environ.get("CDIN_OFFLINE", "").lower() in {"1", "true", "yes"},
     )
     if args.verify_workspace:
-        verify_workspace(binary, profile)
+        verify_workspace(binary, profile, detect_target_tuple())
     else:
         prepare(profile, binary)
     return 0
