@@ -196,6 +196,9 @@ class RegistryMakeTargetTests(unittest.TestCase):
         self.assertIn('parser.add_argument(\n        "--registry-source-build"', stack_script)
         self.assertIn('if args.registry_source_build:', stack_script)
         self.assertIn('registry_command.extend(("--source-build", "--developer-source-components"))', stack_script)
+        self.assertIn('for tool in ("cmake", "make", "pkg-config"):', stack_script)
+        self.assertIn('if args.registry_source_build and shutil.which("git") is None:', stack_script)
+        self.assertNotIn('for tool in ("git", "cmake", "make", "pkg-config"):', stack_script)
         self.assertIn("--source-build --developer-source-components", makefile)
         # CI is allowed to test the explicit source build; normal Make targets are not.
         self.assertIn('"scripts/registry.py", "--source-build", "--developer-source-components"', pipeline)
