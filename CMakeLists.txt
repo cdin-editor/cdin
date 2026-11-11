@@ -5,6 +5,8 @@ include(GNUInstallDirs)
 include(CTest)
 
 option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
+option(CDIN_DEVELOPER_SOURCE_COMPONENTS
+    "Allow source-delivered components in the explicit developer/CI workflow" OFF)
 option(CDIN_ENABLE_GUI_SDL "Compose and test the installable Frontend GUI-SDL adapter" OFF)
 set(CDIN_REGISTRY_PROFILE "tui" CACHE STRING "Frontend variant selected by Registry")
 set_property(CACHE CDIN_REGISTRY_PROFILE PROPERTY STRINGS tui gui-sdl)
@@ -143,10 +145,15 @@ if(BUILD_TESTING)
     add_test(NAME cdin_registry_manifest_verify
         COMMAND "${CDIN_REGISTRY_EXECUTABLE}" manifest verify
                 --input "${CDIN_REGISTRY_WORKSPACE}/registry-manifest.json")
+    set(CDIN_REGISTRY_WORKSPACE_E2E_ARGS
+        --workspace "${CDIN_REGISTRY_WORKSPACE}"
+        --profile "${CDIN_REGISTRY_PROFILE}")
+    if(CDIN_DEVELOPER_SOURCE_COMPONENTS)
+        list(APPEND CDIN_REGISTRY_WORKSPACE_E2E_ARGS --developer-source-components)
+    endif()
     add_test(NAME cdin_registry_workspace_e2e
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/e2e/test_registry_workspace.py"
-                --workspace "${CDIN_REGISTRY_WORKSPACE}"
-                --profile "${CDIN_REGISTRY_PROFILE}")
+                ${CDIN_REGISTRY_WORKSPACE_E2E_ARGS})
     add_test(NAME cdin_cli_help
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/assert_cli.py"
                 0 "Usage:" "-" --help)
