@@ -268,6 +268,32 @@ def pinned_package_version(name: str, variant: str = "default") -> str:
     return matches[0]
 
 
+def verify_kernel_sdk_manifest_contract(manifest: dict, sdk_pin: dict) -> None:
+    """Bind the separately pinned Kernel/logger SDK to Registry's selected Kernel identity."""
+    components = [
+        item for item in manifest.get("components", [])
+        if item.get("component_id") == "kernel" and item.get("variant") == "default"
+    ]
+    if len(components) != 1:
+        raise RuntimeError("Registry Manifest must select exactly one Kernel default component")
+    kernel = components[0]
+    if kernel.get("version") != sdk_pin.get("version"):
+        raise RuntimeError(
+            f"Kernel SDK version {sdk_pin.get('version')} does not match Registry "
+            f"Kernel version {kernel.get('version')}"
+        )
+    provided = kernel.get("contracts", {}).get("provides", [])
+    abi_versions = [
+        item.get("version") for item in provided
+        if item.get("contract_id") == "org.cdin.kernel-abi"
+    ]
+    if abi_versions != [sdk_pin.get("kernel_abi")]:
+        raise RuntimeError(
+            f"Kernel SDK ABI {sdk_pin.get('kernel_abi')} does not match Registry "
+            f"Kernel ABI declarations {abi_versions}"
+        )
+
+
 def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
     expected = pinned_package_version("runtime")
     print("+", str(executable), "--check", flush=True)
@@ -333,6 +359,9 @@ def main() -> int:
         "--profile", PROFILE,
     ])
     run([sys.executable, "scripts/deps.py", "--verify"])
+    manifest = json.loads((WORKSPACE / "registry-manifest.json").read_text(encoding="utf-8"))
+    sdk_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["dependencies"]["kernel_sdk"]
+    verify_kernel_sdk_manifest_contract(manifest, sdk_pin)
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     stage_kernel_sdk_prefix(SDK_PREFIX, PREFIX)
