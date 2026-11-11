@@ -5,6 +5,8 @@ include(GNUInstallDirs)
 include(CTest)
 
 option(CDIN_INSTALL_RUNTIME "Install the pinned Runtime Lua modules" ON)
+option(CDIN_FRONTEND_SPLIT_PACKAGES
+    "Consume immutable Frontend Core/TUI/GUI-SDL packages instead of the legacy source-build meta-package" OFF)
 option(CDIN_DEVELOPER_SOURCE_COMPONENTS
     "Allow source-delivered components in the explicit developer/CI workflow" OFF)
 option(CDIN_ENABLE_GUI_SDL "Compose and test the installable Frontend GUI-SDL adapter" OFF)
@@ -25,37 +27,51 @@ endif()
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # The Composition Root never compiles copied component sources.
 set(CDIN_BACKEND_PACKAGE_VERSION "" CACHE STRING "Backend package version selected by Registry")
+set(CDIN_FRONTEND_PACKAGE_VERSION "" CACHE STRING "Legacy Frontend meta-package version selected by Registry")
 set(CDIN_FRONTEND_CORE_PACKAGE_VERSION "" CACHE STRING "Frontend Core package version selected by Registry")
 set(CDIN_FRONTEND_TUI_PACKAGE_VERSION "" CACHE STRING "Frontend TUI package version selected by Registry")
 set(CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION "" CACHE STRING "Frontend GUI-SDL package version selected by Registry")
-if(CDIN_BACKEND_PACKAGE_VERSION STREQUAL "" OR
-   CDIN_FRONTEND_CORE_PACKAGE_VERSION STREQUAL "" OR
-   CDIN_FRONTEND_TUI_PACKAGE_VERSION STREQUAL "")
-    message(FATAL_ERROR
-        "Backend and Frontend Core/TUI package versions must come from registry-manifest.json")
-endif()
-if(CDIN_ENABLE_GUI_SDL AND CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION STREQUAL "")
-    message(FATAL_ERROR "GUI-SDL package version must come from registry-manifest.json")
+if(CDIN_BACKEND_PACKAGE_VERSION STREQUAL "")
+    message(FATAL_ERROR "Backend package version must come from registry-manifest.json")
 endif()
 
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
-find_package(cdinFrontendCore ${CDIN_FRONTEND_CORE_PACKAGE_VERSION} CONFIG REQUIRED)
-find_package(cdinFrontendTUI ${CDIN_FRONTEND_TUI_PACKAGE_VERSION} CONFIG REQUIRED)
 find_package(cdinBackend ${CDIN_BACKEND_PACKAGE_VERSION} CONFIG REQUIRED)
-if(CDIN_ENABLE_GUI_SDL)
-    find_package(cdinFrontendGUISDL ${CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION} CONFIG REQUIRED)
-endif()
-if(DEFINED cdinFrontendCore_VERSION AND
-   NOT cdinFrontendCore_VERSION VERSION_EQUAL CDIN_FRONTEND_CORE_PACKAGE_VERSION)
-    message(FATAL_ERROR "Frontend Core package version differs from the Registry Resolved Manifest")
-endif()
-if(DEFINED cdinFrontendTUI_VERSION AND
-   NOT cdinFrontendTUI_VERSION VERSION_EQUAL CDIN_FRONTEND_TUI_PACKAGE_VERSION)
-    message(FATAL_ERROR "Frontend TUI package version differs from the Registry Resolved Manifest")
-endif()
-if(CDIN_ENABLE_GUI_SDL AND DEFINED cdinFrontendGUISDL_VERSION AND
-   NOT cdinFrontendGUISDL_VERSION VERSION_EQUAL CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION)
-    message(FATAL_ERROR "Frontend GUI-SDL package version differs from the Registry Resolved Manifest")
+if(CDIN_FRONTEND_SPLIT_PACKAGES)
+    if(CDIN_FRONTEND_CORE_PACKAGE_VERSION STREQUAL "" OR
+       CDIN_FRONTEND_TUI_PACKAGE_VERSION STREQUAL "")
+        message(FATAL_ERROR
+            "Frontend Core/TUI package versions must come from registry-manifest.json")
+    endif()
+    if(CDIN_ENABLE_GUI_SDL AND CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION STREQUAL "")
+        message(FATAL_ERROR "Frontend GUI-SDL package version must come from registry-manifest.json")
+    endif()
+    find_package(cdinFrontendCore ${CDIN_FRONTEND_CORE_PACKAGE_VERSION} CONFIG REQUIRED)
+    find_package(cdinFrontendTUI ${CDIN_FRONTEND_TUI_PACKAGE_VERSION} CONFIG REQUIRED)
+    if(CDIN_ENABLE_GUI_SDL)
+        find_package(cdinFrontendGUISDL ${CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION} CONFIG REQUIRED)
+    endif()
+    if(DEFINED cdinFrontendCore_VERSION AND
+       NOT cdinFrontendCore_VERSION VERSION_EQUAL CDIN_FRONTEND_CORE_PACKAGE_VERSION)
+        message(FATAL_ERROR "Frontend Core package version differs from the Registry Resolved Manifest")
+    endif()
+    if(DEFINED cdinFrontendTUI_VERSION AND
+       NOT cdinFrontendTUI_VERSION VERSION_EQUAL CDIN_FRONTEND_TUI_PACKAGE_VERSION)
+        message(FATAL_ERROR "Frontend TUI package version differs from the Registry Resolved Manifest")
+    endif()
+    if(CDIN_ENABLE_GUI_SDL AND DEFINED cdinFrontendGUISDL_VERSION AND
+       NOT cdinFrontendGUISDL_VERSION VERSION_EQUAL CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION)
+        message(FATAL_ERROR "Frontend GUI-SDL package version differs from the Registry Resolved Manifest")
+    endif()
+else()
+    if(CDIN_FRONTEND_PACKAGE_VERSION STREQUAL "")
+        message(FATAL_ERROR "Legacy Frontend package version must come from registry-manifest.json")
+    endif()
+    find_package(cdinFrontend ${CDIN_FRONTEND_PACKAGE_VERSION} CONFIG REQUIRED)
+    if(DEFINED cdinFrontend_VERSION AND
+       NOT cdinFrontend_VERSION VERSION_EQUAL CDIN_FRONTEND_PACKAGE_VERSION)
+        message(FATAL_ERROR "Legacy Frontend package version differs from the Registry Resolved Manifest")
+    endif()
 endif()
 if(DEFINED cdinBackend_VERSION AND
    NOT cdinBackend_VERSION VERSION_EQUAL CDIN_BACKEND_PACKAGE_VERSION)
@@ -79,7 +95,7 @@ target_compile_definitions(cdin PRIVATE
     CDIN_DEFAULT_RUNTIME_ROOT="${CMAKE_INSTALL_FULL_DATADIR}/cdin/lua")
 foreach(required_frontend_target IN ITEMS cdin::frontend_core cdin::frontend_ui_tui)
     if(NOT TARGET ${required_frontend_target})
-        message(FATAL_ERROR "Pinned Frontend Core/TUI packages must export ${required_frontend_target}")
+        message(FATAL_ERROR "Pinned Frontend packages must export ${required_frontend_target}")
     endif()
 endforeach()
 target_link_libraries(cdin PRIVATE
@@ -91,7 +107,7 @@ target_link_libraries(cdin PRIVATE
 
 if(CDIN_ENABLE_GUI_SDL)
     if(NOT TARGET cdin::frontend_ui_gui_sdl)
-        message(FATAL_ERROR "Pinned Frontend GUI-SDL package did not export cdin::frontend_ui_gui_sdl")
+        message(FATAL_ERROR "Pinned Frontend package did not export cdin::frontend_ui_gui_sdl")
     endif()
     find_package(SDL3 3.4.16 EXACT CONFIG REQUIRED)
     target_sources(cdin PRIVATE src/integration/gui_sdl.c)
