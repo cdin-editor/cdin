@@ -345,10 +345,13 @@ def main() -> int:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 
-    for tool in ("git", "cmake", "make", "pkg-config"):
+    for tool in ("cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
             return 2
+    if args.registry_source_build and shutil.which("git") is None:
+        print("missing developer-only Registry source build tool: git", file=sys.stderr)
+        return 2
 
     # Registry owns component discovery and immutable source collection.
     # The manifest, not deps.lock, is the authoritative component selection.
