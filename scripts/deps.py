@@ -248,6 +248,31 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _ensure_safe_cache_directory(path: Path) -> None:
+    """Create the SDK cache only below real directories; never follow symlinks."""
+    absolute = Path(os.path.abspath(path))
+    for candidate in reversed((absolute, *absolute.parents)):
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise SDKBootstrapError(
+                f"cannot inspect Kernel SDK cache path component: {candidate}"
+            ) from error
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise SDKBootstrapError(
+                f"Kernel SDK cache path contains a symlink or non-directory ancestor: {candidate}"
+            )
+    absolute.mkdir(parents=True, exist_ok=True)
+    for candidate in reversed((absolute, *absolute.parents)):
+        info = candidate.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise SDKBootstrapError(
+                f"Kernel SDK cache path changed during creation: {candidate}"
+            )
+
+
 def verify_asset(path: Path, asset: dict) -> None:
     expected_size = asset.get("size_bytes")
     expected_digest = asset.get("sha256")
@@ -264,7 +289,13 @@ def verify_asset(path: Path, asset: dict) -> None:
         or any(character not in "0123456789abcdef" for character in expected_digest)
     ):
         raise SDKBootstrapError("locked Kernel SDK SHA-256 is invalid")
-    actual_size = path.stat().st_size
+    try:
+        info = path.lstat()
+    except OSError as error:
+        raise SDKBootstrapError(f"Kernel SDK cache asset is unavailable: {path.name}") from error
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise SDKBootstrapError("Kernel SDK cache asset must be a regular file")
+    actual_size = info.st_size
     actual_digest = sha256_file(path)
     if actual_size != expected_size:
         raise SDKBootstrapError(
@@ -277,18 +308,46 @@ def verify_asset(path: Path, asset: dict) -> None:
 
 
 def download_asset(pin: dict, asset: dict) -> Path:
-    verify_release_asset_identity(pin, asset)
-    filename = asset["file_name"]
-    if Path(filename).name != filename or not filename.startswith("cdin-kernel-"):
+    filename = asset.get("file_name")
+    if (
+        not isinstance(filename, str)
+        or Path(filename).name != filename
+        or not filename.startswith("cdin-kernel-")
+    ):
         raise SDKBootstrapError("locked Kernel SDK filename is not a safe basename")
-    CACHE.mkdir(parents=True, exist_ok=True)
+
+    _ensure_safe_cache_directory(CACHE)
     destination = CACHE / filename
-    if destination.is_file():
+    offline = os.environ.get("CDIN_OFFLINE", "").strip().lower() in {"1", "true", "yes"}
+
+    cached = False
+    if destination.exists() or destination.is_symlink():
         try:
             verify_asset(destination, asset)
-            return destination
+            cached = True
         except SDKBootstrapError:
+            if destination.is_symlink():
+                raise
+            if offline:
+                raise SDKBootstrapError(
+                    "offline Kernel SDK cache entry is missing or corrupt for the exact lock pin"
+                )
             destination.unlink()
+
+    if offline:
+        if cached:
+            print(f"Using verified offline Kernel SDK cache: {destination}", flush=True)
+            return destination
+        raise SDKBootstrapError(
+            "offline Kernel SDK installation requires a previously verified exact-pin archive cache"
+        )
+
+    # Online use rechecks the annotated Git tag and GitHub's immutable asset
+    # digest/size even on a local cache hit. Offline use relies only on the
+    # lock-pinned archive bytes and never attempts a network request.
+    verify_release_asset_identity(pin, asset)
+    if cached:
+        return destination
 
     url = f"{pin['repository'].rstrip('/')}/releases/download/{pin['tag']}/{filename}"
     parsed = urllib.parse.urlsplit(url)
@@ -303,29 +362,36 @@ def download_asset(pin: dict, asset: dict) -> Path:
             "Accept": "application/octet-stream",
         },
     )
-    temporary = destination.with_name(destination.name + ".download")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=filename + ".download-",
+        dir=CACHE,
+    )
+    temporary = Path(temporary_name)
     try:
-        with opener.open(request, timeout=45) as response, temporary.open("wb") as output:
-            final = urllib.parse.urlsplit(response.geturl())
-            if final.scheme != "https" or final.hostname not in ALLOWED_REDIRECT_HOSTS:
-                raise SDKBootstrapError("Kernel SDK final download URL is not trusted")
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) != asset["size_bytes"]:
-                raise SDKBootstrapError("Kernel SDK Content-Length differs from deps.lock")
-            total = 0
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > asset["size_bytes"] or total > MAX_ARCHIVE_BYTES:
-                    raise SDKBootstrapError("Kernel SDK download exceeded its pinned size")
-                output.write(chunk)
+        with os.fdopen(descriptor, "wb") as output:
+            with opener.open(request, timeout=45) as response:
+                final = urllib.parse.urlsplit(response.geturl())
+                if final.scheme != "https" or final.hostname not in ALLOWED_REDIRECT_HOSTS:
+                    raise SDKBootstrapError("Kernel SDK final download URL is not trusted")
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) != asset["size_bytes"]:
+                    raise SDKBootstrapError("Kernel SDK Content-Length differs from deps.lock")
+                total = 0
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > asset["size_bytes"] or total > MAX_ARCHIVE_BYTES:
+                        raise SDKBootstrapError("Kernel SDK download exceeded its pinned size")
+                    output.write(chunk)
         if total != asset["size_bytes"]:
             raise SDKBootstrapError(
                 f"Kernel SDK download was truncated: expected {asset['size_bytes']}, found {total}"
             )
         verify_asset(temporary, asset)
+        if destination.exists() or destination.is_symlink():
+            raise SDKBootstrapError("Kernel SDK cache destination changed during download")
         temporary.replace(destination)
         return destination
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
