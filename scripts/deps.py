@@ -116,14 +116,18 @@ def fetch_github_json(url: str) -> dict:
     ):
         raise SDKBootstrapError("Kernel SDK release identity API URL is not trusted")
 
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "CDIN-SDK-Bootstrap/1",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "CDIN-SDK-Bootstrap/1",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    # GitHub's unauthenticated REST quota is shared by hosted runners. Use the
+    # workflow-scoped token when present so a six-target matrix does not exhaust
+    # the 60-request anonymous limit. The token is sent only to api.github.com.
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
     opener = urllib.request.build_opener(_GitHubAPIRedirectHandler())
     try:
         with opener.open(request, timeout=30) as response:
