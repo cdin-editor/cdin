@@ -30,7 +30,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 SDK_PREFIX = ROOT / ".deps" / "sdk"
-CACHE = ROOT / "build" / "deps" / "kernel-sdk"
+CACHE = ROOT / ".deps" / "cache" / "kernel-sdk"
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 MAX_EXPANDED_BYTES = 128 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 20_000
