@@ -356,6 +356,14 @@ def prepare(profile: str, binary: Path) -> None:
             component_id = component["component_id"]
             if component_id not in {"kernel", "runtime", "backend", "frontend"}:
                 continue
+            # Kernel is provided by the separately pinned 1.2.1 + logger 0.1.0
+            # SDK asset in deps.lock; keep its Registry metadata in the Manifest
+            # but do not create a second source-build checkout.
+            if component_id == "kernel":
+                stale = source_root / component_id
+                if stale.exists():
+                    shutil.rmtree(stale)
+                continue
             if component_id == "backend" and component.get("delivery") == "artifact":
                 stale = source_root / component_id
                 if stale.exists():
