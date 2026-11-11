@@ -150,7 +150,9 @@ gix doctor
 pipeline run check
 ```
 
-For a release candidate, use `pipeline run pre-release`. This task depends on the complete `check` graph and reproducible `package` task, verifies the Registry Resolved Manifest and source archive checksum, and writes `dist/cdin-pre-release.json`. The GitHub pre-release workflow runs the same verification graph for `v*-rc*` tags. Its current source-only artifact is not an application installer.
+For a release candidate, use `pipeline run pre-release`. This task depends on the complete `check` graph, reproducible `package`, Registry bootstrap/artifact tests, SDL3 source-safety tests and dedicated pre-release manifest tests. It verifies the exact Registry component/variant graph, Kernel/logger/Lua environment-provider contracts, immutable source and selected-artifact provenance, Catalog/release metadata identities and the source archive checksum before writing `dist/cdin-pre-release.json`. The report preserves the selected artifact descriptors and does not claim that a source snapshot is an installable application.
+
+The GitHub development pre-release workflow runs after each successful pushed-commit CI run, creates a unique `v0.0.0-dev.<run-number>` tag for that exact verified commit and publishes the source-only snapshot. A pushed `v*` version tag uses the separate tag-backed release workflow, which re-verifies the exact tagged commit and extracts the matching Keep a Changelog section. Both publication paths require the repository's `CDIN_RELEASE_TOKEN` with Contents and Workflows read/write permissions; they must fail closed rather than publish an unverified snapshot. The source-only pre-release is not an application installer.
 
 Pipeline is the standard local/CI entry point. Its tasks are declared in `pipeline.toml`; GitHub Actions should set up the native toolchain and invoke Pipeline rather than implement a second build graph.
 
