@@ -80,15 +80,21 @@ def _require_size(value: Any, label: str, *, maximum: int) -> int:
 
 
 class _TrustedAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
-    allowed_hosts = {"github.com", "release-assets.githubusercontent.com"}
+    allowed_hosts = {
+        "github.com",
+        "release-assets.githubusercontent.com",
+        "objects.githubusercontent.com",
+    }
 
     def redirect_request(self, request, file_pointer, code, message, headers, new_url):
         parsed = urllib.parse.urlparse(new_url)
         if (
             parsed.scheme != "https"
             or parsed.hostname not in self.allowed_hosts
+            or parsed.port not in (None, 443)
             or parsed.username is not None
             or parsed.password is not None
+            or parsed.fragment
         ):
             raise RegistryBootstrapError(f"untrusted Registry asset redirect: {new_url!r}")
         return super().redirect_request(request, file_pointer, code, message, headers, new_url)
@@ -152,6 +158,10 @@ class GitHubReleaseClient:
                     response.status != 200
                     or final_url.scheme != "https"
                     or final_url.hostname not in _TrustedAssetRedirectHandler.allowed_hosts
+                    or final_url.port not in (None, 443)
+                    or final_url.username is not None
+                    or final_url.password is not None
+                    or final_url.fragment
                 ):
                     raise RegistryBootstrapError("Registry asset download ended at an untrusted URL")
                 length = response.headers.get("Content-Length")
