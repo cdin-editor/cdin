@@ -18,55 +18,55 @@ Registry is not a runtime dependency. No component imports or links Registry.
 
 A Catalog Index uses exactly one of the two supported models:
 
-1. Static \`entries\`, preserving compatibility with existing immutable Catalog snapshots.
-2. Dynamic \`release_sources\`, declaring one source per component/variant/repository. Registry enumerates the complete eligible GitHub Release inventory and resolves the highest compatible SemVer; it does not use the most recently published release or the first API result.
+1. Static `entries`, preserving compatibility with existing immutable Catalog snapshots.
+2. Dynamic `release_sources`, declaring one source per component/variant/repository. Registry enumerates the complete eligible GitHub Release inventory and resolves the highest compatible SemVer; it does not use the most recently published release or the first API result.
 
-A single Catalog document must not mix \`entries\` and \`release_sources\`. Existing static Catalogs remain valid during migration. CDIN must not switch Product Definitions to dynamic discovery until the pinned Registry executable implements Data Contract 1.4.0 and all participating component publishers have published valid canonical metadata assets.
+A single Catalog document must not mix `entries` and `release_sources`. Existing static Catalogs remain valid during migration. CDIN must not switch Product Definitions to dynamic discovery until the pinned Registry executable implements Data Contract 1.4.0 and all participating component publishers have published valid canonical metadata assets.
 
-For each new versioned component release, its owning repository generates Component Release Metadata from the exact tag commit after package artifacts and checksums exist, then uploads the JSON as an asset on that GitHub Release. It is not committed under a per-version \`registry/releases/\` source-tree path.
+For each new versioned component release, its owning repository generates Component Release Metadata from the exact tag commit after package artifacts and checksums exist, then uploads the JSON as an asset on that GitHub Release. It is not committed under a per-version `registry/releases/` source-tree path.
 
 Canonical asset names:
 
-- Default variant: \`<component-id>-<version>.json\`.
-- Non-default variant: \`<component-id>-<variant>-<version>.json\`, for example \`frontend-tui-1.1.1.json\`.
+- Default variant: `<component-id>-<version>.json`.
+- Non-default variant: `<component-id>-<variant>-<version>.json`, for example `frontend-tui-1.1.1.json`.
 
-The metadata's \`publication\` object binds the exact repository URI, release tag, full tag-resolved commit and metadata asset basename. GitHub Release Asset API size/digest identify the metadata bytes themselves. Package descriptors separately bind immutable artifact URI, target, format, layout, source/toolchain provenance, SHA-256 and exact byte size.
+The metadata's `publication` object binds the exact repository URI, release tag, full tag-resolved commit and metadata asset basename. GitHub Release Asset API size/digest identify the metadata bytes themselves. Package descriptors separately bind immutable artifact URI, target, format, layout, source/toolchain provenance, SHA-256 and exact byte size.
 
 Registry validates those publication identities before a candidate reaches the normal SemVer/dependency/contract resolver. A moved tag, missing/duplicate asset, missing digest, size/digest mismatch, invalid source revision, malformed metadata, ambiguous release identity or exhausted pagination/retry budget is a hard failure. A corrupted discovered release must not silently fall back to a source build. Resolved Manifests preserve the exact release/asset identity so replay does not discover a newer version.
 
 ## Immutable Registry executable bootstrap
 
-The normal Registry executable path is artifact-first. CDIN's \`deps.lock\` must pin all of the following under \`[tooling.registry]\` before the consumer path can run:
+The normal Registry executable path is artifact-first. CDIN's `deps.lock` must pin all of the following under `[tooling.registry]` before the consumer path can run:
 
 - Registry repository URI.
 - Full immutable source commit SHA and Registry SemVer.
-- Exact release tag (\`v<version>\`).
-- SHA-256 and exact byte size of \`registry-release-<version>.json\`.
+- Exact release tag (`v<version>`).
+- SHA-256 and exact byte size of `registry-release-<version>.json`.
 
 The bootstrap selects one of the five supported executable targets:
 
 | Target ID | Required binary asset |
 |---|---|
-| \`linux-amd64\` | \`registry-linux-amd64\` |
-| \`linux-arm64\` | \`registry-linux-arm64\` |
-| \`darwin-amd64\` | \`registry-darwin-amd64\` |
-| \`darwin-arm64\` | \`registry-darwin-arm64\` |
-| \`windows-amd64\` | \`registry-windows-amd64.exe\` (MSYS2 UCRT64) |
+| `linux-amd64` | `registry-linux-amd64` |
+| `linux-arm64` | `registry-linux-arm64` |
+| `darwin-amd64` | `registry-darwin-amd64` |
+| `darwin-arm64` | `registry-darwin-arm64` |
+| `windows-amd64` | `registry-windows-amd64.exe` (MSYS2 UCRT64) |
 
 It then verifies the exact GitHub Release tag and its resolved commit (including annotated tags), the prerelease flag, the lock-pinned descriptor bytes, the five-target descriptor inventory, GitHub's asset digests/sizes, the Catalog identity/schema/digest/size, and the selected executable's actual ELF/Mach-O/PE architecture. The Catalog and Registry executable therefore come from one pinned Registry release identity.
 
 The cache key binds the Registry version, target, and descriptor digest. Every cache hit is re-verified. Offline use is allowed only for a previously verified cache of the exact same pin and target. Corrupt or incomplete cache content is never executed or reused. The normal bootstrap does not clone the Registry source repository, install Go, run Registry Go tests or compile Registry on the consumer machine.
 
-**Current release blocker (2026-11-11):** Registry main contains the corrected five-target publisher and release descriptor for \`0.2.0-dev.1\`, but that matching GitHub Release has not been published. The only published executable release, \`v0.1.0-dev\`, has duplicated Linux and macOS architecture digests and is not safe to consume as target-specific binaries. The current CDIN \`deps.lock\` does not yet contain the descriptor digest/size pin. Consequently, the normal Registry artifact path fails closed until Registry #58 is completed and the exact release identity is pinned. Do not substitute \`latest\`, the broken old release or an unpublished source commit.
+**Current release blocker (2026-11-11):** Registry main contains the corrected five-target publisher and release descriptor for `0.2.0-dev.1`, but that matching GitHub Release has not been published. The only published executable release, `v0.1.0-dev`, has duplicated Linux and macOS architecture digests and is not safe to consume as target-specific binaries. The current CDIN `deps.lock` does not yet contain the descriptor digest/size pin. Consequently, the normal Registry artifact path fails closed until Registry #58 is completed and the exact release identity is pinned. Do not substitute `latest`, the broken old release or an unpublished source commit.
 
 ## Developer source mode
 
 Registry source builds are available only as an explicit developer operation:
 
-\`\`\`sh
+```sh
 make registry-dev
 make registry-gui-dev
-\`\`\`
+```
 
 These targets use the pinned source revision and require Git and Go 1.27.3 or newer. The Pipeline's source-build Registry task is likewise a contributor/CI path; it is not the ordinary consumer bootstrap.
 
@@ -74,8 +74,8 @@ The current CDIN source-stack workflow still uses Registry's source-unit deliver
 
 ## Product profiles
 
-- \`registry/product-definition.tui.yaml\` selects the shared Kernel, Runtime and Backend contracts plus Frontend TUI.
-- \`registry/product-definition.gui-sdl.yaml\` selects the shared Core and GUI-SDL adapter, with TUI fallback where defined by the Product Definition.
+- `registry/product-definition.tui.yaml` selects the shared Kernel, Runtime and Backend contracts plus Frontend TUI.
+- `registry/product-definition.gui-sdl.yaml` selects the shared Core and GUI-SDL adapter, with TUI fallback where defined by the Product Definition.
 - Core is resolved and installed once. TUI never acquires SDL3. SDL3 is exclusive to GUI-SDL.
 - Product Definitions are updated only to immutable component releases that have verified package assets and compatible API/ABI/Protocol/Host API identities.
 
@@ -85,22 +85,22 @@ Do not update profile pins to an unmerged PR branch or to a component main SHA t
 
 Consumer Registry executable acquisition:
 
-\`\`\`sh
+```sh
 make registry
 make registry-gui
 CDIN_OFFLINE=1 make registry
-\`\`\`
+```
 
 The full current developer stack:
 
-\`\`\`sh
+```sh
 make deps
 make registry-dev
 make stack
 make check
-\`\`\`
+```
 
-For a GUI-SDL source-development stack, use \`make registry-gui-dev\` and the explicit SDL3 developer-source opt-in provided by the GUI stack target. Ordinary GUI-SDL consumer installation must use the pinned prebuilt SDK and must not build SDL3 from source.
+For a GUI-SDL source-development stack, use `make registry-gui-dev` and the explicit SDL3 developer-source opt-in provided by the GUI stack target. Ordinary GUI-SDL consumer installation must use the pinned prebuilt SDK and must not build SDL3 from source.
 
 The resolved Registry Manifest is authoritative for selected component versions and exact source/artifact identities. CDIN must not maintain a second component-version map. Product Definitions provide the consumer-specific roots and policies; the generic Registry remains independent.
 
