@@ -104,17 +104,47 @@ class _TrustedAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, file_pointer, code, message, headers, new_url)
 
 
+class _TrustedAPIHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep release metadata requests on api.github.com only."""
+
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        parsed = urllib.parse.urlparse(new_url)
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise RegistryBootstrapError("untrusted Registry API redirect port") from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.github.com"
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.startswith("/repos/cdin-editor/registry/")
+        ):
+            raise RegistryBootstrapError("Registry API redirect left the trusted API origin")
+        return super().redirect_request(request, file_pointer, code, message, headers, new_url)
+
+
 class GitHubReleaseClient:
     """Small bounded GitHub client; no shell, Git executable or Go toolchain is used."""
 
     def get_json(self, url: str) -> dict[str, Any]:
         parsed = urllib.parse.urlparse(url)
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise RegistryBootstrapError("Registry API URL has an invalid port") from error
         if (
             parsed.scheme != "https"
             or parsed.hostname != "api.github.com"
+            or port not in (None, 443)
             or not parsed.path.startswith("/repos/cdin-editor/registry/")
             or parsed.username is not None
             or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
         ):
             raise RegistryBootstrapError(f"untrusted Registry API URL: {url!r}")
         request = urllib.request.Request(
@@ -125,12 +155,26 @@ class GitHubReleaseClient:
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
+        opener = urllib.request.build_opener(_TrustedAPIHostRedirectHandler())
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                if response.status != 200:
-                    raise RegistryBootstrapError(
-                        f"GitHub Registry API returned HTTP {response.status}"
-                    )
+            with opener.open(request, timeout=30) as response:
+                final_url = urllib.parse.urlparse(response.geturl())
+                try:
+                    final_port = final_url.port
+                except ValueError as error:
+                    raise RegistryBootstrapError("Registry API response has an invalid port") from error
+                if (
+                    response.status != 200
+                    or final_url.scheme != "https"
+                    or final_url.hostname != "api.github.com"
+                    or final_port not in (None, 443)
+                    or final_url.username is not None
+                    or final_url.password is not None
+                    or final_url.query
+                    or final_url.fragment
+                    or not final_url.path.startswith("/repos/cdin-editor/registry/")
+                ):
+                    raise RegistryBootstrapError("Registry API response came from an untrusted origin")
                 data = response.read(MAX_JSON_BYTES + 1)
         except (OSError, urllib.error.URLError) as error:
             raise RegistryBootstrapError(f"cannot read Registry release API: {error}") from error
