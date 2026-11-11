@@ -417,6 +417,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
                 "lib/pkgconfig/cdin-kernel.pc": b"kernel pkgconfig",
                 "lib/pkgconfig/m-mdy-m-log.pc": b"logger pkgconfig",
                 "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake": b"logger cmake config",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake": b"logger cmake version",
                 "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake": b"logger imported targets",
             }
             for relative, payload in files.items():
@@ -443,6 +444,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
                 "lib/pkgconfig/cdin-kernel.pc": b"kernel pkgconfig",
                 "lib/pkgconfig/m-mdy-m-log.pc": b"logger pkgconfig",
                 "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake": b"logger cmake config",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake": b"logger cmake version",
                 "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake": b"logger targets",
             }
             for relative, payload in sdk_files.items():
