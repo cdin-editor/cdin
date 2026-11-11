@@ -14,6 +14,7 @@ from scripts.registry_artifact import (
     RegistryBootstrapError,
     TARGETS,
     _TrustedAPIHostRedirectHandler,
+    GitHubReleaseClient,
     acquire_registry_artifact,
     detect_target,
     verify_binary_target,
@@ -31,6 +32,42 @@ def elf64(machine: int = 62) -> bytes:
     return bytes(data)
 
 
+
+
+class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
+    def test_uses_workflow_token_only_for_the_github_api_origin(self) -> None:
+        captured = {}
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def geturl(self):
+                return "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
+
+            def read(self, _limit: int) -> bytes:
+                return b'{"tag_name":"v0.2.0-dev.1"}'
+
+        class FakeOpener:
+            def open(self, request, timeout: int):
+                captured["authorization"] = request.get_header("Authorization")
+                captured["timeout"] = timeout
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-registry-test"}, clear=True), \\
+             patch("scripts.registry_artifact.urllib.request.build_opener", return_value=FakeOpener()):
+            value = GitHubReleaseClient().get_json(
+                "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
+            )
+
+        self.assertEqual(value["tag_name"], "v0.2.0-dev.1")
+        self.assertEqual(captured["authorization"], "Bearer ghs-registry-test")
+        self.assertEqual(captured["timeout"], 30)
 
 class RegistryAPIHostRedirectTests(unittest.TestCase):
     def setUp(self) -> None:
