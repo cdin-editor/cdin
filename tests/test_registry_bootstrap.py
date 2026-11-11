@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts.build_stack import stage_cmake_prefix
 from scripts.configure import selected_package_version
-from scripts.registry import registry_go_environment
+from scripts.registry import (
+    create_effective_product_definition,
+    detect_target_tuple,
+    registry_go_environment,
+)
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
@@ -109,6 +115,209 @@ class RegistryMakeTargetTests(unittest.TestCase):
         self.assertIn('if args.registry_source_build:', stack_script)
         # CI is allowed to test the explicit source build; normal Make targets are not.
         self.assertIn('"scripts/build_stack.py", "--registry-source-build"', pipeline)
+
+
+
+class RegistryTargetDetectionTests(unittest.TestCase):
+    def test_linux_target_uses_supported_glibc_baseline(self) -> None:
+        self.assertEqual(
+            detect_target_tuple(
+                system="Linux", machine="x86_64", libc=("glibc", "2.39")
+            ),
+            {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+        )
+        self.assertEqual(
+            detect_target_tuple(
+                system="Linux", machine="aarch64", libc=("glibc", "2.40")
+            ),
+            {"os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"},
+        )
+
+    def test_rejects_old_or_non_gnu_linux_runtime(self) -> None:
+        for libc in (("glibc", "2.38"), ("musl", "1.2.5"), ("", "")):
+            with self.subTest(libc=libc):
+                with self.assertRaises(RuntimeError):
+                    detect_target_tuple(system="Linux", machine="x86_64", libc=libc)
+
+    def test_macos_target_requires_version_fifteen_or_newer(self) -> None:
+        self.assertEqual(
+            detect_target_tuple(system="Darwin", machine="arm64", mac_version="15.7.1"),
+            {"os": "darwin", "architecture": "arm64", "abi": "macos-15"},
+        )
+        with self.assertRaisesRegex(RuntimeError, "macOS 14"):
+            detect_target_tuple(system="Darwin", machine="x86_64", mac_version="14.7")
+
+    def test_windows_target_requires_ucrt64_and_x86_64(self) -> None:
+        self.assertEqual(
+            detect_target_tuple(
+                system="Windows", machine="AMD64", msystem="UCRT64"
+            ),
+            {"os": "windows", "architecture": "x86_64", "abi": "windows-ucrt64"},
+        )
+        with self.assertRaisesRegex(RuntimeError, "UCRT64"):
+            detect_target_tuple(system="Windows", machine="AMD64", msystem="MINGW64")
+        with self.assertRaisesRegex(RuntimeError, "only Windows x86_64"):
+            detect_target_tuple(system="Windows", machine="arm64", msystem="UCRT64")
+
+    def test_unsupported_system_and_architecture_fail_closed(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "operating system"):
+            detect_target_tuple(system="FreeBSD", machine="x86_64")
+        with self.assertRaisesRegex(RuntimeError, "architecture"):
+            detect_target_tuple(system="Linux", machine="riscv64", libc=("glibc", "2.39"))
+
+
+class EffectiveProductDefinitionTests(unittest.TestCase):
+    def test_creates_host_specific_copy_without_mutating_checked_in_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "product-definition.tui.yaml"
+            generated = root / "temporary" / "product-definition.yaml"
+            source = (
+                'schema_version: "1.0.0"\n'
+                "product:\n"
+                "  id: com.cdin.editor\n"
+                "  name: CDIN\n"
+                "components:\n"
+                "  - component_id: backend\n"
+                '    version_constraint: "1.2.1"\n'
+            )
+            original.write_text(source, encoding="utf-8")
+
+            result = create_effective_product_definition(
+                original,
+                generated,
+                {"os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"},
+            )
+
+            self.assertEqual(result, generated)
+            self.assertEqual(original.read_text(encoding="utf-8"), source)
+            generated_text = generated.read_text(encoding="utf-8")
+            self.assertIn('schema_version: "1.1.0"', generated_text)
+            self.assertIn("delivery_mode: artifact-or-source", generated_text)
+            self.assertIn("os: linux", generated_text)
+            self.assertIn("architecture: arm64", generated_text)
+            self.assertIn("abi: gnu-glibc-2.39", generated_text)
+
+    def test_rejects_existing_resolution_block_and_unknown_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "product.yaml"
+            destination = root / "generated.yaml"
+            source.write_text(
+                'schema_version: "1.0.0"\ncomponents: []\nresolution:\n  delivery_mode: source\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(RuntimeError, "already declares resolution"):
+                create_effective_product_definition(
+                    source, destination,
+                    {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                )
+            source.write_text('schema_version: "2.0.0"\ncomponents: []\n', encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "unsupported Product Definition schema"):
+                create_effective_product_definition(
+                    source, destination,
+                    {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                )
+
+
+class BackendArtifactStagingTests(unittest.TestCase):
+    REQUIRED_FILES = {
+        "include/cdin/backend.h": b"backend header",
+        "lib/libcdin_backend.a": b"backend archive",
+        "lib/libcdin_backend_services.a": b"backend services archive",
+        "lib/libcdin_protocol.a": b"protocol archive",
+        "lib/cmake/cdinBackend/cdinBackendConfig.cmake": b"cmake config",
+        "lib/cmake/cdinBackend/cdinBackendTargets.cmake": b"cmake targets",
+        "lib/pkgconfig/cdin-backend.pc": b"backend pkgconfig",
+        "lib/pkgconfig/cdin-backend-services.pc": b"backend services pkgconfig",
+        "lib/pkgconfig/cdin-protocol.pc": b"protocol pkgconfig",
+    }
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.package = self.root / "registry-package"
+
+        for relative, payload in self.REQUIRED_FILES.items():
+            path = self.package / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+
+        docs = self.package / "share" / "cdin-backend" / "BUILD-INFO.txt"
+        docs.parent.mkdir(parents=True, exist_ok=True)
+        docs.write_bytes(b"Backend 1.2.1 package provenance")
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _prepare_existing_component_prefix(self) -> Path:
+        prefix = self.root / "install-prefix"
+        files = {
+            "include/cdin/kernel.h": b"existing kernel header",
+            "lib/libcdin_kernel.a": b"existing kernel library",
+            "lib/pkgconfig/cdin-kernel.pc": b"kernel pkgconfig",
+            "lib/pkgconfig/m-mdy-m-log.pc": b"logger pkgconfig",
+        }
+        for relative, payload in files.items():
+            path = prefix / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        return prefix
+
+    def test_merges_backend_package_without_overwriting_kernel_or_logger(self) -> None:
+        prefix = self._prepare_existing_component_prefix()
+
+        stage_cmake_prefix(self.package, prefix)
+
+        for relative, payload in self.REQUIRED_FILES.items():
+            self.assertEqual((prefix / relative).read_bytes(), payload)
+        self.assertEqual(
+            (prefix / "include/cdin/kernel.h").read_bytes(),
+            b"existing kernel header",
+        )
+        self.assertEqual(
+            (prefix / "lib/pkgconfig/cdin-kernel.pc").read_bytes(),
+            b"kernel pkgconfig",
+        )
+        self.assertEqual(
+            (prefix / "lib/pkgconfig/m-mdy-m-log.pc").read_bytes(),
+            b"logger pkgconfig",
+        )
+        self.assertEqual(
+            (prefix / "share/cdin-backend/BUILD-INFO.txt").read_bytes(),
+            b"Backend 1.2.1 package provenance",
+        )
+
+    def test_collision_is_detected_before_any_package_file_is_copied(self) -> None:
+        prefix = self.root / "install-prefix"
+        collision = prefix / "lib" / "libcdin_backend.a"
+        collision.parent.mkdir(parents=True, exist_ok=True)
+        collision.write_bytes(b"pre-existing file")
+
+        with self.assertRaisesRegex(RuntimeError, "overwrite an existing staged file"):
+            stage_cmake_prefix(self.package, prefix)
+
+        self.assertEqual(collision.read_bytes(), b"pre-existing file")
+        self.assertFalse((prefix / "include/cdin/backend.h").exists())
+
+    def test_missing_required_package_file_fails_closed(self) -> None:
+        (self.package / "lib" / "libcdin_protocol.a").unlink()
+        with self.assertRaisesRegex(RuntimeError, "missing a regular required file"):
+            stage_cmake_prefix(self.package, self.root / "install-prefix")
+        self.assertFalse((self.root / "install-prefix").exists())
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlink creation may require elevated Windows privileges")
+    def test_symlink_in_registry_package_is_rejected(self) -> None:
+        outside = self.root / "outside"
+        outside.write_bytes(b"outside")
+        link = self.package / "lib" / "escape"
+        link.symlink_to(outside)
+
+        with self.assertRaisesRegex(RuntimeError, "symlink/special file"):
+            stage_cmake_prefix(self.package, self.root / "install-prefix")
+
+        self.assertFalse((self.root / "install-prefix" / "include/cdin/backend.h").exists())
+
 
 
 if __name__ == "__main__":
