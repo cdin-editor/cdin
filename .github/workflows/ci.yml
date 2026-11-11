@@ -92,7 +92,7 @@ jobs:
       - name: Run Registry and SDL3 artifact bootstrap tests
         run: |
           python -m unittest discover -s tests -p test_registry_artifact.py
-          python -m unittest discover -s tests -p test_sdl3_sdk.py
+          python -m unittest discover -s tests -p "test_*sdl3*.py"
       - name: Prepare Git identity and base branch for gix
         run: |
           git config user.name "github-actions[bot]"
