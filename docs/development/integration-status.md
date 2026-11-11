@@ -1,4 +1,43 @@
-## Current integration update — 2026-11-11 (post-merge release gate audit)
+## Current integration update — 2026-11-12 (live release and PR audit)
+
+**Authoritative product status: DEVELOPMENT.** This snapshot reflects the current public GitHub state on 2026-11-12. Component publisher code, component CI, release assets and CDIN product acceptance are tracked separately. None of the five CDIN P0 product issues is complete.
+
+### Current repository heads and release state
+
+| Owner | Current `main` head | Immutable release state relevant to CDIN |
+|---|---|---|
+| Spec | `274f84f0ca08378db9c4a5cf6820065256f31d5a` | Latest stable remains Spec `v1.4.0`. ADR-0028 is accepted; its existence does not prove each publisher or consumer has migrated. |
+| Kernel | `36ad2f0e30ef962d230b3f2ddc85065e8a513bbd` | Kernel PR [#6](https://github.com/cdin-editor/kernel/pull/6) merged at this exact SHA. It adds future-tag flat `cmake-prefix-v1` packages and canonical Registry metadata publication. Published `v1.2.2` remains the current release with five target archives; PR #6 did not rewrite or republish that immutable release. CDIN's existing lock still uses the already-published Kernel 1.2.1 SDK. |
+| Runtime | `e7655862fc6d15fa8546e2bc6d6c792ce742903c` | `v1.0.0-rc.2` contains `cdin-runtime-1.0.0-rc.2-modules.tar.gz` (53,149 bytes) and a ZIP companion. However, the Registry metadata at `registry/releases/runtime-1.0.0-rc.2.json` declares only `source_units` and no `artifacts`; the Release's legacy `runtime-1.0.0-rc.2.release.json` is not the canonical ADR-0028 asset. The existing module archive is therefore not yet a selected Registry artifact. No RC3 Release is published; Runtime #16 remains open. |
+| Backend | `1b07e4ebf1bbb1870167327b03ff18891490d1d7` | Backend `v1.2.1` has five target-native package archives, checksum files and per-package `.artifact.json` sidecars. The canonical Component Release Metadata asset `backend-1.2.1.json` is not present on that historical Release. The current static Registry Catalog can still consume its checked-in artifact metadata; ADR-0028 dynamic publisher migration and the next immutable release remain separate work. Backend #35 remains open; #25 is closed. |
+| Frontend | `688c981c31b4f891982b7a468470be6e2811a5b4` | Frontend PR [#49](https://github.com/cdin-editor/frontend/pull/49) is merged and main contains the Core/TUI/GUI-SDL package preparation. Published `v1.1.0` is still a source-only archive. No `v1.1.1` release with the three variant packages and canonical metadata assets exists; Frontend #40 remains open. |
+| Registry | `ff317e458a57dd9d8b8a2be8f7439ba860c99f10` | The only published executable Release is still `v0.1.0-dev`; its Linux and macOS target assets contain incorrect/duplicate architecture mappings. The corrected `0.2.0-dev.1` executable + same-commit Catalog/descriptor Release is not published. Registry #58 remains open. |
+| CDIN | `ea95b548f885a00d77bdc63bda13b6ae462924e5` | CDIN PR #129 merged the five-target SDL3 SDK producer. Its target-native build/consumer tests passed on the PR head, but the `sdl3-sdk-v3.4.16` Git tag, Release and downloadable SDK assets are still absent. CDIN #124 remains open. |
+| cdin-x | `bac35ff6ae25acad74875470a6feb24e7605cd0e` | Published bundle release remains `v0.2.0`; no change relevant to the current artifact-first blockers was observed in this snapshot. |
+
+### Current CDIN pull requests
+
+- **CDIN #130** — [safe SDL3 source extraction](https://github.com/cdin-editor/cdin/pull/130), head `0e44f2389a145df6c182870773f017d1494e9c81`. It now uses the bounded extractor's returned archive root rather than guessing the top-level directory name. The preceding exact-head CI failed because tests assumed `SDL3-3.4.16`; the follow-up run [43103148124](https://github.com/cdin-editor/cdin/actions/runs/43103148124) is still running. This is a developer source-path security fix, not completion of the prebuilt SDK consumer or #124.
+- **CDIN #131** — [pinned Registry binary and artifact bootstrap](https://github.com/cdin-editor/cdin/pull/131), current head `12331902f5c1493c42d5fbd571c386307a90f79b`. It adds Runtime module archive validation, separate Frontend Core/TUI/GUI-SDL package staging and separate legacy-source versus split-artifact CMake modes. It also keeps the normal GUI path fail-closed until the prebuilt SDL3 SDK is available and ports bounded SDL3 extraction into the explicit developer path. Exact-head CI run [43103885983](https://github.com/cdin-editor/cdin/actions/runs/43103885983) is queued; no passing exact-head result is available yet. Current Catalog identities still do not provide a complete artifact graph: Runtime RC2 metadata has no artifact descriptor and Frontend 1.0.2 is source-only, so #122 is not complete.
+- **CDIN #128** — this documentation-only PR refreshes the cross-repository status record. Its branch is based on an earlier `main` SHA; the document is being refreshed to this snapshot before review/merge.
+
+Kernel PR [#6](https://github.com/cdin-editor/kernel/pull/6) is **merged**, not open. Its merge commit is `36ad2f0e30ef962d230b3f2ddc85065e8a513bbd`. The new publisher applies to future tags; it does not create a new Kernel release retroactively.
+
+### Product integration blockers
+
+- **Registry executable (#121):** the corrected five-target `0.2.0-dev.1` Release and exact executable/Catalog/descriptor identity remain unavailable. The normal consumer bootstrap must fail closed rather than use the invalid `v0.1.0-dev` assets or clone/build Registry.
+- **Artifact-first install (#122):** Backend 1.2.1 provides target-native artifacts in the current static Catalog. Runtime RC2's module tarball is not declared in its Registry metadata, and Frontend 1.0.2 is a source-only candidate without Core/TUI/GUI-SDL split packages. PR #131 prepares the consuming path for those immutable packages but cannot make them exist. The issue remains open.
+- **SDL3 SDK (#124):** SDK producer code is merged, but no five-target SDK Release is available. PR #130 hardens only the explicit source fallback; PR #131 rejects a GUI consumer install without the verified SDK. TUI remains SDL-free.
+- **IME and PaneTree (#118):** do not activate or advertise these capabilities until Frontend, Backend and Runtime immutable identities/capabilities are synchronized and the complete Driver/Observer end-to-end lifecycle passes on the actual selected packages.
+- **Product integration (#111):** full application behavior, readiness/event loop, Unicode shaping and bidi (including Persian/Arabic), complete TUI/GUI interactions, extension lifecycle, session recovery, representative performance/soak budgets and installable application distributions remain unverified. The rolling `latest` prerelease is not published; existing old SemVer prereleases do not satisfy the new release-channel design.
+
+**Do not close #111, #118, #121, #122 or #124 on the basis of these PRs, component package builds or source-level tests.** Each requires its own published identity, product integration and acceptance evidence.
+
+---
+
+## Previous integration update — 2026-11-11 (superseded)
+
+
 
 **Authoritative product status: DEVELOPMENT.** This section supersedes earlier 2026-11-11 snapshots. It records the state after the Runtime, Backend, Frontend and SDL3 publisher-preparation changes merged to their default branches. Publisher implementation and green component CI are not equivalent to a published immutable release, an artifact-first product install, or a usable application distribution.
 
