@@ -94,8 +94,6 @@ is not available.
 
 ## 6. Source archive
 
-## 6. Source archive
-
 To create a source archive for development review:
 
 ```sh
