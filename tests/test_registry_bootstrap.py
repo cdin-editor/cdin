@@ -87,5 +87,28 @@ class ConfigureManifestTests(unittest.TestCase):
             )
 
 
+class RegistryMakeTargetTests(unittest.TestCase):
+    def test_normal_stack_uses_pinned_registry_binary(self) -> None:
+        makefile = (Path(__file__).resolve().parents[1] / "Makefile").read_text(encoding="utf-8")
+        self.assertRegex(makefile, r"(?m)^stack: deps registry$")
+        self.assertRegex(makefile, r"(?m)^stack-gui: deps registry-gui$")
+        self.assertNotRegex(makefile, r"(?m)^stack:.*registry-dev")
+        self.assertNotRegex(makefile, r"(?m)^stack-gui:.*registry-gui-dev")
+
+    def test_source_build_is_explicit_for_developer_stack_targets(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        makefile = (root / "Makefile").read_text(encoding="utf-8")
+        stack_script = (root / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+        pipeline = (root / "pipeline.toml").read_text(encoding="utf-8")
+
+        self.assertRegex(makefile, r"(?m)^stack-dev: registry-dev$")
+        self.assertRegex(makefile, r"(?m)^stack-gui-dev: registry-gui-dev$")
+        self.assertIn("--registry-source-build", makefile)
+        self.assertIn('parser.add_argument(\n        "--registry-source-build"', stack_script)
+        self.assertIn('if args.registry_source_build:', stack_script)
+        # CI is allowed to test the explicit source build; normal Make targets are not.
+        self.assertIn('"scripts/build_stack.py", "--registry-source-build"', pipeline)
+
+
 if __name__ == "__main__":
     unittest.main()
