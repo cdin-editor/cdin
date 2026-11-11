@@ -13,11 +13,12 @@ import urllib.request
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+try:
+    from .package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+except ImportError:  # Direct execution: scripts/ is sys.path[0].
+    from package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
 
-from scripts.package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
 PROFILE = "tui"
 WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
