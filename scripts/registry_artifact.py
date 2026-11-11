@@ -532,6 +532,10 @@ def acquire_registry_artifact(
         executable_name=executable_name,
     )
     destination = cache_paths[0]
+    if cache_root.is_symlink():
+        raise RegistryBootstrapError("Registry cache root must not be a symlink")
+    if destination.is_symlink():
+        raise RegistryBootstrapError("Registry cache destination must not be a symlink")
     if destination.exists():
         try:
             return _verify_cached(
@@ -547,9 +551,10 @@ def acquire_registry_artifact(
                 raise RegistryBootstrapError(
                     "offline Registry cache is missing or corrupt for this exact release identity"
                 )
-            if destination.is_symlink():
-                raise RegistryBootstrapError("Registry cache destination must not be a symlink")
-            shutil.rmtree(destination)
+            if destination.is_dir():
+                shutil.rmtree(destination)
+            else:
+                destination.unlink()
 
     if offline:
         raise RegistryBootstrapError(
@@ -559,7 +564,8 @@ def acquire_registry_artifact(
     release = client.get_json(f"{REGISTRY_API}/releases/tags/{urllib.parse.quote(tag, safe='')}")
     if release.get("tag_name") != tag or release.get("draft") is True:
         raise RegistryBootstrapError("GitHub Registry Release tag is missing, draft or mismatched")
-    if release.get("prerelease") is not ("-" in version):
+    expected_prerelease = "-" in version.split("+", 1)[0]
+    if release.get("prerelease") is not expected_prerelease:
         raise RegistryBootstrapError("GitHub Registry Release prerelease flag differs from its SemVer")
     resolved_commit = _resolve_tag_commit(client, tag)
     if resolved_commit != revision:
@@ -635,9 +641,9 @@ def acquire_registry_artifact(
     verify_binary_target(binary_bytes, os_name=os_name, architecture=architecture)
 
     parent = destination.parent
+    if parent.is_symlink():
+        raise RegistryBootstrapError("Registry cache target directory must not be a symlink")
     parent.mkdir(parents=True, exist_ok=True)
-    if parent.is_symlink() or cache_root.is_symlink():
-        raise RegistryBootstrapError("Registry cache root must not contain a symlink at its root")
     staging = Path(tempfile.mkdtemp(prefix=".registry-stage-", dir=parent))
     try:
         descriptor_path = staging / "registry-release.json"
