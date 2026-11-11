@@ -208,6 +208,63 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
                     offline=True,
                 )
 
+
+    @unittest.skipIf(os.name == "nt", "POSIX cache symlinks require Unix filesystem semantics")
+    def test_rejects_symlinked_cache_ancestor_before_network(self) -> None:
+        client = FakeGitHubClient()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real = root / "real-cache"
+            real.mkdir()
+            linked = root / "linked-cache"
+            linked.symlink_to(real, target_is_directory=True)
+
+            class NoNetwork:
+                def get_json(self, _url: str) -> dict:
+                    raise AssertionError("unsafe cache path reached network")
+
+                def download(self, _url: str, *, maximum: int) -> bytes:
+                    raise AssertionError("unsafe cache path reached asset download")
+
+            with self.assertRaisesRegex(RegistryBootstrapError, "symlink or non-directory ancestor"):
+                acquire_registry_artifact(
+                    self._pin(client),
+                    cache_root=linked / "registry",
+                    target=("linux", "amd64"),
+                    client=NoNetwork(),
+                )
+
+    @unittest.skipIf(os.name == "nt", "POSIX executable mode bits are not portable to Windows")
+    def test_rejects_cached_binary_without_executable_permission(self) -> None:
+        client = FakeGitHubClient()
+        with tempfile.TemporaryDirectory() as temporary:
+            cache = Path(temporary) / "cache"
+            binary, _catalog = acquire_registry_artifact(
+                self._pin(client),
+                cache_root=cache,
+                target=("linux", "amd64"),
+                client=client,
+            )
+            binary.chmod(0o644)
+
+            class NoNetwork:
+                def get_json(self, _url: str) -> dict:
+                    raise AssertionError("offline cache verification must not fetch release metadata")
+
+                def download(self, _url: str, *, maximum: int) -> bytes:
+                    raise AssertionError("offline cache verification must not download assets")
+
+            with self.assertRaisesRegex(
+                RegistryBootstrapError, "offline Registry cache is missing or corrupt"
+            ):
+                acquire_registry_artifact(
+                    self._pin(client),
+                    cache_root=cache,
+                    target=("linux", "amd64"),
+                    client=NoNetwork(),
+                    offline=True,
+                )
+
     def test_rejects_moved_tag_before_downloading_assets(self) -> None:
         client = FakeGitHubClient(tag_commit="b" * 40)
         with tempfile.TemporaryDirectory() as temporary:
