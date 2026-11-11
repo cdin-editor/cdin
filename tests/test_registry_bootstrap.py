@@ -92,7 +92,7 @@ class KernelSDKReleasePinTests(unittest.TestCase):
                 requested["timeout"] = timeout
                 return FakeResponse()
 
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-test-token"}, clear=True), \\
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-test-token"}, clear=True), \
              patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
             payload = fetch_github_json(
                 "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
