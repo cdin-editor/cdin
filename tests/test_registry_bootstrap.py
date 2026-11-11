@@ -10,7 +10,7 @@ from unittest.mock import patch
 from scripts.build_stack import (
     stage_cmake_prefix,
     stage_kernel_sdk_prefix,
-    verify_kernel_sdk_manifest_contract,
+    verify_environment_sdk_contract,
 )
 from scripts.configure import selected_package_version
 from scripts.deps import (
@@ -371,38 +371,24 @@ class KernelSDKCompositionTests(unittest.TestCase):
             )
 
 
-    def test_kernel_sdk_version_and_abi_must_match_registry_manifest(self) -> None:
+    def test_kernel_sdk_pins_must_match_manifest_environment_contracts(self) -> None:
         manifest = {
-            "components": [
-                {
-                    "component_id": "kernel",
-                    "variant": "default",
-                    "version": "1.2.1",
-                    "contracts": {
-                        "provides": [
-                            {"contract_id": "org.cdin.kernel-abi", "version": "1.1.0"}
-                        ]
-                    },
-                }
+            "environment_contracts": [
+                {"contract_id": "org.cdin.kernel-abi", "version": "1.1.0"},
+                {"contract_id": "org.m-mdy-m.log-c-api", "version": "0.1.0"},
+                {"contract_id": "org.lua.puc-lua-c-api", "version": "5.4.0"},
             ]
         }
-        pin = {"version": "1.2.1", "kernel_abi": "1.1.0"}
-        verify_kernel_sdk_manifest_contract(manifest, pin)
+        pin = {"version": "1.2.1", "kernel_abi": "1.1.0", "logger_version": "0.1.0"}
+        verify_environment_sdk_contract(manifest, pin)
 
-        wrong_version = {"version": "1.2.0", "kernel_abi": "1.1.0"}
-        with self.assertRaisesRegex(RuntimeError, "does not match Registry Kernel version"):
-            verify_kernel_sdk_manifest_contract(manifest, wrong_version)
+        wrong_abi = {"version": "1.2.1", "kernel_abi": "1.0.0", "logger_version": "0.1.0"}
+        with self.assertRaisesRegex(RuntimeError, "environment contracts"):
+            verify_environment_sdk_contract(manifest, wrong_abi)
 
-        wrong_abi = {"version": "1.2.1", "kernel_abi": "1.0.0"}
-        with self.assertRaisesRegex(RuntimeError, "does not match Registry Kernel ABI"):
-            verify_kernel_sdk_manifest_contract(manifest, wrong_abi)
-
-    def test_kernel_sdk_manifest_requires_one_default_kernel(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "exactly one Kernel default component"):
-            verify_kernel_sdk_manifest_contract(
-                {"components": []},
-                {"version": "1.2.1", "kernel_abi": "1.1.0"},
-            )
+        wrong_logger = {"version": "1.2.1", "kernel_abi": "1.1.0", "logger_version": "0.2.0"}
+        with self.assertRaisesRegex(RuntimeError, "environment contracts"):
+            verify_environment_sdk_contract(manifest, wrong_logger)
 
     def test_kernel_logger_sdk_prefix_stages_all_cmake_and_pkgconfig_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
