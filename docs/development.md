@@ -18,7 +18,7 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `scripts/deps.py` | Download, validate and atomically install the pinned Kernel 1.2.1 + logger 0.1.0 SDK Release package. |
 | `scripts/registry.py` | Acquire the pinned Registry Release binary/Catalog by default; validate, resolve, prepare, verify and replay the component workspace. Its explicit `--source-build` switch is for Registry development only. |
 | `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |
-| `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
+| `scripts/build_stack.py` | Artifact-only consumer orchestration; source-delivered components are accepted only under the explicit developer/CI opt-in. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
 | `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
 | `src/integration/gui_sdl.c` | CDIN-owned Backend/Frontend Protocol transport and GUI-SDL process lifecycle composition. |
@@ -36,7 +36,7 @@ Registry prepares immutable component source units under `.deps/registry-workspa
 
 ## 2. Prerequisites
 
-The current hybrid development stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal Registry bootstrap uses its pinned prebuilt Release executable and does not need a local Go toolchain. Go 1.27.3 or newer is needed only for the explicit Registry source-build path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
+The Composition Root build needs a C11 compiler and linker, CMake 3.22 or newer, Make, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal consumer path is designed not to require Git or Go: Registry and component packages are acquired as pinned Release artifacts. Git and Go 1.27.3 or newer are required only by the explicit hybrid developer/CI source path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
 
 ### GNU/Linux
 
@@ -61,7 +61,7 @@ export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 ### Windows
 
-Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, Git, pkgconf, Lua 5.4, Python, Python pip and Go packages from the UCRT64 repository:
+Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, pkgconf, Lua 5.4, Python and Python pip from the UCRT64 repository. Git and Go are needed only for the explicit developer source-build targets:
 
 ```sh
 pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
@@ -74,34 +74,32 @@ Use the `lua54` package rather than the unversioned `lua` package. The CI build 
 
 ## 3. Resolve, build and test the component stack
 
-From the repository root:
+There are two intentionally separate paths.
+
+**Normal consumer path (artifact-only):**
 
 ```sh
-make stack
+make install
+# or choose the GUI-SDL profile:
+CDIN_FRONTEND_VARIANT=gui-sdl make install
 ```
 
-The current stack is a **hybrid artifact/source integration candidate**, not yet a complete artifact-first consumer installation:
+This path does not clone component repositories or build component sources. Registry resolves only published artifacts; CDIN stages their verified packages and builds the Composition Root. It fails closed while any required immutable Registry/component/SDK Release is missing. It must never silently fall back to source delivery.
 
-1. `make deps` downloads, verifies and safely installs the existing Kernel 1.2.1 Release package, which also contains the pinned `m-mdy-m/log.c` 0.1.0 SDK. The installed Kernel version and ABI are checked against the Registry Manifest before either SDK is staged into CDIN's private prefix. Kernel and logger are not cloned or compiled from source.
-2. Backend 1.2.1 is selected as a native `cmake-prefix-v1` artifact by Registry for the detected target. CDIN verifies the selected target, package identity and required CMake/pkg-config files, then stages it into the same private prefix without overwriting Kernel/logger files.
-3. Registry still resolves the component graph and collects source units for Runtime and Frontend because their current Catalog identities do not yet provide the required module/variant artifacts. These source units are kept in the immutable Manifest/workspace and staged only for the current development build.
-4. GUI-SDL currently builds the checksum-pinned SDL3 3.4.16 source archive. The SDK publisher is merged, but the actual five-target SDK Release and its digests are not yet available. TUI does not build or stage SDL3.
-5. CDIN configures and builds the Composition Root against the staged Kernel/logger and Backend packages, the source-delivered Runtime/Frontend development trees, and (for GUI-SDL only) SDL3. Registry replay and product E2E assertions run before the Composition Root is built.
-
-**Registry release blocker:** the normal consumer Registry pin is deliberately missing the descriptor SHA-256/size because the corrected `v0.2.0-dev.1` Release has not been published. The old `v0.1.0-dev` target binaries are unsafe. Consequently `make registry`, `make stack` and `make install` fail closed at Registry acquisition until a real verified Release is available. They do not silently switch to the source path.
-
-The explicit contributor/CI source mode is separate:
+**Current hybrid developer/CI path:**
 
 ```sh
-make registry-dev
 make stack-dev
-make registry-gui-dev
 make stack-gui-dev
 ```
 
-Those targets use the separately pinned Registry development commit, compile/test Registry from source, and run the current hybrid component integration. Pipeline's CI task graph passes the explicit source-build option for that reason. It is not evidence that ordinary consumer installation is ready.
+The developer targets build/test the pinned Registry source and explicitly allow source delivery for components whose package Releases are not published yet.
 
-The broader artifact-first migration remains open in CDIN #122. Runtime's platform-neutral module archive, Frontend's Core/TUI/GUI-SDL package set, SDL3's five-target SDK Release, and the corrected Registry executable/Catalog Release must be published and pinned before the normal product install can become source-free.
+The current development profile reuses the existing Kernel 1.2.1 Release package, including the pinned logger 0.1.0 SDK, and selects Backend 1.2.1 as a native `cmake-prefix-v1` artifact. Runtime and Frontend remain source-delivered by the current Catalog; GUI-SDL also builds the checksum-pinned SDL3 3.4.16 source archive. This hybrid path is for contributor/CI validation only and is not the ordinary consumer installation.
+
+**Release blockers:** the corrected Registry `v0.2.0-dev.1` Release/descriptor is not published; Runtime's next immutable module Release and matching Catalog entry, Frontend Core/TUI/GUI-SDL package Releases, and the five-target SDL3 SDK Release are also missing. Therefore the default `make registry`, `make stack` and `make install` paths fail closed today. This is expected behavior, not a reason to add a source fallback.
+
+CDIN #122 remains open until the actual immutable artifacts are published, selected and staged by Registry, warm/offline consumer installs pass, and only the Composition Root is built in the normal path.
 
 The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains non-component dependency pins and the exact Registry Release pin. See [Registry integration](development/registry.md).
 
