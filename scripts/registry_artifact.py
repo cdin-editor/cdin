@@ -627,7 +627,7 @@ def _verify_cached(
         size=executable["size"],
     )
     verify_binary_target(binary_bytes, os_name=os_name, architecture=architecture)
-    if os_name != "windows" and not (binary_path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)):
+    if os.name != "nt" and os_name != "windows" and not (binary_path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)):
         raise RegistryBootstrapError("cached Registry executable has lost its executable permission")
     return binary_path, catalog_path
 
