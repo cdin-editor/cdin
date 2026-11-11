@@ -79,6 +79,8 @@ def main() -> int:
                 "lib/libcdin_protocol.a",
                 "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
                 "lib/pkgconfig/cdin-backend.pc",
+                "lib/pkgconfig/cdin-backend-services.pc",
+                "lib/pkgconfig/cdin-protocol.pc",
             ):
                 candidate = package / required
                 if candidate.is_symlink() or not candidate.is_file():
