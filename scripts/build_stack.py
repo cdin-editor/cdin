@@ -259,15 +259,6 @@ def main() -> int:
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     env = pkg_env()
-    lua_options: list[str] = []
-    if os.name == "nt":
-        lua_include = os.environ.get("CDIN_LUA_INCLUDE_DIR")
-        lua_library = os.environ.get("CDIN_LUA_LIBRARY")
-        if not lua_include or not lua_library:
-            print("Windows builds require the explicit Lua 5.4 UCRT64 include and library paths", file=sys.stderr)
-            return 2
-        lua_options = [f"-DLUA_INCLUDE_DIR={lua_include}", f"-DLUA_LIBRARY={lua_library}"]
-
     logger = DEPS / "logger"
     logger_build = BUILD / "logger"
     run(["cmake", "-S", str(logger), "-B", str(logger_build),
