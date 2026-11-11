@@ -9,8 +9,10 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
+FULL_REVISION = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
 DIST = ROOT / "dist"
 ARCHIVE = DIST / "cdin-composition-root-source.zip"
 CHECKSUM = DIST / "cdin-composition-root-source.zip.sha256"
@@ -42,10 +44,31 @@ def main() -> int:
     if not isinstance(components, list):
         raise SystemExit("Registry Resolved Manifest has no components array")
 
-    required = {"kernel", "runtime", "backend", "frontend"}
-    selected = {item.get("component_id") for item in components}
-    if selected != required:
-        raise SystemExit(f"Resolved Manifest components are {sorted(selected)}, expected {sorted(required)}")
+    required_components = {"runtime", "backend", "frontend"}
+    selected_components = {item.get("component_id") for item in components}
+    if selected_components != required_components:
+        raise SystemExit(
+            f"Resolved Manifest components are {sorted(selected_components)}, "
+            f"expected {sorted(required_components)}; Kernel/logger are environment providers, "
+            "not separately resolved component packages"
+        )
+
+    expected_environment = {
+        ("org.cdin.kernel-abi", "1.1.0"),
+        ("org.m-mdy-m.log-c-api", "0.1.0"),
+        ("org.lua.puc-lua-c-api", "5.4.0"),
+    }
+    environment_contracts = manifest.get("environment_contracts")
+    if not isinstance(environment_contracts, list):
+        raise SystemExit("Resolved Manifest has no environment contract records")
+    actual_environment = {
+        (item.get("contract_id"), item.get("version"))
+        for item in environment_contracts
+        if isinstance(item, dict)
+    }
+    if not expected_environment.issubset(actual_environment):
+        missing = sorted(expected_environment - actual_environment)
+        raise SystemExit(f"Resolved Manifest is missing pinned environment contracts: {missing}")
 
     frontend_variants = {
         item.get("variant") for item in components
@@ -60,20 +83,37 @@ def main() -> int:
 
     package_records = []
     for item in sorted(components, key=lambda value: (value["component_id"], value.get("variant", ""))):
+        delivery = item.get("delivery", "source")
+        if delivery == "artifact":
+            artifact = item.get("selected_artifact")
+            if not isinstance(artifact, dict):
+                raise SystemExit(f"artifact descriptor is missing for {item['component_id']}")
+            provenance = artifact.get("source_provenance", [])
+        elif delivery == "source":
+            artifact = None
+            provenance = item.get("source_units", [])
+        else:
+            raise SystemExit(f"unsupported delivery mode for {item['component_id']}: {delivery!r}")
+
         revisions = []
-        for unit in item.get("source_units", []):
-            revision = unit.get("revision")
-            if not isinstance(revision, str) or len(revision) != 40:
+        for source in provenance:
+            revision = source.get("revision") if isinstance(source, dict) else None
+            if not isinstance(revision, str) or not FULL_REVISION.fullmatch(revision):
                 raise SystemExit(f"invalid immutable source revision in {item['component_id']}")
             revisions.append(revision)
         if not revisions:
-            raise SystemExit(f"component {item['component_id']} has no immutable source revision")
-        package_records.append({
+            raise SystemExit(f"component {item['component_id']} has no immutable source provenance")
+
+        record = {
             "component_id": item["component_id"],
             "variant": item.get("variant", "default"),
             "version": item["version"],
+            "delivery": delivery,
             "source_revisions": revisions,
-        })
+        }
+        if artifact is not None:
+            record["selected_artifact"] = artifact
+        package_records.append(record)
 
     commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
@@ -97,6 +137,13 @@ def main() -> int:
             "registry_manifest_sha256": sha256(manifest_bytes).hexdigest(),
             "source_archive_sha256": actual,
         },
+        "registry_version": manifest.get("registry_version"),
+        "resolution": manifest.get("resolution"),
+        "environment_contracts": sorted(
+            ({"contract_id": item["contract_id"], "version": item["version"]}
+             for item in environment_contracts),
+            key=lambda item: (item["contract_id"], item["version"]),
+        ),
         "components": package_records,
         "artifacts": [{
             "file": ARCHIVE.name,
