@@ -5,7 +5,7 @@ product:
 components:
   - component_id: backend
     variant: default
-    version_constraint: "1.2.0"
+    version_constraint: "1.2.1"
   - component_id: frontend
     variant: tui
     version_constraint: "1.0.2"
