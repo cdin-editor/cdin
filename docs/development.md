@@ -16,7 +16,7 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `src/diagnostics/` | CDIN logger adapter and Backend log callback. |
 | `include/cdin/` | Private headers shared by launcher modules. |
 | `scripts/deps.py` | Pinned non-component dependency checkout and materialization. |
-| `scripts/registry.py` | Build Registry, validate inputs, resolve, prepare, verify and replay the component workspace. |
+| `scripts/registry.py` | Acquire the pinned Registry Release binary/Catalog by default; validate, resolve, prepare, verify and replay the component workspace. Its explicit `--source-build` switch is for Registry development only. |
 | `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |
 | `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
@@ -36,7 +36,7 @@ Registry prepares immutable component source units under `.deps/registry-workspa
 
 ## 2. Prerequisites
 
-The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files, Python 3.11 or newer and Go 1.27.3 or newer for the Registry build tool.
+The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal Registry bootstrap uses its pinned prebuilt Release executable and does not need a local Go toolchain. Go 1.27.3 or newer is needed only for the explicit Registry source-build path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
 
 ### GNU/Linux
 
@@ -80,18 +80,28 @@ From the repository root:
 make stack
 ```
 
-The Pipeline task graph performs the following steps in order:
+The normal Makefile stack now follows the artifact-first Registry tool path:
 
-1. Check out the immutable non-component dependencies and developer tools.
-2. Check out and build the pinned Registry source, then run its Go test suite.
+1. Materialize the pinned non-component logger dependency needed by the current component build.
+2. Acquire the exact Registry executable and Catalog snapshot from the immutable Release pin in `deps.lock`; verify the descriptor, Release asset digests/sizes and native executable target before execution.
 3. Validate the selected Product Definition and Catalog Index against Registry's versioned contracts.
-4. Resolve the transitive component/dependency/contract graph.
-5. Prepare the immutable source workspace and Resolved Manifest.
-6. Verify the Manifest, replay it into a second workspace and compare the resulting Manifest bytes.
-7. Materialize the selected source units for the existing dependency-ordered build.
-8. Build/test/install Kernel, Backend and Frontend, configure/build/test/install CDIN, and run product lifecycle E2E.
+4. Resolve the transitive component/dependency/contract graph and prepare its Resolved Manifest/workspace.
+5. Verify the Manifest, replay it into a second workspace and compare the resulting Manifest bytes.
+6. Materialize the selected component source units for the existing dependency-ordered build.
+7. Build/test/install Kernel, Backend and Frontend, configure/build/test/install CDIN, and run product lifecycle E2E.
 
-The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains only non-component dependencies and build tools. See [Registry integration](development/registry.md).
+**Migration status:** the Registry CLI itself is acquired as a prebuilt binary in the normal path. The current static Catalog still has source-delivered Kernel, Runtime and Frontend releases, and the current stack builder still compiles selected component sources. The broader component-artifact migration is tracked separately in CDIN #122; do not interpret the Registry binary bootstrap as proof that a clean install is already source-free.
+
+The explicit source-build path remains available to contributors who modify Registry:
+
+```sh
+make stack-dev
+make stack-gui-dev
+```
+
+Those targets build/test the pinned Registry source and then run the same stack orchestration. The default `make stack` and `make stack-gui` do not silently fall back to this path.
+
+The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains non-component dependency pins and the exact Registry Release pin. See [Registry integration](development/registry.md).
 
 To prepare a Registry workspace without compiling the stack:
 
@@ -110,7 +120,7 @@ make stack-gui
 
 On Windows PowerShell, the same Makefile entry point selects `python`. When your Python installation is exposed only through the Python launcher, use `make PYTHON="py -3" install`.
 
-Registry builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. For a private mirror, set `CDIN_GOPROXY` explicitly.
+Registry source builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. The normal binary bootstrap does not invoke Go. For a private mirror used by the developer source-build path, set `CDIN_GOPROXY` explicitly.
 
 Registry refuses to overwrite an existing workspace or replay destination. Remove the generated `.deps/registry-workspace-<profile>` and `.deps/registry-replay-<profile>` directories (or use `make clean`) before preparing the same profile again.
 
