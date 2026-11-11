@@ -134,6 +134,19 @@ class PreReleaseManifestTests(unittest.TestCase):
         variants = {item["variant"] for item in report["components"] if item["component_id"] == "frontend"}
         self.assertEqual(variants, {"tui", "gui-sdl"})
 
+    def test_duplicate_component_variant_identity_fails_closed(self) -> None:
+        self.manifest["components"].append(dict(self.manifest["components"][0]))
+        self.write_manifest()
+        with self.assertRaisesRegex(SystemExit, "duplicate component/variant"):
+            with (
+                patch.object(pre_release, "ROOT", self.root),
+                patch.object(pre_release, "DIST", self.dist),
+                patch.object(pre_release, "ARCHIVE", self.archive),
+                patch.object(pre_release, "CHECKSUM", self.checksum),
+                patch.dict("os.environ", {"CDIN_FRONTEND_VARIANT": "tui"}),
+            ):
+                pre_release.main()
+
     def test_missing_kernel_environment_contract_fails_closed(self) -> None:
         self.manifest["environment_contracts"] = [
             item for item in self.manifest["environment_contracts"]
