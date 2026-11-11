@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.build_stack import (
+    runtime_module_package_root,
     stage_cmake_prefix,
+    stage_frontend_variant_prefix,
     stage_kernel_sdk_prefix,
     verify_environment_sdk_contract,
 )
@@ -741,6 +743,123 @@ class KernelSDKAtomicInstallTests(unittest.TestCase):
         self.assertFalse(self.destination.with_name("sdk.previous").exists())
         self.assertFalse(list(self.root.glob("sdk.staging-*")))
 
+
+
+class FrontendArtifactStagingTests(unittest.TestCase):
+    required = {
+        "core": (
+            "include/cdin/frontend/core/version.h",
+            "lib/libcdin_frontend_core.a",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfig.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfigVersion.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreTargets.cmake",
+            "lib/pkgconfig/cdin-frontend-core.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+        "tui": (
+            "include/cdin/frontend/ui/tui/tui.h",
+            "lib/libcdin_frontend_ui_tui.a",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfig.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfigVersion.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUITargets.cmake",
+            "lib/pkgconfig/cdin-frontend-tui.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+    }
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_core_and_tui_packages_are_staged_in_separate_prefixes(self) -> None:
+        staged = {}
+        for variant in ("core", "tui"):
+            package = self.root / "packages" / variant
+            for relative in self.required[variant]:
+                path = package / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                payload = variant if relative.endswith("BUILD-INFO.txt") else relative
+                path.write_text(payload, encoding="utf-8")
+            prefix = self.root / "install" / "frontend" / variant
+            stage_frontend_variant_prefix(package, prefix, variant=variant)
+            staged[variant] = prefix
+
+        self.assertEqual(
+            (staged["core"] / "share/cdin-frontend/BUILD-INFO.txt").read_text(encoding="utf-8"),
+            "core",
+        )
+        self.assertEqual(
+            (staged["tui"] / "share/cdin-frontend/BUILD-INFO.txt").read_text(encoding="utf-8"),
+            "tui",
+        )
+        self.assertTrue(
+            (staged["core"] / "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfig.cmake").is_file()
+        )
+        self.assertTrue(
+            (staged["tui"] / "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfig.cmake").is_file()
+        )
+
+    def test_unknown_frontend_variant_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported Frontend package variant"):
+            stage_frontend_variant_prefix(
+                self.root / "package", self.root / "prefix", variant="unknown"
+            )
+
+
+class RuntimeArtifactRootTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.workspace = Path(self.temporary.name)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_returns_versioned_lua_module_root_from_registry_package(self) -> None:
+        root = (
+            self.workspace / "components/runtime/default/package"
+            / "cdin-runtime-1.0.0"
+        )
+        entry = root / "lua/cdin/runtime.lua"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("return {}\\n", encoding="utf-8")
+        manifest = {
+            "components": [{
+                "component_id": "runtime",
+                "variant": "default",
+                "version": "1.0.0",
+                "delivery": "artifact",
+                "selected_artifact": {
+                    "kind": "runtime-module-archive",
+                    "layout": "lua-module-tree-v1",
+                    "target": {"os": "any", "architecture": "any", "abi": "none"},
+                    "workspace_path": "components/runtime/default/package",
+                },
+            }]
+        }
+        with patch("scripts.build_stack.WORKSPACE", self.workspace):
+            self.assertEqual(runtime_module_package_root(manifest), root)
+
+    def test_rejects_a_non_universal_runtime_package_target(self) -> None:
+        manifest = {
+            "components": [{
+                "component_id": "runtime",
+                "variant": "default",
+                "version": "1.0.0",
+                "delivery": "artifact",
+                "selected_artifact": {
+                    "kind": "runtime-module-archive",
+                    "layout": "lua-module-tree-v1",
+                    "target": {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc"},
+                    "workspace_path": "components/runtime/default/package",
+                },
+            }]
+        }
+        with patch("scripts.build_stack.WORKSPACE", self.workspace):
+            with self.assertRaisesRegex(RuntimeError, "universal any/any/none"):
+                runtime_module_package_root(manifest)
 
 
 if __name__ == "__main__":
