@@ -195,7 +195,10 @@ class RegistryMakeTargetTests(unittest.TestCase):
         self.assertIn("--registry-source-build", makefile)
         self.assertIn('parser.add_argument(\n        "--registry-source-build"', stack_script)
         self.assertIn('if args.registry_source_build:', stack_script)
+        self.assertIn('registry_command.extend(("--source-build", "--developer-source-components"))', stack_script)
+        self.assertIn("--source-build --developer-source-components", makefile)
         # CI is allowed to test the explicit source build; normal Make targets are not.
+        self.assertIn('"scripts/registry.py", "--source-build", "--developer-source-components"', pipeline)
         self.assertIn('"scripts/build_stack.py", "--registry-source-build"', pipeline)
 
 
@@ -294,6 +297,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
                 original,
                 generated,
                 {"os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"},
+                delivery_mode="artifact-or-source",
             )
 
             self.assertEqual(result, generated)
@@ -304,6 +308,24 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
             self.assertIn("os: linux", generated_text)
             self.assertIn("architecture: arm64", generated_text)
             self.assertIn("abi: gnu-glibc-2.39", generated_text)
+
+
+    def test_normal_product_resolution_is_artifact_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "product-definition.tui.yaml"
+            generated = root / "normal" / "product-definition.yaml"
+            original.write_text(
+                'schema_version: "1.0.0"\\ncomponents: []\\n',
+                encoding="utf-8",
+            )
+            create_effective_product_definition(
+                original,
+                generated,
+                {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                delivery_mode="artifact",
+            )
+            self.assertIn("delivery_mode: artifact\\n", generated.read_text(encoding="utf-8"))
 
     def test_rejects_existing_resolution_block_and_unknown_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -318,6 +340,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
                 create_effective_product_definition(
                     source, destination,
                     {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                    delivery_mode="artifact-or-source",
                 )
             source.write_text('schema_version: "2.0.0"\ncomponents: []\n', encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "unsupported Product Definition schema"):
