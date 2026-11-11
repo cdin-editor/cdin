@@ -55,7 +55,7 @@ stack-dev: registry-dev
 	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)" --registry-source-build
 
 stack-gui-dev: registry-gui-dev
-	$(PYTHON) scripts/build_stack.py --profile gui-sdl --registry-source-build
+	$(PYTHON) scripts/build_stack.py --profile gui-sdl --registry-source-build --build-sdl3-from-source
 
 configure: deps registry
 	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"
