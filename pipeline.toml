@@ -15,7 +15,7 @@ timeout_seconds = 1200
 
 [tasks.registry]
 description = "Build Registry, resolve CDIN releases, prepare and replay the immutable source workspace"
-command = ["python3", "scripts/registry.py", "--source-build"]
+command = ["python3", "scripts/registry.py", "--source-build", "--developer-source-components"]
 depends_on = ["dependencies"]
 timeout_seconds = 2400
 
