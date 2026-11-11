@@ -15,7 +15,7 @@ timeout_seconds = 1200
 
 [tasks.registry]
 description = "Build Registry, resolve CDIN releases, prepare and replay the immutable source workspace"
-command = ["python3", "scripts/registry.py"]
+command = ["python3", "scripts/registry.py", "--source-build"]
 depends_on = ["dependencies"]
 timeout_seconds = 2400
 
@@ -41,8 +41,13 @@ description = "Test portable Python and Registry Go toolchain environment select
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_bootstrap.py"]
 timeout_seconds = 60
 
+[tasks.registry-artifact-tests]
+description = "Test immutable Registry release bootstrap, provenance and cache verification"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_artifact.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests"]
 timeout_seconds = 180
