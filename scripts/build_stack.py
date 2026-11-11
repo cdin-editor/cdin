@@ -56,9 +56,8 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
     """Merge a Registry-verified cmake-prefix-v1 package into the private prefix.
 
     Directories may be shared with previously staged environment providers,
-    but file paths may never overwrite an existing package. Registry has
-    already verified archive bytes and extraction safety; this second boundary
-    protects composition between independently published components.
+    but file paths may never overwrite an existing package. All source entries
+    and destination collisions are preflighted before any file is copied.
     """
     try:
         info = package.lstat()
@@ -83,15 +82,17 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
             raise RuntimeError(f"Backend package is missing a regular required file: {relative}")
 
     prefix.mkdir(parents=True, exist_ok=True)
+    source_files: list[Path] = []
+    source_directories: list[Path] = []
     for top in ("include", "lib", "bin", "share"):
         source_root = package / top
         if not source_root.exists():
             continue
         if source_root.is_symlink() or not source_root.is_dir():
             raise RuntimeError(f"Backend package contains an unsafe prefix entry: {top}")
-
         for current, directories, files in os.walk(source_root, topdown=True, followlinks=False):
             current_path = Path(current)
+            source_directories.append(current_path)
             for name in list(directories):
                 source_dir = current_path / name
                 if source_dir.is_symlink() or not source_dir.is_dir():
@@ -107,14 +108,32 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
                         f"Backend package contains a symlink/special file: "
                         f"{source_file.relative_to(package)}"
                     )
-                relative = source_file.relative_to(package)
-                destination = prefix / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if destination.exists() or destination.is_symlink():
-                    raise RuntimeError(
-                        f"Backend package would overwrite an existing staged file: {relative}"
-                    )
-                shutil.copy2(source_file, destination)
+                source_files.append(source_file)
+
+    # Preflight every destination before writing any file. A collision must
+    # leave the existing private prefix unchanged.
+    for source_file in source_files:
+        relative = source_file.relative_to(package)
+        destination = prefix / relative
+        if destination.exists() or destination.is_symlink():
+            raise RuntimeError(
+                f"Backend package would overwrite an existing staged file: {relative}"
+            )
+        parent = destination.parent
+        while parent != prefix and parent != parent.parent:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise RuntimeError(f"Backend package has an unsafe destination parent: {parent}")
+            parent = parent.parent
+
+    for source_file in source_files:
+        relative = source_file.relative_to(package)
+        destination = prefix / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() or destination.is_symlink():
+            raise RuntimeError(
+                f"Backend package destination changed during staging: {relative}"
+            )
+        shutil.copy2(source_file, destination)
 
     print(f"Staged Backend artifact from Registry: {package}", flush=True)
 
