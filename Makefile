@@ -40,10 +40,10 @@ registry-gui:
 	$(PYTHON) scripts/registry.py --profile gui-sdl
 
 registry-dev: deps
-	$(PYTHON) scripts/registry.py --profile "$(CDIN_FRONTEND_VARIANT)" --source-build
+	$(PYTHON) scripts/registry.py --profile "$(CDIN_FRONTEND_VARIANT)" --source-build --developer-source-components
 
 registry-gui-dev: deps
-	$(PYTHON) scripts/registry.py --profile gui-sdl --source-build
+	$(PYTHON) scripts/registry.py --profile gui-sdl --source-build --developer-source-components
 
 stack: deps registry
 	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)"
