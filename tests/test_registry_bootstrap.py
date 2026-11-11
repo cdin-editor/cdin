@@ -13,7 +13,11 @@ from scripts.build_stack import (
     verify_kernel_sdk_manifest_contract,
 )
 from scripts.configure import selected_package_version
-from scripts.deps import SDKBootstrapError, parse_kernel_abi
+from scripts.deps import (
+    SDKBootstrapError,
+    install_sdk_atomically,
+    parse_kernel_abi,
+)
 from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
@@ -465,6 +469,83 @@ class KernelSDKCompositionTests(unittest.TestCase):
 
             for relative, payload in {**sdk_files, **backend_files}.items():
                 self.assertEqual((prefix / relative).read_bytes(), payload)
+
+
+
+class KernelSDKAtomicInstallTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.package = self.root / "package"
+        self.package.mkdir()
+        self.destination = self.root / "sdk"
+        self.destination.mkdir()
+        (self.destination / "marker.txt").write_text("previous-sdk", encoding="utf-8")
+        self.pin = {"version": "1.2.1", "kernel_abi": "1.1.0", "logger_version": "0.1.0"}
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_failed_installer_keeps_the_existing_sdk_prefix_unchanged(self) -> None:
+        def fail_after_partial_install(package_root: Path, prefix: Path) -> None:
+            prefix.mkdir(parents=True)
+            (prefix / "marker.txt").write_text("partial-new-sdk", encoding="utf-8")
+            raise SDKBootstrapError("simulated installer failure")
+
+        with patch("scripts.deps.install_package", side_effect=fail_after_partial_install), \
+             patch("scripts.deps.verify_installed") as verify:
+            with self.assertRaisesRegex(SDKBootstrapError, "simulated installer failure"):
+                install_sdk_atomically(self.package, self.pin, self.destination)
+
+        self.assertEqual(
+            (self.destination / "marker.txt").read_text(encoding="utf-8"),
+            "previous-sdk",
+        )
+        self.assertFalse(self.destination.with_name("sdk.previous").exists())
+        self.assertFalse(list(self.root.glob("sdk.staging-*")))
+        verify.assert_not_called()
+
+    def test_failed_staged_verification_keeps_the_existing_sdk_prefix_unchanged(self) -> None:
+        def install_new(package_root: Path, prefix: Path) -> None:
+            prefix.mkdir(parents=True)
+            (prefix / "marker.txt").write_text("new-sdk", encoding="utf-8")
+
+        def reject_staged(pin: dict, prefix: Path) -> None:
+            self.assertNotEqual(prefix, self.destination)
+            self.assertEqual((prefix / "marker.txt").read_text(encoding="utf-8"), "new-sdk")
+            raise SDKBootstrapError("simulated verification failure")
+
+        with patch("scripts.deps.install_package", side_effect=install_new), \
+             patch("scripts.deps.verify_installed", side_effect=reject_staged):
+            with self.assertRaisesRegex(SDKBootstrapError, "simulated verification failure"):
+                install_sdk_atomically(self.package, self.pin, self.destination)
+
+        self.assertEqual(
+            (self.destination / "marker.txt").read_text(encoding="utf-8"),
+            "previous-sdk",
+        )
+        self.assertFalse(self.destination.with_name("sdk.previous").exists())
+        self.assertFalse(list(self.root.glob("sdk.staging-*")))
+
+    def test_verified_sdk_replaces_old_prefix_and_removes_backup(self) -> None:
+        def install_new(package_root: Path, prefix: Path) -> None:
+            prefix.mkdir(parents=True)
+            (prefix / "marker.txt").write_text("new-sdk", encoding="utf-8")
+
+        def verify_new(pin: dict, prefix: Path) -> None:
+            self.assertNotEqual(prefix, self.destination)
+            self.assertEqual((prefix / "marker.txt").read_text(encoding="utf-8"), "new-sdk")
+
+        with patch("scripts.deps.install_package", side_effect=install_new), \
+             patch("scripts.deps.verify_installed", side_effect=verify_new):
+            install_sdk_atomically(self.package, self.pin, self.destination)
+
+        self.assertEqual(
+            (self.destination / "marker.txt").read_text(encoding="utf-8"),
+            "new-sdk",
+        )
+        self.assertFalse(self.destination.with_name("sdk.previous").exists())
+        self.assertFalse(list(self.root.glob("sdk.staging-*")))
 
 
 
