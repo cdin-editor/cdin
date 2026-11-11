@@ -166,7 +166,7 @@ jobs:
           echo "repair_required=false" >> "$GITHUB_OUTPUT"
 
   repair-legacy-alpha-release:
-    name: Rebuild v0.3.0-alpha.1 from its tagged changelog section
+    name: Create missing v0.3.0-alpha.1 Release from its immutable tag
     needs: [inspect-legacy-alpha-release]
     if: >-
       needs.inspect-legacy-alpha-release.outputs.repair_required == 'true' &&
