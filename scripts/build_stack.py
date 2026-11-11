@@ -10,6 +10,7 @@ import sys
 import tarfile
 import hashlib
 import json
+import stat
 import urllib.request
 import tomllib
 from pathlib import Path
@@ -49,6 +50,73 @@ def pkg_env() -> dict[str, str]:
             runtime_dirs.append(current_path)
         result["PATH"] = os.pathsep.join(runtime_dirs)
     return result
+
+
+def stage_cmake_prefix(package: Path, prefix: Path) -> None:
+    """Merge a Registry-verified cmake-prefix-v1 package into the private prefix.
+
+    Directories may be shared with previously staged environment providers,
+    but file paths may never overwrite an existing package. Registry has
+    already verified archive bytes and extraction safety; this second boundary
+    protects composition between independently published components.
+    """
+    try:
+        info = package.lstat()
+    except OSError as error:
+        raise RuntimeError(f"Backend Registry package is unavailable: {package}") from error
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise RuntimeError("Backend Registry package root must be a real directory")
+
+    required = (
+        "include/cdin/backend.h",
+        "lib/libcdin_backend.a",
+        "lib/libcdin_backend_services.a",
+        "lib/libcdin_protocol.a",
+        "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
+        "lib/pkgconfig/cdin-backend.pc",
+        "lib/pkgconfig/cdin-backend-services.pc",
+        "lib/pkgconfig/cdin-protocol.pc",
+    )
+    for relative in required:
+        path = package / relative
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f"Backend package is missing a regular required file: {relative}")
+
+    prefix.mkdir(parents=True, exist_ok=True)
+    for top in ("include", "lib", "bin", "share"):
+        source_root = package / top
+        if not source_root.exists():
+            continue
+        if source_root.is_symlink() or not source_root.is_dir():
+            raise RuntimeError(f"Backend package contains an unsafe prefix entry: {top}")
+
+        for current, directories, files in os.walk(source_root, topdown=True, followlinks=False):
+            current_path = Path(current)
+            for name in list(directories):
+                source_dir = current_path / name
+                if source_dir.is_symlink() or not source_dir.is_dir():
+                    raise RuntimeError(
+                        f"Backend package contains a symlink/special directory: "
+                        f"{source_dir.relative_to(package)}"
+                    )
+            for name in files:
+                source_file = current_path / name
+                file_info = source_file.lstat()
+                if stat.S_ISLNK(file_info.st_mode) or not stat.S_ISREG(file_info.st_mode):
+                    raise RuntimeError(
+                        f"Backend package contains a symlink/special file: "
+                        f"{source_file.relative_to(package)}"
+                    )
+                relative = source_file.relative_to(package)
+                destination = prefix / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists() or destination.is_symlink():
+                    raise RuntimeError(
+                        f"Backend package would overwrite an existing staged file: {relative}"
+                    )
+                shutil.copy2(source_file, destination)
+
+    print(f"Staged Backend artifact from Registry: {package}", flush=True)
 
 
 def cmake_component(name: str, source: Path, *, options: list[str], env: dict[str, str]) -> None:
@@ -223,10 +291,10 @@ def main() -> int:
     run(["make", "install", f"PREFIX={PREFIX}",
          f"PACKAGE_VERSION={kernel_package_version}", *logger_args], cwd=kernel, env=env)
 
-    backend = DEPS / "backend"
-    cmake_component("backend", backend, options=["-DCDIN_WITH_LUA=ON",
-        "-DCDIN_BUILD_BACKEND=ON", "-DCDIN_BUILD_INTEGRATION_TESTS=ON",
-        "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
+    backend_package = (
+        WORKSPACE / "components" / "backend" / "default" / "package"
+    )
+    stage_cmake_prefix(backend_package, PREFIX)
 
     gui_enabled = PROFILE == "gui-sdl"
     if gui_enabled:
