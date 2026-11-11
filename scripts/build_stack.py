@@ -340,6 +340,11 @@ def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
         )
 
 
+def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
+    """Only GUI-SDL developer builds may compile the SDL3 source archive."""
+    return profile == "gui-sdl" and enabled
+
+
 def install_sdl3(env: dict[str, str]) -> None:
     """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
@@ -574,7 +579,7 @@ def main() -> int:
         # Explicit developer mode only: current Catalog still delivers Runtime
         # and Frontend source units. Normal consumer builds never compile them.
         env = pkg_env()
-        if args.build_sdl3_from_source:
+        if should_build_sdl3_from_source(PROFILE, args.build_sdl3_from_source):
             install_sdl3(env)
         frontend = DEPS / "frontend"
         frontend_options = [
