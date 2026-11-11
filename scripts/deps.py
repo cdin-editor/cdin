@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
@@ -59,11 +60,148 @@ def load_pin() -> dict:
         pin = lock["dependencies"]["kernel_sdk"]
     except (KeyError, TypeError) as error:
         raise SDKBootstrapError("deps.lock is missing dependencies.kernel_sdk") from error
-    if pin.get("tag") != f"v{pin.get('version')}" or len(pin.get("revision", "")) not in (40, 64):
-        raise SDKBootstrapError("Kernel SDK tag/version/source revision pin is invalid")
+    if (
+        pin.get("repository", "").rstrip("/") != "https://github.com/cdin-editor/kernel"
+        or pin.get("tag") != f"v{pin.get('version')}"
+        or not re.fullmatch(r"[0-9a-f]{40}", pin.get("revision", ""))
+    ):
+        raise SDKBootstrapError("Kernel SDK repository/tag/version/source revision pin is invalid")
     if pin.get("kernel_abi") != "1.1.0" or pin.get("logger_version") != "0.1.0":
         raise SDKBootstrapError("Kernel SDK contract pins differ from the reviewed release baseline")
     return pin
+
+
+def fetch_github_json(url: str) -> dict:
+    """Fetch bounded JSON from the exact public GitHub API host."""
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "api.github.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in (None, 443)
+        or not parsed.path.startswith("/repos/cdin-editor/kernel/")
+        or parsed.fragment
+    ):
+        raise SDKBootstrapError("Kernel SDK release identity API URL is not trusted")
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "CDIN-SDK-Bootstrap/1",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if response.status != 200:
+                raise SDKBootstrapError(
+                    f"Kernel SDK GitHub API returned HTTP {response.status}"
+                )
+            data = response.read(2 * 1024 * 1024 + 1)
+    except (OSError, urllib.error.URLError) as error:
+        raise SDKBootstrapError(
+            f"cannot verify immutable Kernel SDK Release identity: {error}"
+        ) from error
+    if len(data) > 2 * 1024 * 1024:
+        raise SDKBootstrapError("Kernel SDK GitHub API response exceeds 2 MiB")
+    try:
+        value = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SDKBootstrapError("Kernel SDK GitHub API returned invalid JSON") from error
+    if not isinstance(value, dict):
+        raise SDKBootstrapError("Kernel SDK GitHub API response root is not an object")
+    return value
+
+
+def resolve_release_tag_commit(tag: str) -> str:
+    """Resolve lightweight and annotated tags to their immutable commit SHA."""
+    encoded = urllib.parse.quote(tag, safe="")
+    reference = fetch_github_json(
+        f"https://api.github.com/repos/cdin-editor/kernel/git/ref/tags/{encoded}"
+    )
+    obj = reference.get("object")
+    visited: set[str] = set()
+    for _ in range(8):
+        if not isinstance(obj, dict):
+            raise SDKBootstrapError("Kernel SDK Git tag has no Git object")
+        object_type = obj.get("type")
+        object_sha = obj.get("sha")
+        if not isinstance(object_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", object_sha):
+            raise SDKBootstrapError("Kernel SDK Git tag contains an invalid object SHA")
+        if object_sha in visited:
+            raise SDKBootstrapError("Kernel SDK annotated tag contains a cycle")
+        visited.add(object_sha)
+        if object_type == "commit":
+            return object_sha
+        if object_type != "tag":
+            raise SDKBootstrapError("Kernel SDK Git tag resolves to an unsupported object")
+        tag_object = fetch_github_json(
+            f"https://api.github.com/repos/cdin-editor/kernel/git/tags/{object_sha}"
+        )
+        if tag_object.get("sha") != object_sha:
+            raise SDKBootstrapError("Kernel SDK annotated tag object identity mismatch")
+        obj = tag_object.get("object")
+    raise SDKBootstrapError("Kernel SDK annotated tag nesting exceeds the safety limit")
+
+
+def verify_release_asset_identity(pin: dict, asset: dict) -> None:
+    """Bind the download to the exact tag commit and GitHub Release asset."""
+    tag = pin.get("tag")
+    revision = pin.get("revision")
+    if (
+        not isinstance(tag, str)
+        or tag != f"v{pin.get('version')}"
+        or not isinstance(revision, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", revision)
+    ):
+        raise SDKBootstrapError("Kernel SDK tag/source revision pin is invalid")
+    if pin.get("repository", "").rstrip("/") != "https://github.com/cdin-editor/kernel":
+        raise SDKBootstrapError("Kernel SDK repository pin is invalid")
+
+    release = fetch_github_json(
+        f"https://api.github.com/repos/cdin-editor/kernel/releases/tags/{urllib.parse.quote(tag, safe='')}"
+    )
+    if (
+        release.get("tag_name") != tag
+        or release.get("draft") is True
+        or release.get("prerelease") is not False
+    ):
+        raise SDKBootstrapError("Kernel SDK GitHub Release is draft, prerelease or tag-mismatched")
+
+    actual_revision = resolve_release_tag_commit(tag)
+    if actual_revision != revision:
+        raise SDKBootstrapError(
+            f"Kernel SDK release tag moved or mismatched: expected {revision}, found {actual_revision}"
+        )
+
+    filename = asset.get("file_name")
+    expected_size = asset.get("size_bytes")
+    expected_digest = asset.get("sha256")
+    if (
+        not isinstance(filename, str)
+        or Path(filename).name != filename
+        or not filename.startswith("cdin-kernel-")
+        or isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or expected_size <= 0
+        or not isinstance(expected_digest, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", expected_digest)
+    ):
+        raise SDKBootstrapError("Kernel SDK locked asset identity is malformed")
+
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise SDKBootstrapError("Kernel SDK Release has no asset inventory")
+    matches = [item for item in assets if isinstance(item, dict) and item.get("name") == filename]
+    if len(matches) != 1:
+        raise SDKBootstrapError("Kernel SDK Release must contain exactly one pinned asset")
+    api_asset = matches[0]
+    if api_asset.get("size") != expected_size:
+        raise SDKBootstrapError("Kernel SDK GitHub asset size differs from deps.lock")
+    if api_asset.get("digest") != f"sha256:{expected_digest}":
+        raise SDKBootstrapError("Kernel SDK GitHub asset digest differs from deps.lock")
 
 
 def target_key(system: str | None = None, machine: str | None = None) -> str:
@@ -131,6 +269,7 @@ def verify_asset(path: Path, asset: dict) -> None:
 
 
 def download_asset(pin: dict, asset: dict) -> Path:
+    verify_release_asset_identity(pin, asset)
     filename = asset["file_name"]
     if Path(filename).name != filename or not filename.startswith("cdin-kernel-"):
         raise SDKBootstrapError("locked Kernel SDK filename is not a safe basename")
