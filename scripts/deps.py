@@ -75,15 +75,42 @@ def load_pin() -> dict:
     return pin
 
 
+class _GitHubAPIRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep release-identity API requests on the canonical GitHub API host."""
+
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        parsed = urllib.parse.urlsplit(new_url)
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise SDKBootstrapError("Kernel SDK GitHub API redirect has an invalid port") from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.github.com"
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise SDKBootstrapError("Kernel SDK GitHub API redirect left the trusted API origin")
+        return super().redirect_request(request, fp, code, message, headers, new_url)
+
+
 def fetch_github_json(url: str) -> dict:
     """Fetch bounded JSON from the exact public GitHub API host."""
     parsed = urllib.parse.urlsplit(url)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise SDKBootstrapError("Kernel SDK release identity API URL has an invalid port") from error
     if (
         parsed.scheme != "https"
         or parsed.hostname != "api.github.com"
+        or port not in (None, 443)
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.port not in (None, 443)
+        or parsed.query
         or not parsed.path.startswith("/repos/cdin-editor/kernel/")
         or parsed.fragment
     ):
@@ -97,12 +124,21 @@ def fetch_github_json(url: str) -> dict:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
+    opener = urllib.request.build_opener(_GitHubAPIRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            if response.status != 200:
-                raise SDKBootstrapError(
-                    f"Kernel SDK GitHub API returned HTTP {response.status}"
-                )
+        with opener.open(request, timeout=30) as response:
+            final_url = urllib.parse.urlsplit(response.geturl())
+            if (
+                response.status != 200
+                or final_url.scheme != "https"
+                or final_url.hostname != "api.github.com"
+                or final_url.port not in (None, 443)
+                or final_url.username is not None
+                or final_url.password is not None
+                or final_url.query
+                or final_url.fragment
+            ):
+                raise SDKBootstrapError("Kernel SDK GitHub API response came from an untrusted origin")
             data = response.read(2 * 1024 * 1024 + 1)
     except (OSError, urllib.error.URLError) as error:
         raise SDKBootstrapError(
