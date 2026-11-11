@@ -5,6 +5,7 @@ import hashlib
 import os
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +18,7 @@ from scripts.configure import selected_package_version
 from scripts.deps import (
     CACHE as SDK_CACHE,
     SDKBootstrapError,
+    _GitHubAPIRedirectHandler,
     install_sdk_atomically,
     parse_kernel_abi,
     download_asset,
@@ -28,6 +30,29 @@ from scripts.registry import (
     registry_go_environment,
 )
 
+
+
+
+class KernelSDKAPIRedirectTests(unittest.TestCase):
+    def test_rejects_release_identity_api_redirect_to_another_host(self) -> None:
+        handler = _GitHubAPIRedirectHandler()
+        request = urllib.request.Request(
+            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+        )
+        with self.assertRaisesRegex(SDKBootstrapError, "left the trusted API origin"):
+            handler.redirect_request(
+                request, None, 302, "Found", {}, "https://example.invalid/redirect"
+            )
+
+    def test_rejects_malformed_api_redirect_port(self) -> None:
+        handler = _GitHubAPIRedirectHandler()
+        request = urllib.request.Request(
+            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+        )
+        with self.assertRaisesRegex(SDKBootstrapError, "invalid port"):
+            handler.redirect_request(
+                request, None, 302, "Found", {}, "https://api.github.com:not-a-port/redirect"
+            )
 
 
 class KernelSDKReleasePinTests(unittest.TestCase):
