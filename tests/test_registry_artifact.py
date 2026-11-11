@@ -7,11 +7,13 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.request
 
 from scripts.registry_artifact import (
     REGISTRY_REPOSITORY_URI,
     RegistryBootstrapError,
     TARGETS,
+    _TrustedAPIHostRedirectHandler,
     acquire_registry_artifact,
     detect_target,
     verify_binary_target,
@@ -28,6 +30,44 @@ def elf64(machine: int = 62) -> bytes:
     data[18:20] = machine.to_bytes(2, "little")
     return bytes(data)
 
+
+
+class RegistryAPIHostRedirectTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.handler = _TrustedAPIHostRedirectHandler()
+        self.request = urllib.request.Request(
+            "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
+        )
+
+    def test_rejects_api_redirect_to_another_host(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
+            self.handler.redirect_request(
+                self.request, None, 302, "Found", {},
+                "https://example.invalid/repos/cdin-editor/registry/release",
+            )
+
+    def test_rejects_nonstandard_api_redirect_port(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
+            self.handler.redirect_request(
+                self.request, None, 302, "Found", {},
+                "https://api.github.com:444/repos/cdin-editor/registry/release",
+            )
+
+    def test_rejects_malformed_api_redirect_port(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "invalid port"):
+            self.handler.redirect_request(
+                self.request, None, 302, "Found", {},
+                "https://api.github.com:not-a-port/repos/cdin-editor/registry/release",
+            )
+
+    def test_rejects_api_redirect_query_or_fragment(self) -> None:
+        for suffix in ("?token=value", "#fragment"):
+            with self.subTest(suffix=suffix):
+                with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
+                    self.handler.redirect_request(
+                        self.request, None, 302, "Found", {},
+                        "https://api.github.com/repos/cdin-editor/registry/release" + suffix,
+                    )
 
 
 class RegistryReleaseAssetURLTests(unittest.TestCase):
