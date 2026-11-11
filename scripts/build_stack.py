@@ -269,30 +269,35 @@ def pinned_package_version(name: str, variant: str = "default") -> str:
     return matches[0]
 
 
-def verify_kernel_sdk_manifest_contract(manifest: dict, sdk_pin: dict) -> None:
-    """Bind the separately pinned Kernel/logger SDK to Registry's selected Kernel identity."""
-    components = [
-        item for item in manifest.get("components", [])
-        if item.get("component_id") == "kernel" and item.get("variant") == "default"
-    ]
-    if len(components) != 1:
-        raise RuntimeError("Registry Manifest must select exactly one Kernel default component")
-    kernel = components[0]
-    if kernel.get("version") != sdk_pin.get("version"):
+def verify_environment_sdk_contract(manifest: dict, sdk_pin: dict) -> None:
+    """Bind externally staged SDKs and Lua to the Product Definition environment providers."""
+    declarations = manifest.get("environment_contracts", [])
+    providers = {
+        (item.get("contract_id"), item.get("version"))
+        for item in declarations
+    }
+    expected = {
+        ("org.cdin.kernel-abi", sdk_pin.get("kernel_abi")),
+        ("org.m-mdy-m.log-c-api", sdk_pin.get("logger_version")),
+        ("org.lua.puc-lua-c-api", "5.4.0"),
+    }
+    missing = sorted(expected - providers)
+    unexpected = sorted(
+        (contract_id, version)
+        for contract_id, version in providers
+        if contract_id in {
+            "org.cdin.kernel-abi",
+            "org.m-mdy-m.log-c-api",
+            "org.lua.puc-lua-c-api",
+        }
+        and (contract_id, version) not in expected
+    )
+    if missing or unexpected:
         raise RuntimeError(
-            f"Kernel SDK version {sdk_pin.get('version')} does not match Registry "
-            f"Kernel version {kernel.get('version')}"
+            f"SDK environment contracts do not match deps.lock; missing={missing}, unexpected={unexpected}"
         )
-    provided = kernel.get("contracts", {}).get("provides", [])
-    abi_versions = [
-        item.get("version") for item in provided
-        if item.get("contract_id") == "org.cdin.kernel-abi"
-    ]
-    if abi_versions != [sdk_pin.get("kernel_abi")]:
-        raise RuntimeError(
-            f"Kernel SDK ABI {sdk_pin.get('kernel_abi')} does not match Registry "
-            f"Kernel ABI declarations {abi_versions}"
-        )
+
+
 
 
 def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
@@ -362,7 +367,7 @@ def main() -> int:
     run([sys.executable, "scripts/deps.py", "--verify"])
     manifest = json.loads((WORKSPACE / "registry-manifest.json").read_text(encoding="utf-8"))
     sdk_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["dependencies"]["kernel_sdk"]
-    verify_kernel_sdk_manifest_contract(manifest, sdk_pin)
+    verify_environment_sdk_contract(manifest, sdk_pin)
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     stage_kernel_sdk_prefix(SDK_PREFIX, PREFIX)
