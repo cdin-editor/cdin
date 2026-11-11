@@ -20,6 +20,7 @@ DEPS = ROOT / ".deps" / "src"
 PROFILE = "tui"
 WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 PREFIX = ROOT / ".deps" / "install"
+SDK_PREFIX = ROOT / ".deps" / "sdk"
 BUILD = ROOT / "build" / "stack"
 LOCK = ROOT / "deps.lock"
 
@@ -52,69 +53,60 @@ def pkg_env() -> dict[str, str]:
     return result
 
 
-def stage_cmake_prefix(package: Path, prefix: Path) -> None:
-    """Merge a Registry-verified cmake-prefix-v1 package into the private prefix.
-
-    Directories may be shared with previously staged environment providers,
-    but file paths may never overwrite an existing package. All source entries
-    and destination collisions are preflighted before any file is copied.
-    """
+def _stage_install_prefix(
+    package: Path,
+    prefix: Path,
+    *,
+    component: str,
+    required_files: tuple[str, ...],
+) -> None:
+    """Merge one verified CMake install prefix without overwriting other SDKs."""
     try:
         info = package.lstat()
     except OSError as error:
-        raise RuntimeError(f"Backend Registry package is unavailable: {package}") from error
+        raise RuntimeError(f"{component} package is unavailable: {package}") from error
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-        raise RuntimeError("Backend Registry package root must be a real directory")
+        raise RuntimeError(f"{component} package root must be a real directory")
 
-    required = (
-        "include/cdin/backend.h",
-        "lib/libcdin_backend.a",
-        "lib/libcdin_backend_services.a",
-        "lib/libcdin_protocol.a",
-        "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
-        "lib/pkgconfig/cdin-backend.pc",
-        "lib/pkgconfig/cdin-backend-services.pc",
-        "lib/pkgconfig/cdin-protocol.pc",
-    )
-    for relative in required:
+    for relative in required_files:
         path = package / relative
         if path.is_symlink() or not path.is_file():
-            raise RuntimeError(f"Backend package is missing a regular required file: {relative}")
+            raise RuntimeError(f"{component} package is missing a regular required file: {relative}")
 
     prefix = Path(os.path.abspath(prefix))
     ancestor = prefix
     while ancestor != ancestor.parent:
         if ancestor.is_symlink():
-            raise RuntimeError(f"Backend package destination contains a symlink ancestor: {ancestor}")
+            raise RuntimeError(f"{component} destination contains a symlink ancestor: {ancestor}")
         ancestor = ancestor.parent
     if prefix.exists() or prefix.is_symlink():
         prefix_info = prefix.lstat()
         if stat.S_ISLNK(prefix_info.st_mode) or not stat.S_ISDIR(prefix_info.st_mode):
-            raise RuntimeError("Backend package destination must be a real directory")
+            raise RuntimeError(f"{component} destination must be a real directory")
     else:
         prefix.mkdir(parents=True, exist_ok=False)
 
-    source_root = Path(os.path.abspath(package))
-    ancestor = source_root
+    package = Path(os.path.abspath(package))
+    ancestor = package
     while ancestor != ancestor.parent:
         if ancestor.is_symlink():
-            raise RuntimeError(f"Backend Registry package contains a symlink ancestor: {ancestor}")
+            raise RuntimeError(f"{component} package contains a symlink ancestor: {ancestor}")
         ancestor = ancestor.parent
-    package = source_root
+
     source_files: list[Path] = []
     for top in ("include", "lib", "bin", "share"):
         source_root = package / top
         if not source_root.exists():
             continue
         if source_root.is_symlink() or not source_root.is_dir():
-            raise RuntimeError(f"Backend package contains an unsafe prefix entry: {top}")
+            raise RuntimeError(f"{component} package contains an unsafe prefix entry: {top}")
         for current, directories, files in os.walk(source_root, topdown=True, followlinks=False):
             current_path = Path(current)
             for name in list(directories):
                 source_dir = current_path / name
                 if source_dir.is_symlink() or not source_dir.is_dir():
                     raise RuntimeError(
-                        f"Backend package contains a symlink/special directory: "
+                        f"{component} package contains a symlink/special directory: "
                         f"{source_dir.relative_to(package)}"
                     )
             for name in files:
@@ -122,37 +114,80 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
                 file_info = source_file.lstat()
                 if stat.S_ISLNK(file_info.st_mode) or not stat.S_ISREG(file_info.st_mode):
                     raise RuntimeError(
-                        f"Backend package contains a symlink/special file: "
+                        f"{component} package contains a symlink/special file: "
                         f"{source_file.relative_to(package)}"
                     )
                 source_files.append(source_file)
 
-    # Preflight every destination before writing any file. A collision must
-    # leave the existing private prefix unchanged.
+    # Preflight the entire file set. Identical existing SDK files are reusable;
+    # different bytes at the same path are never silently replaced.
+    existing_identical: set[Path] = set()
     for source_file in source_files:
         relative = source_file.relative_to(package)
         destination = prefix / relative
-        if destination.exists() or destination.is_symlink():
-            raise RuntimeError(
-                f"Backend package would overwrite an existing staged file: {relative}"
-            )
+        if destination.is_symlink():
+            raise RuntimeError(f"{component} destination is a symlink: {relative}")
+        if destination.exists():
+            if not destination.is_file():
+                raise RuntimeError(f"{component} destination is not a regular file: {relative}")
+            if destination.read_bytes() != source_file.read_bytes():
+                raise RuntimeError(f"{component} package would overwrite a different staged file: {relative}")
+            existing_identical.add(relative)
         parent = destination.parent
         while parent != prefix and parent != parent.parent:
             if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
-                raise RuntimeError(f"Backend package has an unsafe destination parent: {parent}")
+                raise RuntimeError(f"{component} package has an unsafe destination parent: {parent}")
             parent = parent.parent
 
     for source_file in source_files:
         relative = source_file.relative_to(package)
+        if relative in existing_identical:
+            continue
         destination = prefix / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists() or destination.is_symlink():
-            raise RuntimeError(
-                f"Backend package destination changed during staging: {relative}"
-            )
+            raise RuntimeError(f"{component} destination changed during staging: {relative}")
         shutil.copy2(source_file, destination)
 
-    print(f"Staged Backend artifact from Registry: {package}", flush=True)
+    print(f"Staged {component} install prefix from {package}", flush=True)
+
+
+def stage_kernel_sdk_prefix(package: Path, prefix: Path) -> None:
+    """Stage the pinned Kernel 1.2.1 + logger 0.1.0 SDK into CDIN's private prefix."""
+    _stage_install_prefix(
+        package,
+        prefix,
+        component="Kernel/logger SDK",
+        required_files=(
+            "include/cdin/kernel.h",
+            "include/m-mdy-m/log.h",
+            "lib/libcdin_kernel.a",
+            "lib/libm-mdy-m-log.a",
+            "lib/pkgconfig/cdin-kernel.pc",
+            "lib/pkgconfig/m-mdy-m-log.pc",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
+        ),
+    )
+
+
+def stage_cmake_prefix(package: Path, prefix: Path) -> None:
+    """Stage a Registry-verified cmake-prefix-v1 component without collisions."""
+    _stage_install_prefix(
+        package,
+        prefix,
+        component="Backend",
+        required_files=(
+            "include/cdin/backend.h",
+            "lib/libcdin_backend.a",
+            "lib/libcdin_backend_services.a",
+            "lib/libcdin_protocol.a",
+            "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
+            "lib/pkgconfig/cdin-backend.pc",
+            "lib/pkgconfig/cdin-backend-services.pc",
+            "lib/pkgconfig/cdin-protocol.pc",
+        ),
+    )
 
 
 def cmake_component(name: str, source: Path, *, options: list[str], env: dict[str, str]) -> None:
@@ -300,29 +335,8 @@ def main() -> int:
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
+    stage_kernel_sdk_prefix(SDK_PREFIX, PREFIX)
     env = pkg_env()
-    logger = DEPS / "logger"
-    logger_build = BUILD / "logger"
-    run(["cmake", "-S", str(logger), "-B", str(logger_build),
-         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
-         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DBUILD_SHARED_LIBS=OFF",
-         "-DBUILD_TESTING=OFF", "-DM_MDY_M_LOG_BUILD_TESTS=OFF",
-         "-DM_MDY_M_LOG_BUILD_EXAMPLES=OFF"], env=env)
-    run(["cmake", "--build", str(logger_build), "--parallel"], env=env)
-    run(["cmake", "--install", str(logger_build)], env=env)
-
-    kernel = DEPS / "kernel"
-    kernel_package_version = pinned_package_version("kernel")
-    logger_args = [f"DEPS_PREFIX={PREFIX}", f"LOG_SOURCE_DIR={logger}",
-                   f"LOG_BUILD_DIR={logger_build}"]
-    run(["make", "all", "shared", *logger_args], cwd=kernel, env=env)
-    run(["make", "check", *logger_args], cwd=kernel, env=env)
-    # Kernel distinguishes the published package version from its C ABI version.
-    # Its release workflow supplies PACKAGE_VERSION when installing the .pc file;
-    # use the same rule so Backend's pkg-config >=1.2.1 check validates the
-    # package release, while ABI 1.1.0 remains recorded in kernel.h.
-    run(["make", "install", f"PREFIX={PREFIX}",
-         f"PACKAGE_VERSION={kernel_package_version}", *logger_args], cwd=kernel, env=env)
 
     backend_package = (
         WORKSPACE / "components" / "backend" / "default" / "package"
