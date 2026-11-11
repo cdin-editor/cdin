@@ -58,6 +58,15 @@ class RegistryReleaseAssetURLTests(unittest.TestCase):
                 size=123,
             )
 
+    def test_rejects_malformed_asset_url_port(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "invalid download URL port"):
+            _api_asset_identity(
+                self._asset("https://github.com:not-a-port/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"),
+                name="registry-linux-amd64",
+                sha256="a" * 64,
+                size=123,
+            )
+
     def test_rejects_asset_url_query_or_fragment(self) -> None:
         for suffix in ("?redirect=evil", "#fragment"):
             with self.subTest(suffix=suffix):
