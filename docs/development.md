@@ -48,7 +48,7 @@ sudo apt-get install build-essential cmake make pkg-config \
   liblua5.4-dev python3 python3-pip
 
 # Only for the explicit hybrid developer/CI source-build path:
-sudo apt-get install git
+sudo apt-get install git golang
 ```
 
 ### macOS
@@ -67,7 +67,7 @@ export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH"
 Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, pkgconf, Lua 5.4, Python and Python pip from the UCRT64 repository. Git and Go are needed only for the explicit developer source-build targets:
 
 ```sh
-pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
+pacman -S --needed base-devel mingw-w64-ucrt-x86_64-toolchain \
   mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf \
   mingw-w64-ucrt-x86_64-lua54 mingw-w64-ucrt-x86_64-python \
   mingw-w64-ucrt-x86_64-python-pip
