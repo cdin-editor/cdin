@@ -7,12 +7,17 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
+import tempfile
 import hashlib
 import json
 import urllib.request
 import tomllib
 from pathlib import Path
+
+try:
+    from .package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+except ImportError:  # Direct execution: scripts/ is sys.path[0].
+    from package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
@@ -60,14 +65,30 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--install", str(build)], env=env)
 
 
+def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
+    """Prevent the GUI-SDL source build from becoming an implicit consumer path."""
+    if profile == "gui-sdl" and not enabled:
+        raise RuntimeError(
+            "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
+            "building SDL3 from source is developer-only. Pass "
+            "--build-sdl3-from-source only for an explicit local development build."
+        )
+
+
 def install_sdl3(env: dict[str, str]) -> None:
-    """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
+    """Build the checksum-pinned SDL3 source archive for developer builds only."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
     spec = lock["tooling"]["sdl3"]
     version = spec["version"]
     archive = ROOT / ".deps" / "archives" / f"SDL3-{version}.tar.gz"
     source_root = DEPS / "sdl3"
     archive.parent.mkdir(parents=True, exist_ok=True)
+    source_root.parent.mkdir(parents=True, exist_ok=True)
+    if source_root.is_symlink() or (source_root.exists() and not source_root.is_dir()):
+        raise RuntimeError("SDL3 source root is not a real directory")
+    # The final os.replace() installs a versioned directory beneath this path.
+    # Create and validate the parent first; otherwise fresh Windows/macOS/Linux
+    # workspaces fail when the staged tree is atomically moved into place.
     source_root.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
         print(f"Downloading SDL3 {version}", flush=True)
@@ -79,12 +100,51 @@ def install_sdl3(env: dict[str, str]) -> None:
         )
 
     source = source_root / f"SDL3-{version}"
-    if not (source / "CMakeLists.txt").is_file():
-        # The source archive is authenticated by the immutable SHA-256 above.
-        with tarfile.open(archive, "r:gz") as bundle:
-            bundle.extractall(source_root)
-    if not (source / "CMakeLists.txt").is_file():
-        raise RuntimeError(f"SDL3 source tree is missing: {source}")
+    marker = source / "CMakeLists.txt"
+    if source.is_symlink() or marker.is_symlink():
+        raise RuntimeError("SDL3 source cache contains a symlink")
+    if marker.exists() and not marker.is_file():
+        raise RuntimeError("SDL3 source cache marker is not a regular file")
+    if not marker.is_file():
+        # Never extract into the reusable source path. A late extraction error
+        # must not leave a CMakeLists.txt marker that makes a later invocation
+        # trust and execute a partially extracted tree.
+        with tempfile.TemporaryDirectory(
+            prefix=".sdl3-extract-", dir=source_root.parent
+        ) as temporary:
+            staging_root = Path(temporary)
+            staged_source = safe_extract_sdl3_source(archive, staging_root)
+            staged_source = Path(staged_source)
+            if staged_source.parent.resolve() != staging_root.resolve():
+                raise RuntimeError(
+                    f"SDL3 extractor returned a source tree outside its staging directory: {staged_source}"
+                )
+            staged_marker = staged_source / "CMakeLists.txt"
+            if (
+                staged_source.is_symlink()
+                or staged_marker.is_symlink()
+                or not staged_marker.is_file()
+            ):
+                raise RuntimeError(
+                    f"SDL3 source archive did not produce a valid staged tree: {staged_source}"
+                )
+
+            # Preserve any pre-existing incomplete tree until the replacement
+            # has been fully extracted and its CMake entry point is validated.
+            backup = staging_root / "previous-source"
+            had_previous = source.exists()
+            if had_previous and not source.is_dir():
+                raise RuntimeError("SDL3 source cache is not a real directory")
+            if had_previous:
+                os.replace(source, backup)
+            try:
+                os.replace(staged_source, source)
+            except Exception:
+                if had_previous and backup.exists() and not source.exists():
+                    os.replace(backup, source)
+                raise
+            if backup.exists():
+                shutil.rmtree(backup)
 
     options = [
         "-DCMAKE_BUILD_TYPE=Release",
@@ -161,6 +221,11 @@ def main() -> int:
         return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("tui", "gui-sdl"), default=default_profile)
+    parser.add_argument(
+        "--build-sdl3-from-source",
+        action="store_true",
+        help="developer-only opt-in to build SDL3 from its pinned source archive",
+    )
     args = parser.parse_args()
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
@@ -168,6 +233,8 @@ def main() -> int:
     else:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
+
+    require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
 
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:

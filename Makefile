@@ -39,7 +39,7 @@ stack: registry
 	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)"
 
 stack-gui: registry-gui
-	$(PYTHON) scripts/build_stack.py --profile gui-sdl
+	$(PYTHON) scripts/build_stack.py --profile gui-sdl --build-sdl3-from-source
 
 configure: registry
 	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"

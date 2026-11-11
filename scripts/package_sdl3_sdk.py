@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -46,6 +47,34 @@ def target_identity() -> tuple[str, str]:
     return os_name, arch
 
 
+def target_abi(os_name: str) -> str:
+    """Return the exact ABI baseline required by the CDIN target matrix."""
+    if os_name == "linux":
+        libc, version = platform.libc_ver()
+        if libc.lower() != "glibc" or version != "2.39":
+            raise RuntimeError(
+                f"SDL3 Linux SDKs require glibc 2.39; found {libc or 'unknown'} "
+                f"{version or 'unknown'}"
+            )
+        return "gnu-glibc-2.39"
+    if os_name == "macos":
+        version = platform.mac_ver()[0]
+        major = version.split(".", 1)[0] if version else ""
+        if major != "15":
+            raise RuntimeError(
+                f"SDL3 macOS SDKs require macOS 15; found {version or 'unknown'}"
+            )
+        return "macos-15"
+    if os_name == "windows":
+        msystem = os.environ.get("MSYSTEM", "")
+        if msystem != "UCRT64":
+            raise RuntimeError(
+                f"SDL3 Windows SDKs require MSYS2 UCRT64; found {msystem or 'unknown'}"
+            )
+        return "windows-ucrt64"
+    raise RuntimeError(f"unsupported SDL3 SDK ABI target: {os_name}")
+
+
 def load_source_pin() -> dict[str, str]:
     with LOCK.open("rb") as stream:
         data = tomllib.load(stream)
@@ -53,6 +82,8 @@ def load_source_pin() -> dict[str, str]:
     required = ("version", "archive", "sha256")
     if any(not isinstance(spec.get(key), str) or not spec[key] for key in required):
         raise RuntimeError("deps.lock must pin SDL3 version, archive URL and SHA-256")
+    if re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", spec["version"]) is None:
+        raise RuntimeError("deps.lock contains an invalid SDL3 SemVer version")
     digest = spec["sha256"].lower()
     if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
         raise RuntimeError("deps.lock contains an invalid SDL3 SHA-256")
@@ -162,14 +193,31 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
     return source_root
 
 
-def write_manifest(prefix: Path, version: str, os_name: str, arch: str,
-                   source_sha256: str) -> None:
+def install_license(source: Path, prefix: Path) -> None:
+    """Retain the upstream zlib license in every redistributable SDK archive."""
+    license_source = source / "LICENSE.txt"
+    if not license_source.is_file():
+        raise RuntimeError("SDL3 source tree is missing its LICENSE.txt")
+    destination = prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(license_source, destination)
+
+
+def write_manifest(
+    prefix: Path,
+    version: str,
+    os_name: str,
+    arch: str,
+    abi: str,
+    source_sha256: str,
+) -> None:
+    source = load_source_pin()
     metadata = {
         "schema": "cdin.sdl3-sdk.v1",
         "version": version,
-        "target": {"os": os_name, "architecture": arch},
+        "target": {"os": os_name, "architecture": arch, "abi": abi},
         "source": {
-            "url": load_source_pin()["archive"],
+            "url": source["archive"],
             "sha256": source_sha256,
         },
         "linkage": "static",
@@ -182,43 +230,94 @@ def write_manifest(prefix: Path, version: str, os_name: str, arch: str,
     )
 
 
-def verify_prefix(prefix: Path) -> None:
+def verify_prefix(
+    prefix: Path,
+    *,
+    version: str,
+    os_name: str,
+    arch: str,
+    abi: str,
+    source: dict[str, str],
+) -> None:
     required = (
         prefix / "include" / "SDL3" / "SDL.h",
+        prefix / "include" / "SDL3" / "SDL_version.h",
         prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake",
         prefix / "share" / "cdin" / "sdl3-sdk.json",
+        prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt",
     )
     missing = [str(path.relative_to(prefix)) for path in required if not path.is_file()]
     if missing:
         raise RuntimeError("SDL3 SDK install is incomplete; missing: " + ", ".join(missing))
-    libraries = list((prefix / "lib").glob("*SDL3*"))
-    if not libraries:
-        raise RuntimeError("SDL3 SDK install contains no SDL3 library")
+
+    manifest_path = prefix / "share" / "cdin" / "sdl3-sdk.json"
+    try:
+        metadata = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"SDL3 SDK manifest is invalid: {error}") from error
+    expected = {
+        "schema": "cdin.sdl3-sdk.v1",
+        "version": version,
+        "target": {"os": os_name, "architecture": arch, "abi": abi},
+        "source": {"url": source["archive"], "sha256": source["sha256"]},
+        "linkage": "static",
+        "cmake_package": "SDL3",
+    }
+    if metadata != expected:
+        raise RuntimeError(
+            "SDL3 SDK manifest does not match the pinned version, target ABI, "
+            "source digest and static CMake package"
+        )
+
+    library_dir = prefix / "lib"
+    static_libraries = {"libSDL3.a", "SDL3-static.lib"}
+    if not any((library_dir / name).is_file() for name in static_libraries):
+        raise RuntimeError(
+            "SDL3 SDK install is missing a supported static SDL3 library "
+            "(libSDL3.a or SDL3-static.lib)"
+        )
+    shared_libraries = ("SDL3.dll", "libSDL3.so", "libSDL3.dylib")
+    if any((library_dir / name).exists() for name in shared_libraries):
+        raise RuntimeError("SDL3 SDK must not contain a shared SDL3 library")
 
 
-def verify_consumer(prefix: Path, work_dir: Path) -> None:
+def verify_consumer(prefix: Path, work_dir: Path, version: str) -> None:
     consumer = work_dir / "consumer"
     build = work_dir / "consumer-build"
     consumer.mkdir(parents=True, exist_ok=True)
-    (consumer / "CMakeLists.txt").write_text(
-        "cmake_minimum_required(VERSION 3.22)\n"
-        "project(cdin_sdl3_sdk_consumer LANGUAGES C)\n"
-        "find_package(SDL3 3.4 CONFIG REQUIRED)\n"
-        "add_executable(cdin_sdl3_sdk_consumer main.c)\n"
-        "target_link_libraries(cdin_sdl3_sdk_consumer PRIVATE SDL3::SDL3)\n",
-        encoding="utf-8",
-    )
-    (consumer / "main.c").write_text(
-        "#include <SDL3/SDL.h>\n"
-        "int main(void) { return SDL_Init(0) ? 1 : 0; }\n",
-        encoding="utf-8",
-    )
+    version_parts = tuple(int(part) for part in version.split("."))
+    if len(version_parts) != 3:
+        raise RuntimeError(f"invalid SDL3 version for consumer verification: {version!r}")
+    major, minor, patch = version_parts
+    cmake_lines = [
+        "cmake_minimum_required(VERSION 3.22)",
+        "project(cdin_sdl3_sdk_consumer LANGUAGES C)",
+        "include(CTest)",
+        f"find_package(SDL3 {version} EXACT CONFIG REQUIRED COMPONENTS SDL3-static)",
+        "get_target_property(SDL3_LINKAGE SDL3::SDL3-static TYPE)",
+        'if(NOT SDL3_LINKAGE STREQUAL "STATIC_LIBRARY")',
+        '  message(FATAL_ERROR "The pinned SDL3 SDK did not export a static target")',
+        "endif()",
+        "add_executable(cdin_sdl3_sdk_consumer main.c)",
+        "target_link_libraries(cdin_sdl3_sdk_consumer PRIVATE SDL3::SDL3-static)",
+        "add_test(NAME cdin_sdl3_sdk_exact_linked_version COMMAND cdin_sdl3_sdk_consumer)",
+    ]
+    (consumer / "CMakeLists.txt").write_text("\n".join(cmake_lines) + "\n", encoding="utf-8")
+    main_lines = [
+        "#include <SDL3/SDL_version.h>",
+        "int main(void)",
+        "{",
+        f"    return SDL_GetVersion() == SDL_VERSIONNUM({major}, {minor}, {patch}) ? 0 : 1;",
+        "}",
+    ]
+    (consumer / "main.c").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
     run([
         "cmake", "-S", str(consumer), "-B", str(build),
         f"-DCMAKE_PREFIX_PATH={prefix}",
         "-DCMAKE_BUILD_TYPE=Release",
     ])
     run(["cmake", "--build", str(build), "--config", "Release", "--parallel"])
+    run(["ctest", "--test-dir", str(build), "--output-on-failure"])
 
 
 def build_archive(prefix: Path, output: Path) -> str:
@@ -267,6 +366,7 @@ def main() -> int:
     args = parser.parse_args()
 
     os_name, arch = target_identity()
+    abi = target_abi(os_name)
     spec = load_source_pin()
     release_tag = os.environ.get("GITHUB_REF_NAME", "")
     if release_tag.startswith("sdl3-sdk-v") and release_tag != f"sdl3-sdk-v{spec['version']}":
@@ -283,7 +383,7 @@ def main() -> int:
     if build.exists():
         shutil.rmtree(build)
 
-    run([
+    cmake_args = [
         "cmake", "-S", str(source), "-B", str(build),
         "-DCMAKE_BUILD_TYPE=Release",
         f"-DCMAKE_INSTALL_PREFIX={prefix}",
@@ -293,12 +393,26 @@ def main() -> int:
         "-DSDL_TESTS=OFF",
         "-DSDL_EXAMPLES=OFF",
         "-DSDL_TEST_LIBRARY=OFF",
-    ])
+    ]
+    if os_name == "macos":
+        cmake_args.extend([
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0",
+            f"-DCMAKE_OSX_ARCHITECTURES={arch}",
+        ])
+    run(cmake_args)
     run(["cmake", "--build", str(build), "--config", "Release", "--parallel"])
     run(["cmake", "--install", str(build), "--config", "Release"])
-    write_manifest(prefix, spec["version"], os_name, arch, spec["sha256"])
-    verify_prefix(prefix)
-    verify_consumer(prefix, args.work_dir)
+    install_license(source, prefix)
+    write_manifest(prefix, spec["version"], os_name, arch, abi, spec["sha256"])
+    verify_prefix(
+        prefix,
+        version=spec["version"],
+        os_name=os_name,
+        arch=arch,
+        abi=abi,
+        source=spec,
+    )
+    verify_consumer(prefix, args.work_dir, spec["version"])
 
     output = args.output_dir / f"sdl3-sdk-{spec['version']}-{os_name}-{arch}.tar.gz"
     digest = build_archive(prefix, output)
