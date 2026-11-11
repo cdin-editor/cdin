@@ -44,8 +44,11 @@ On Debian or Ubuntu:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential cmake git make pkg-config \
+sudo apt-get install build-essential cmake make pkg-config \
   liblua5.4-dev python3 python3-pip
+
+# Only for the explicit hybrid developer/CI source-build path:
+sudo apt-get install git
 ```
 
 ### macOS
@@ -68,6 +71,9 @@ pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
   mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf \
   mingw-w64-ucrt-x86_64-lua54 mingw-w64-ucrt-x86_64-python \
   mingw-w64-ucrt-x86_64-python-pip
+
+# Only for the explicit hybrid developer/CI source-build path:
+pacman -S --needed git mingw-w64-ucrt-x86_64-go
 ```
 
 Use the `lua54` package rather than the unversioned `lua` package. The CI build selects `/ucrt64/include/lua5.4` and `/ucrt64/lib/liblua5.4.dll.a` explicitly so Lua 5.5 cannot be selected accidentally. The normal Registry binary bootstrap does not require Go. Install the UCRT64 Go package only when using the explicit Registry source-build targets. MSVC is not currently a verified build target.
