@@ -392,6 +392,7 @@ def validate_package_tree(package_root: Path, pin: dict, target: str) -> None:
         "lib/pkgconfig/cdin-kernel.pc",
         "lib/pkgconfig/m-mdy-m-log.pc",
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake",
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
         "install.ps1" if target.startswith("windows-") else "install.sh",
     )
@@ -463,6 +464,7 @@ def verify_installed(pin: dict, prefix: Path = SDK_PREFIX) -> None:
         "lib/pkgconfig/cdin-kernel.pc",
         "lib/pkgconfig/m-mdy-m-log.pc",
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake",
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
     )
     missing = [name for name in required if not (prefix / name).is_file()]
