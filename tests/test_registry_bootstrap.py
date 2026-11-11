@@ -32,6 +32,7 @@ from scripts.deps import (
     install_sdk_atomically,
     parse_kernel_abi,
     download_asset,
+    fetch_github_json,
     verify_release_asset_identity,
 )
 from scripts.registry import (
@@ -66,6 +67,42 @@ class KernelSDKAPIRedirectTests(unittest.TestCase):
 
 
 class KernelSDKReleasePinTests(unittest.TestCase):
+
+    def test_github_api_uses_the_workflow_token_when_available(self) -> None:
+        requested = {}
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def geturl(self):
+                return "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+
+            def read(self, _limit: int) -> bytes:
+                return b'{"tag_name":"v1.2.1"}'
+
+        class FakeOpener:
+            def open(self, request, timeout: int):
+                requested["authorization"] = request.get_header("Authorization")
+                requested["timeout"] = timeout
+                return FakeResponse()
+
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-test-token"}, clear=True), \\
+             patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
+            payload = fetch_github_json(
+                "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+            )
+
+        self.assertEqual(payload["tag_name"], "v1.2.1")
+        self.assertEqual(requested["authorization"], "Bearer ghs-test-token")
+        self.assertEqual(requested["timeout"], 30)
+
+
     revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
     tag_object = "a" * 40
     asset = {
