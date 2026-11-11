@@ -263,6 +263,11 @@ def verify_workspace(
         if item["component_id"] == "frontend"
     }
     expected_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    # The split Frontend package contract makes Core a transitive dependency
+    # of each adapter. The current developer Catalog predates that split and
+    # continues to materialize the whole Frontend source tree.
+    if manifest.get("resolution", {}).get("delivery_mode") == "artifact":
+        expected_variants.add("core")
     if frontend_variants != expected_variants:
         raise RuntimeError(
             f"Registry selected Frontend variants {sorted(frontend_variants)}, "
