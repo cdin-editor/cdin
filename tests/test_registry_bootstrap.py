@@ -316,7 +316,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
             original = root / "product-definition.tui.yaml"
             generated = root / "normal" / "product-definition.yaml"
             original.write_text(
-                'schema_version: "1.0.0"\\ncomponents: []\\n',
+                'schema_version: "1.0.0"\ncomponents: []\n',
                 encoding="utf-8",
             )
             create_effective_product_definition(
@@ -325,7 +325,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
                 {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
                 delivery_mode="artifact",
             )
-            self.assertIn("delivery_mode: artifact\\n", generated.read_text(encoding="utf-8"))
+            self.assertIn("delivery_mode: artifact\n", generated.read_text(encoding="utf-8"))
 
     def test_rejects_existing_resolution_block_and_unknown_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
