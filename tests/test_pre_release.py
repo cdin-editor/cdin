@@ -163,6 +163,17 @@ class PreReleaseManifestTests(unittest.TestCase):
             ):
                 pre_release.main()
 
+    def test_legacy_release_recovery_never_mutates_existing_release(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1]
+            / ".github/workflows/pre-release.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("e4c5fb26659f9a00cf11163ae132ebe40e7e0157", workflow)
+        self.assertIn("repair_required=true", workflow)
+        self.assertIn("Refusing to delete, replace or rewrite it", workflow)
+        self.assertNotIn("gh api --method DELETE", workflow)
+        self.assertNotIn("gh api --method PATCH", workflow)
+
     def test_artifact_without_immutable_source_provenance_fails_closed(self) -> None:
         backend = next(item for item in self.manifest["components"] if item["component_id"] == "backend")
         backend["selected_artifact"]["source_provenance"] = []
