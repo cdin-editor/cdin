@@ -51,8 +51,13 @@ description = "Test bounded SDL3 source extraction and explicit developer-only o
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_build_stack_sdl3.py"]
 timeout_seconds = 60
 
+[tasks.pre-release-tests]
+description = "Test the source pre-release manifest against Registry artifact/source delivery semantics"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pre_release.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests"]
 timeout_seconds = 180
