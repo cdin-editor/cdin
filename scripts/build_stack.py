@@ -281,12 +281,20 @@ def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
     sdk = prefix / "share" / "cdin" / "sdl3-sdk.json"
     config = prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
     header = prefix / "include" / "SDL3" / "SDL.h"
-    static_library = prefix / "lib" / ("SDL3-static.lib" if os.name == "nt" else "libSDL3.a")
-    for path in (sdk, config, header, static_library):
+    static_libraries = (
+        prefix / "lib" / "libSDL3.a",
+        prefix / "lib" / "SDL3-static.lib",
+    )
+    for path in (sdk, config, header):
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(
                 f"GUI-SDL requires the verified prebuilt SDL3 SDK; missing or unsafe: {path}"
             )
+    if not any(path.is_file() and not path.is_symlink() for path in static_libraries):
+        raise RuntimeError(
+            "GUI-SDL SDK is missing its target-native static SDL3 library "
+            "(expected libSDL3.a or SDL3-static.lib)"
+        )
     try:
         metadata = json.loads(sdk.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
