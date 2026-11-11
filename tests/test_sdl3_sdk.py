@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 from pathlib import Path
 import tarfile
 import tempfile
@@ -34,6 +35,133 @@ class TargetIdentityTests(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 sdk.target_identity()
+
+
+class TargetAbiTests(unittest.TestCase):
+    def test_linux_requires_exact_glibc_baseline(self) -> None:
+        with patch.object(sdk.platform, "libc_ver", return_value=("glibc", "2.39")):
+            self.assertEqual(sdk.target_abi("linux"), "gnu-glibc-2.39")
+        with patch.object(sdk.platform, "libc_ver", return_value=("glibc", "2.40")):
+            with self.assertRaisesRegex(RuntimeError, "glibc 2.39"):
+                sdk.target_abi("linux")
+
+    def test_macos_requires_supported_major_version(self) -> None:
+        with patch.object(sdk.platform, "mac_ver", return_value=("15.6", ("", "", ""), "")):
+            self.assertEqual(sdk.target_abi("macos"), "macos-15")
+        with patch.object(sdk.platform, "mac_ver", return_value=("14.7", ("", "", ""), "")):
+            with self.assertRaisesRegex(RuntimeError, "macOS 15"):
+                sdk.target_abi("macos")
+
+    def test_windows_requires_ucrt64_environment(self) -> None:
+        with patch.dict(sdk.os.environ, {"MSYSTEM": "UCRT64"}):
+            self.assertEqual(sdk.target_abi("windows"), "windows-ucrt64")
+        with patch.dict(sdk.os.environ, {"MSYSTEM": "MINGW64"}):
+            with self.assertRaisesRegex(RuntimeError, "UCRT64"):
+                sdk.target_abi("windows")
+
+    def test_unknown_abi_fails_closed(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "unsupported SDL3 SDK ABI"):
+            sdk.target_abi("freebsd")
+
+
+class InstalledPrefixTests(unittest.TestCase):
+    def _prefix(self, root: Path) -> Path:
+        (root / "include" / "SDL3").mkdir(parents=True)
+        (root / "lib" / "cmake" / "SDL3").mkdir(parents=True)
+        (root / "share" / "cdin").mkdir(parents=True)
+        (root / "share" / "licenses" / "SDL3").mkdir(parents=True)
+        (root / "lib" / "libSDL3.a").write_bytes(b"static archive fixture")
+        (root / "include" / "SDL3" / "SDL.h").write_text("/* fixture */\n", encoding="utf-8")
+        (root / "include" / "SDL3" / "SDL_version.h").write_text("/* fixture */\n", encoding="utf-8")
+        (root / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake").write_text(
+            "# fixture\n", encoding="utf-8"
+        )
+        (root / "share" / "licenses" / "SDL3" / "LICENSE.txt").write_text(
+            "zlib license fixture\n", encoding="utf-8"
+        )
+        source = sdk.load_source_pin()
+        manifest = {
+            "schema": "cdin.sdl3-sdk.v1",
+            "version": source["version"],
+            "target": {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+            "source": {"url": source["archive"], "sha256": source["sha256"]},
+            "linkage": "static",
+            "cmake_package": "SDL3",
+        }
+        (root / "share" / "cdin" / "sdl3-sdk.json").write_text(
+            json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        return root
+
+    def test_accepts_exact_static_prefix_with_license_and_abi(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = self._prefix(Path(temporary) / "prefix")
+            sdk.verify_prefix(
+                prefix,
+                version="3.4.16",
+                os_name="linux",
+                arch="x86_64",
+                abi="gnu-glibc-2.39",
+                source=sdk.load_source_pin(),
+            )
+
+    def test_rejects_manifest_for_different_abi(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = self._prefix(Path(temporary) / "prefix")
+            manifest_path = prefix / "share" / "cdin" / "sdl3-sdk.json"
+            metadata = json.loads(manifest_path.read_text(encoding="utf-8"))
+            metadata["target"]["abi"] = "windows-ucrt64"
+            manifest_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "manifest"):
+                sdk.verify_prefix(
+                    prefix,
+                    version="3.4.16",
+                    os_name="linux",
+                    arch="x86_64",
+                    abi="gnu-glibc-2.39",
+                    source=sdk.load_source_pin(),
+                )
+
+    def test_rejects_missing_upstream_license(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = self._prefix(Path(temporary) / "prefix")
+            (prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt").unlink()
+            with self.assertRaisesRegex(RuntimeError, "LICENSE.txt"):
+                sdk.verify_prefix(
+                    prefix,
+                    version="3.4.16",
+                    os_name="linux",
+                    arch="x86_64",
+                    abi="gnu-glibc-2.39",
+                    source=sdk.load_source_pin(),
+                )
+
+    def test_rejects_shared_only_library(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = self._prefix(Path(temporary) / "prefix")
+            (prefix / "lib" / "libSDL3.a").unlink()
+            (prefix / "lib" / "libSDL3.so").write_bytes(b"shared fixture")
+            with self.assertRaisesRegex(RuntimeError, "static SDL3 library"):
+                sdk.verify_prefix(
+                    prefix,
+                    version="3.4.16",
+                    os_name="linux",
+                    arch="x86_64",
+                    abi="gnu-glibc-2.39",
+                    source=sdk.load_source_pin(),
+                )
+
+    def test_consumer_requires_exact_version_and_runs_linked_version_test(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(sdk, "run") as run_mock:
+                sdk.verify_consumer(root / "prefix", root / "work", "3.4.16")
+            cmake = (root / "work" / "consumer" / "CMakeLists.txt").read_text(encoding="utf-8")
+            source = (root / "work" / "consumer" / "main.c").read_text(encoding="utf-8")
+            self.assertIn("find_package(SDL3 3.4.16 EXACT CONFIG REQUIRED COMPONENTS SDL3-static)", cmake)
+            self.assertIn("SDL3::SDL3-static", cmake)
+            self.assertIn("SDL_VERSIONNUM(3, 4, 16)", source)
+            self.assertTrue(any(command.args[0][0] == "ctest" for command in run_mock.call_args_list))
 
 
 class SafeSourceExtractionTests(unittest.TestCase):
