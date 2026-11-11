@@ -457,6 +457,17 @@ def _cache_paths(
     )
 
 
+def _read_cached_file(path: Path, *, maximum: int, label: str) -> bytes:
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(maximum + 1)
+    except OSError as error:
+        raise RegistryBootstrapError(f"cannot read cached {label}: {error}") from error
+    if len(data) > maximum:
+        raise RegistryBootstrapError(f"cached {label} exceeds its size limit")
+    return data
+
+
 def _verify_cached(
     paths: tuple[Path, Path, Path, Path],
     *,
@@ -470,7 +481,9 @@ def _verify_cached(
     revision, version, tag, descriptor_sha, descriptor_size = pin
     if not all(path.is_file() and not path.is_symlink() for path in (descriptor_path, catalog_path, binary_path)):
         raise RegistryBootstrapError("Registry cache is incomplete")
-    descriptor_bytes = descriptor_path.read_bytes()
+    descriptor_bytes = _read_cached_file(
+        descriptor_path, maximum=MAX_JSON_BYTES, label="Registry release descriptor"
+    )
     _verify_bytes(
         descriptor_bytes,
         name=descriptor_path.name,
@@ -484,7 +497,9 @@ def _verify_cached(
         version=version,
         tag=tag,
     )
-    catalog_bytes = catalog_path.read_bytes()
+    catalog_bytes = _read_cached_file(
+        catalog_path, maximum=MAX_JSON_BYTES, label="Registry Catalog"
+    )
     _verify_bytes(
         catalog_bytes,
         name=catalog_path.name,
@@ -493,7 +508,9 @@ def _verify_cached(
     )
     _validate_catalog(catalog_bytes, catalog_record)
     executable = executables[target_id]
-    binary_bytes = binary_path.read_bytes()
+    binary_bytes = _read_cached_file(
+        binary_path, maximum=MAX_BINARY_BYTES, label="Registry executable"
+    )
     _verify_bytes(
         binary_bytes,
         name=executable_name,
@@ -524,6 +541,19 @@ def acquire_registry_artifact(
         if target_id not in TARGETS:
             raise RegistryBootstrapError(f"unsupported explicit Registry target: {target_id}")
     executable_name = TARGETS[target_id][0]
+    if os_name == "windows" and os.environ.get("MSYSTEM") != "UCRT64":
+        raise RegistryBootstrapError("Registry Windows executable requires x86_64 MSYS2 UCRT64")
+    cache_root.mkdir(parents=True, exist_ok=True)
+    if cache_root.is_symlink():
+        raise RegistryBootstrapError("Registry cache root must not be a symlink")
+    version_directory = cache_root / version
+    if version_directory.is_symlink():
+        raise RegistryBootstrapError("Registry cache version directory must not be a symlink")
+    version_directory.mkdir(exist_ok=True)
+    target_directory = version_directory / target_id
+    if target_directory.is_symlink():
+        raise RegistryBootstrapError("Registry cache target directory must not be a symlink")
+    target_directory.mkdir(exist_ok=True)
     cache_paths = _cache_paths(
         cache_root,
         version=version,
