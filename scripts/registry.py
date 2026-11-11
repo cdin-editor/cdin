@@ -299,16 +299,14 @@ def verify_workspace(
     for key, component in by_key.items():
         if key[0] == "backend":
             continue
-        if developer_source_components:
-            if component.get("delivery", "source") != "source":
-                raise RuntimeError(
-                    f"developer source mode expected source delivery for {key}, "
-                    f"found {component.get('delivery')}"
-                )
+
+        delivery = component.get("delivery", "source")
+        if delivery == "source":
             if not developer_source_components:
                 raise RuntimeError(
-                    f"normal CDIN install cannot stage source-delivered {component_id}; "
-                    "a compatible immutable artifact is required"
+                    f"normal CDIN installation requires a published artifact for {key}; "
+                    "source fallback is disabled. Use the explicit developer source mode only "
+                    "for contribution/CI validation."
                 )
             units = component.get("source_units", [])
             if len(units) != 1:
@@ -317,25 +315,23 @@ def verify_workspace(
                 materialized = workspace / source["workspace_path"]
                 if not materialized.is_dir():
                     raise RuntimeError(f"Registry source unit is missing: {materialized}")
-        else:
-            if component.get("delivery") != "artifact":
-                raise RuntimeError(
-                    f"normal CDIN installation requires a published artifact for {key}; "
-                    "source fallback is disabled. Use the explicit developer source mode only "
-                    "for contribution/CI validation."
-                )
-            artifact = component.get("selected_artifact")
-            if not isinstance(artifact, dict):
-                raise RuntimeError(f"Registry Manifest is missing the selected artifact for {key}")
-            expected_path = f"components/{key[0]}/{key[1]}/package"
-            if artifact.get("workspace_path") != expected_path:
-                raise RuntimeError(f"Registry artifact workspace path is not canonical for {key}")
-            package = workspace / expected_path
-            if not package.is_dir():
-                raise RuntimeError(f"Registry artifact package is missing for {key}: {package}")
-            if artifact.get("kind") == "native-development-package":
-                if artifact.get("target") != target:
-                    raise RuntimeError(f"native artifact target does not match the CDIN host for {key}")
+            continue
+
+        if delivery != "artifact":
+            raise RuntimeError(f"Registry selected an unsupported delivery mode for {key}: {delivery}")
+        artifact = component.get("selected_artifact")
+        if not isinstance(artifact, dict):
+            raise RuntimeError(f"Registry Manifest is missing the selected artifact for {key}")
+        expected_path = f"components/{key[0]}/{key[1]}/package"
+        if artifact.get("workspace_path") != expected_path:
+            raise RuntimeError(f"Registry artifact workspace path is not canonical for {key}")
+        package = workspace / expected_path
+        if not package.is_dir():
+            raise RuntimeError(f"Registry artifact package is missing for {key}: {package}")
+        if artifact.get("kind") == "native-development-package":
+            if artifact.get("target") != target:
+                raise RuntimeError(f"native artifact target does not match the CDIN host for {key}")
+
 
 
 def prepare(
