@@ -161,6 +161,11 @@ def main() -> int:
         return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("tui", "gui-sdl"), default=default_profile)
+    parser.add_argument(
+        "--registry-source-build",
+        action="store_true",
+        help="developer/CI-only: verify the workspace using the pinned Registry source build",
+    )
     args = parser.parse_args()
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
@@ -176,7 +181,12 @@ def main() -> int:
 
     # Registry owns component discovery and immutable source collection.
     # The manifest, not deps.lock, is the authoritative component selection.
-    run([sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace", "--source-build"])
+    registry_command = [
+        sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"
+    ]
+    if args.registry_source_build:
+        registry_command.append("--source-build")
+    run(registry_command)
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
