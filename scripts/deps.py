@@ -390,6 +390,8 @@ def validate_package_tree(package_root: Path, pin: dict, target: str) -> None:
         "lib/libm-mdy-m-log.a",
         "lib/pkgconfig/cdin-kernel.pc",
         "lib/pkgconfig/m-mdy-m-log.pc",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
         "install.ps1" if target.startswith("windows-") else "install.sh",
     )
     missing = [name for name in required if not (package_root / name).is_file()]
@@ -443,6 +445,8 @@ def verify_installed(pin: dict) -> None:
         "lib/libm-mdy-m-log.a",
         "lib/pkgconfig/cdin-kernel.pc",
         "lib/pkgconfig/m-mdy-m-log.pc",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+        "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
     )
     missing = [name for name in required if not (SDK_PREFIX / name).is_file()]
     if missing:
@@ -473,7 +477,7 @@ def verify_installed(pin: dict) -> None:
     for name in ("MAJOR", "MINOR", "PATCH"):
         import re
         match = re.search(
-            rf"^#define CDIN_KERNEL_ABI_{name}\\s+([0-9]+)u?$",
+            rf"^#define CDIN_KERNEL_ABI_{name}\s+([0-9]+)u?$",
             header, flags=re.MULTILINE
         )
         if match is None:
