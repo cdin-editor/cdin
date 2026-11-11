@@ -355,7 +355,7 @@ class RegistryTargetDetectionTests(unittest.TestCase):
 class EffectiveProductDefinitionTests(unittest.TestCase):
     def test_creates_host_specific_copy_without_mutating_checked_in_profile(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             original = root / "product-definition.tui.yaml"
             generated = root / "temporary" / "product-definition.yaml"
             source = (
@@ -388,7 +388,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
 
     def test_normal_product_resolution_is_artifact_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             original = root / "product-definition.tui.yaml"
             generated = root / "normal" / "product-definition.yaml"
             original.write_text(
@@ -405,7 +405,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
 
     def test_rejects_existing_resolution_block_and_unknown_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             source = root / "product.yaml"
             destination = root / "generated.yaml"
             source.write_text(
@@ -442,7 +442,7 @@ class BackendArtifactStagingTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.package = self.root / "registry-package"
 
         for relative, payload in self.REQUIRED_FILES.items():
@@ -565,7 +565,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
 
     def test_kernel_logger_sdk_prefix_stages_all_cmake_and_pkgconfig_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             sdk = root / "sdk"
             prefix = root / "install"
             files = {
@@ -591,7 +591,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
 
     def test_kernel_sdk_and_backend_install_prefixes_compose_together(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             sdk = root / "kernel-sdk"
             backend = root / "backend"
             prefix = root / "install"
@@ -637,7 +637,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
 class KernelSDKOfflineCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.cache = Path(self.temporary.name) / "cache"
+        self.cache = Path(self.temporary.name).resolve() / "cache"
         self.payload = b"immutable-kernel-sdk-fixture"
         self.asset = {
             "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
@@ -716,7 +716,7 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
 class KernelSDKAtomicInstallTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.package = self.root / "package"
         self.package.mkdir()
         self.destination = self.root / "sdk"
@@ -814,7 +814,7 @@ class FrontendArtifactStagingTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -857,7 +857,7 @@ class FrontendArtifactStagingTests(unittest.TestCase):
 class RuntimeArtifactRootTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.workspace = Path(self.temporary.name)
+        self.workspace = Path(self.temporary.name).resolve()
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -910,7 +910,7 @@ class RuntimeArtifactRootTests(unittest.TestCase):
 class RegistryArtifactConsumerValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
-        self.workspace = Path(self.temporary.name)
+        self.workspace = Path(self.temporary.name).resolve()
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -979,6 +979,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("package file", encoding="utf-8")
         build_info = package / "share/cdin-frontend/BUILD-INFO.txt"
+        build_info.parent.mkdir(parents=True, exist_ok=True)
         build_info.write_text(
             "\\n".join((
                 "component=frontend",
