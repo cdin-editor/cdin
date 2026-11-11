@@ -88,10 +88,14 @@ class _TrustedAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, request, file_pointer, code, message, headers, new_url):
         parsed = urllib.parse.urlparse(new_url)
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise RegistryBootstrapError("untrusted Registry asset redirect port") from error
         if (
             parsed.scheme != "https"
             or parsed.hostname not in self.allowed_hosts
-            or parsed.port not in (None, 443)
+            or port not in (None, 443)
             or parsed.username is not None
             or parsed.password is not None
             or parsed.fragment
@@ -154,11 +158,15 @@ class GitHubReleaseClient:
         try:
             with opener.open(request, timeout=60) as response:
                 final_url = urllib.parse.urlparse(response.geturl())
+                try:
+                    final_port = final_url.port
+                except ValueError as error:
+                    raise RegistryBootstrapError("Registry asset response has an invalid port") from error
                 if (
                     response.status != 200
                     or final_url.scheme != "https"
                     or final_url.hostname not in _TrustedAssetRedirectHandler.allowed_hosts
-                    or final_url.port not in (None, 443)
+                    or final_port not in (None, 443)
                     or final_url.username is not None
                     or final_url.password is not None
                     or final_url.fragment
@@ -356,12 +364,21 @@ def _api_asset_identity(asset: dict[str, Any], *, name: str, sha256: str, size: 
         raise RegistryBootstrapError(f"Registry GitHub asset size does not match the release descriptor: {name}")
     url = asset.get("browser_download_url")
     parsed = urllib.parse.urlparse(url) if isinstance(url, str) else None
+    try:
+        port = parsed.port if parsed is not None else None
+    except ValueError as error:
+        raise RegistryBootstrapError(
+            f"Registry release asset {name!r} has an invalid download URL port"
+        ) from error
     if (
         parsed is None
         or parsed.scheme != "https"
         or parsed.hostname != "github.com"
+        or port not in (None, 443)
         or parsed.username is not None
         or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
     ):
         raise RegistryBootstrapError(f"Registry release asset {name!r} has an untrusted download URL")
     return url
