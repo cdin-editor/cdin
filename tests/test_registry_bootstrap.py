@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import runpy
 import tempfile
 import unittest
 import urllib.request
@@ -17,6 +19,12 @@ from scripts.build_stack import (
     verify_environment_sdk_contract,
 )
 from scripts.configure import selected_package_version
+_REGISTRY_E2E = runpy.run_path(
+    str(Path(__file__).resolve().parent / "e2e" / "test_registry_workspace.py")
+)
+verify_runtime_package = _REGISTRY_E2E["verify_runtime_package"]
+verify_frontend_artifact = _REGISTRY_E2E["verify_frontend_artifact"]
+FRONTEND_PACKAGE_FILES = _REGISTRY_E2E["FRONTEND_PACKAGE_FILES"]
 from scripts.deps import (
     CACHE as SDK_CACHE,
     SDKBootstrapError,
@@ -860,6 +868,117 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         with patch("scripts.build_stack.WORKSPACE", self.workspace):
             with self.assertRaisesRegex(RuntimeError, "universal any/any/none"):
                 runtime_module_package_root(manifest)
+
+
+class RegistryArtifactConsumerValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.workspace = Path(self.temporary.name)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_runtime_package_manifest_and_every_declared_module_are_verified(self) -> None:
+        root = (
+            self.workspace / "components/runtime/default/package"
+            / "cdin-runtime-1.0.0"
+        )
+        payloads = {
+            "LICENSE": b"runtime license",
+            "NOTICE": b"runtime notice",
+            "lua/cdin/runtime.lua": b"return {}\\n",
+        }
+        file_records = []
+        for relative, payload in payloads.items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+            file_records.append({
+                "path": relative,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            })
+        package_manifest = {
+            "component_id": "runtime",
+            "variant": "default",
+            "version": "1.0.0",
+            "layout": "lua-module-tree-v1",
+            "module_root": "lua",
+            "runtime_requirement": "PUC Lua >=5.4 <5.5",
+            "source_revision": "a" * 40,
+            "files": file_records,
+        }
+        (root / "package-manifest.json").write_text(
+            json.dumps(package_manifest), encoding="utf-8"
+        )
+        component = {
+            "version": "1.0.0",
+            "delivery": "artifact",
+            "selected_artifact": {
+                "kind": "runtime-module-archive",
+                "layout": "lua-module-tree-v1",
+                "target": {"os": "any", "architecture": "any", "abi": "none"},
+                "workspace_path": "components/runtime/default/package",
+                "source_provenance": [{
+                    "source_unit_id": "runtime-source",
+                    "revision": "a" * 40,
+                }],
+            },
+        }
+        verify_runtime_package(self.workspace, component)
+
+        (root / "lua/cdin/runtime.lua").write_bytes(b"modified\\n")
+        with self.assertRaisesRegex(SystemExit, "digest/size mismatch"):
+            verify_runtime_package(self.workspace, component)
+
+    def test_frontend_variant_package_checks_build_identity_and_public_files(self) -> None:
+        variant = "tui"
+        version = "1.1.1"
+        revision = "b" * 40
+        target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
+        package = self.workspace / "components/frontend/tui/package"
+        for relative in FRONTEND_PACKAGE_FILES[variant]:
+            path = package / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("package file", encoding="utf-8")
+        build_info = package / "share/cdin-frontend/BUILD-INFO.txt"
+        build_info.write_text(
+            "\\n".join((
+                "component=frontend",
+                "variant=tui",
+                f"package_version={version}",
+                f"source_revision={revision}",
+                "target_os=linux",
+                "target_architecture=x86_64",
+                "target_abi=gnu-glibc-2.39",
+            )) + "\\n",
+            encoding="utf-8",
+        )
+        component = {
+            "version": version,
+            "delivery": "artifact",
+            "selected_artifact": {
+                "kind": "native-development-package",
+                "layout": "cmake-prefix-v1",
+                "target": target,
+                "workspace_path": "components/frontend/tui/package",
+                "source_provenance": [{
+                    "source_unit_id": "frontend-source",
+                    "revision": revision,
+                }],
+            },
+        }
+        self.assertEqual(
+            verify_frontend_artifact(
+                self.workspace, target, ("frontend", variant), component
+            ),
+            revision,
+        )
+        build_info.write_text("component=frontend\\nvariant=wrong\\n", encoding="utf-8")
+        with self.assertRaisesRegex(SystemExit, "BUILD-INFO does not match"):
+            verify_frontend_artifact(
+                self.workspace, target, ("frontend", variant), component
+            )
 
 
 if __name__ == "__main__":
