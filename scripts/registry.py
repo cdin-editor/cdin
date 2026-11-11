@@ -71,13 +71,17 @@ def load_lock() -> dict:
     return tomllib.loads(LOCK.read_text(encoding="utf-8"))
 
 
-def registry_pin() -> tuple[str, str]:
+def registry_pin(*, development: bool = False) -> tuple[str, str]:
     entry = load_lock()["tooling"]["registry"]
+    if development:
+        entry = entry.get("development")
+        if not isinstance(entry, dict):
+            raise RuntimeError("deps.lock is missing the exact Registry development source pin")
     return entry["repository"], entry["revision"]
 
 
-def checkout_registry() -> None:
-    repository, revision = registry_pin()
+def checkout_registry(*, development: bool = False) -> None:
+    repository, revision = registry_pin(development=development)
     REGISTRY_SOURCE.parent.mkdir(parents=True, exist_ok=True)
     if not REGISTRY_SOURCE.exists():
         run(["git", "clone", "--no-checkout", repository, str(REGISTRY_SOURCE)])
@@ -113,15 +117,15 @@ def build_registry(
         raise RuntimeError(
             "Registry source builds are developer-only and require Git and Go 1.27.3 or newer"
         )
-    _, revision = registry_pin()
+    _, revision = registry_pin(development=True)
     if run_tests or not REGISTRY_SOURCE.exists():
-        checkout_registry()
+        checkout_registry(development=True)
     else:
         actual = subprocess.check_output(
             ["git", "-C", str(REGISTRY_SOURCE), "rev-parse", "HEAD"], text=True
         ).strip()
         if actual != revision:
-            checkout_registry()
+            checkout_registry(development=True)
     if run_tests:
         run_registry_go(["go", "test", "./..."])
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
