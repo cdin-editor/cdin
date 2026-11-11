@@ -351,15 +351,15 @@ class BackendArtifactStagingTests(unittest.TestCase):
 class KernelSDKCompositionTests(unittest.TestCase):
     def test_kernel_header_abi_parser_uses_public_three_part_constants(self) -> None:
         header = (
-            "#define CDIN_KERNEL_ABI_MAJOR 1u\\n"
-            "#define CDIN_KERNEL_ABI_MINOR 1u\\n"
-            "#define CDIN_KERNEL_ABI_PATCH 0u\\n"
+            "#define CDIN_KERNEL_ABI_MAJOR 1u\n"
+            "#define CDIN_KERNEL_ABI_MINOR 1u\n"
+            "#define CDIN_KERNEL_ABI_PATCH 0u\n"
         )
         self.assertEqual(parse_kernel_abi(header), "1.1.0")
         with self.assertRaisesRegex(SDKBootstrapError, "missing ABI PATCH"):
             parse_kernel_abi(
-                "#define CDIN_KERNEL_ABI_MAJOR 1u\\n"
-                "#define CDIN_KERNEL_ABI_MINOR 1u\\n"
+                "#define CDIN_KERNEL_ABI_MAJOR 1u\n"
+                "#define CDIN_KERNEL_ABI_MINOR 1u\n"
             )
 
     def test_kernel_logger_sdk_prefix_stages_all_cmake_and_pkgconfig_contracts(self) -> None:
