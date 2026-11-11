@@ -244,7 +244,7 @@ def verify_workspace(binary: Path, profile: str, target: dict[str, str]) -> None
         raise RuntimeError(f"Registry workspace is missing: {manifest_path}")
     run([str(binary), "manifest", "verify", "--input", str(manifest_path)])
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    required = {"kernel", "runtime", "backend", "frontend"}
+    required = {"runtime", "backend", "frontend"}
     selected = {item["component_id"] for item in manifest["components"]}
     if selected != required:
         raise RuntimeError(f"Registry selected {sorted(selected)}, expected {sorted(required)}")
