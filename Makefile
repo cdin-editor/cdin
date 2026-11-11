@@ -18,8 +18,10 @@ help:
 	@echo "make registry-gui acquire the pinned Registry release for the GUI-SDL profile"
 	@echo "make registry-dev build Registry from source (developer-only)"
 	@echo "make registry-gui-dev build Registry from source for GUI-SDL (developer-only)"
-	@echo "make stack        build/test/install the selected component profile"
-	@echo "make stack-gui    build/test/install the GUI-SDL + TUI profile"
+	@echo "make stack        use pinned Registry binary, then build the selected component profile"
+	@echo "make stack-gui    use pinned Registry binary for GUI-SDL + TUI"
+	@echo "make stack-dev    explicitly build Registry from source"
+	@echo "make stack-gui-dev explicitly build Registry from source for GUI-SDL"
 	@echo "make configure    configure CDIN after its components are installed"
 	@echo "make build        build cdin (requires installed components)"
 	@echo "make install      build, test and install the complete selected profile"
@@ -43,13 +45,19 @@ registry-dev: deps
 registry-gui-dev: deps
 	$(PYTHON) scripts/registry.py --profile gui-sdl --source-build
 
-stack: registry-dev
+stack: deps registry
 	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)"
 
-stack-gui: registry-gui-dev
+stack-gui: deps registry-gui
 	$(PYTHON) scripts/build_stack.py --profile gui-sdl
 
-configure: registry-dev
+stack-dev: registry-dev
+	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)" --registry-source-build
+
+stack-gui-dev: registry-gui-dev
+	$(PYTHON) scripts/build_stack.py --profile gui-sdl --registry-source-build
+
+configure: deps registry
 	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"
 
 build: configure
