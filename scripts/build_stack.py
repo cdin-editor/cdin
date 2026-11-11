@@ -81,9 +81,27 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
         if path.is_symlink() or not path.is_file():
             raise RuntimeError(f"Backend package is missing a regular required file: {relative}")
 
-    prefix.mkdir(parents=True, exist_ok=True)
+    prefix = Path(os.path.abspath(prefix))
+    ancestor = prefix
+    while ancestor != ancestor.parent:
+        if ancestor.is_symlink():
+            raise RuntimeError(f"Backend package destination contains a symlink ancestor: {ancestor}")
+        ancestor = ancestor.parent
+    if prefix.exists() or prefix.is_symlink():
+        prefix_info = prefix.lstat()
+        if stat.S_ISLNK(prefix_info.st_mode) or not stat.S_ISDIR(prefix_info.st_mode):
+            raise RuntimeError("Backend package destination must be a real directory")
+    else:
+        prefix.mkdir(parents=True, exist_ok=False)
+
+    source_root = Path(os.path.abspath(package))
+    ancestor = source_root
+    while ancestor != ancestor.parent:
+        if ancestor.is_symlink():
+            raise RuntimeError(f"Backend Registry package contains a symlink ancestor: {ancestor}")
+        ancestor = ancestor.parent
+    package = source_root
     source_files: list[Path] = []
-    source_directories: list[Path] = []
     for top in ("include", "lib", "bin", "share"):
         source_root = package / top
         if not source_root.exists():
@@ -92,7 +110,6 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
             raise RuntimeError(f"Backend package contains an unsafe prefix entry: {top}")
         for current, directories, files in os.walk(source_root, topdown=True, followlinks=False):
             current_path = Path(current)
-            source_directories.append(current_path)
             for name in list(directories):
                 source_dir = current_path / name
                 if source_dir.is_symlink() or not source_dir.is_dir():
