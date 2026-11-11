@@ -64,8 +64,18 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--install", str(build)], env=env)
 
 
+def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
+    """Prevent the GUI-SDL source build from becoming an implicit consumer path."""
+    if profile == "gui-sdl" and not enabled:
+        raise RuntimeError(
+            "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
+            "building SDL3 from source is developer-only. Pass "
+            "--build-sdl3-from-source only for an explicit local development build."
+        )
+
+
 def install_sdl3(env: dict[str, str]) -> None:
-    """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
+    """Build the checksum-pinned SDL3 source archive for developer builds only."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
     spec = lock["tooling"]["sdl3"]
     version = spec["version"]
@@ -166,6 +176,11 @@ def main() -> int:
         return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("tui", "gui-sdl"), default=default_profile)
+    parser.add_argument(
+        "--build-sdl3-from-source",
+        action="store_true",
+        help="developer-only opt-in to build SDL3 from its pinned source archive",
+    )
     args = parser.parse_args()
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
@@ -173,6 +188,8 @@ def main() -> int:
     else:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
+
+    require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
 
     for tool in ("git", "cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
