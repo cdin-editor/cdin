@@ -9,6 +9,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import stat
 import tempfile
 from typing import Any
 import urllib.error
@@ -450,6 +451,24 @@ def _verify_bytes(data: bytes, *, name: str, sha256: str, size: int) -> None:
         )
 
 
+def _ensure_safe_cache_path(path: Path) -> None:
+    """Reject symlinks and non-directory ancestors before creating cache state."""
+    absolute = Path(os.path.abspath(path))
+    for candidate in reversed((absolute, *absolute.parents)):
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise RegistryBootstrapError(
+                f"cannot inspect Registry cache path component: {candidate}"
+            ) from error
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise RegistryBootstrapError(
+                f"Registry cache path contains a symlink or non-directory ancestor: {candidate}"
+            )
+
+
 def _cache_paths(
     root: Path,
     *,
@@ -489,8 +508,13 @@ def _verify_cached(
 ) -> tuple[Path, Path]:
     destination, descriptor_path, catalog_path, binary_path = paths
     revision, version, tag, descriptor_sha, descriptor_size = pin
-    if not all(path.is_file() and not path.is_symlink() for path in (descriptor_path, catalog_path, binary_path)):
-        raise RegistryBootstrapError("Registry cache is incomplete")
+    for path in (descriptor_path, catalog_path, binary_path):
+        try:
+            info = path.lstat()
+        except OSError as error:
+            raise RegistryBootstrapError("Registry cache is incomplete") from error
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise RegistryBootstrapError("Registry cache contains a symlink or non-regular file")
     descriptor_bytes = _read_cached_file(
         descriptor_path, maximum=MAX_JSON_BYTES, label="Registry release descriptor"
     )
@@ -528,6 +552,8 @@ def _verify_cached(
         size=executable["size"],
     )
     verify_binary_target(binary_bytes, os_name=os_name, architecture=architecture)
+    if os_name != "windows" and not (binary_path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)):
+        raise RegistryBootstrapError("cached Registry executable has lost its executable permission")
     return binary_path, catalog_path
 
 
@@ -553,16 +579,14 @@ def acquire_registry_artifact(
     executable_name = TARGETS[target_id][0]
     if os_name == "windows" and os.environ.get("MSYSTEM") != "UCRT64":
         raise RegistryBootstrapError("Registry Windows executable requires x86_64 MSYS2 UCRT64")
+    _ensure_safe_cache_path(cache_root)
     cache_root.mkdir(parents=True, exist_ok=True)
-    if cache_root.is_symlink():
-        raise RegistryBootstrapError("Registry cache root must not be a symlink")
+    _ensure_safe_cache_path(cache_root)
     version_directory = cache_root / version
-    if version_directory.is_symlink():
-        raise RegistryBootstrapError("Registry cache version directory must not be a symlink")
+    _ensure_safe_cache_path(version_directory)
     version_directory.mkdir(exist_ok=True)
     target_directory = version_directory / target_id
-    if target_directory.is_symlink():
-        raise RegistryBootstrapError("Registry cache target directory must not be a symlink")
+    _ensure_safe_cache_path(target_directory)
     target_directory.mkdir(exist_ok=True)
     cache_paths = _cache_paths(
         cache_root,
@@ -681,9 +705,9 @@ def acquire_registry_artifact(
     verify_binary_target(binary_bytes, os_name=os_name, architecture=architecture)
 
     parent = destination.parent
-    if parent.is_symlink():
-        raise RegistryBootstrapError("Registry cache target directory must not be a symlink")
+    _ensure_safe_cache_path(parent)
     parent.mkdir(parents=True, exist_ok=True)
+    _ensure_safe_cache_path(parent)
     staging = Path(tempfile.mkdtemp(prefix=".registry-stage-", dir=parent))
     try:
         descriptor_path = staging / "registry-release.json"
