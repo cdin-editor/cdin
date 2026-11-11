@@ -166,6 +166,7 @@ def stage_kernel_sdk_prefix(package: Path, prefix: Path) -> None:
             "lib/pkgconfig/cdin-kernel.pc",
             "lib/pkgconfig/m-mdy-m-log.pc",
             "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake",
             "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
         ),
     )
