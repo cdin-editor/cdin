@@ -703,9 +703,9 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "POSIX symlink semantics are required for this test")
     def test_rejects_symlinked_sdk_cache_ancestor(self) -> None:
-        real = Path(self.temporary.name) / "real"
+        real = Path(self.temporary.name).resolve() / "real"
         real.mkdir()
-        linked = Path(self.temporary.name) / "linked"
+        linked = Path(self.temporary.name).resolve() / "linked"
         linked.symlink_to(real, target_is_directory=True)
         with patch("scripts.deps.CACHE", linked / "cache"), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "1"}):
