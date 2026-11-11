@@ -68,11 +68,11 @@ make registry-dev
 make registry-gui-dev
 ```
 
-These targets use the pinned source revision and require Git and Go 1.27.3 or newer. The Pipeline's source-build Registry task is likewise a contributor/CI path; it is not the ordinary consumer bootstrap.
+These targets use the pinned Registry source revision and pass the separate `--developer-source-components` policy to permit source delivery for Runtime/Frontend while their immutable package Releases are unavailable. They require Git and Go 1.27.3 or newer. The Pipeline source task uses the same explicit opt-in; it is not the ordinary consumer bootstrap.
 
-The current developer/CI stack is hybrid. Kernel 1.2.1 plus its bundled logger 0.1.0 SDK are downloaded from the existing immutable Kernel Release assets, and Backend 1.2.1 is selected and materialized by Registry as a native `cmake-prefix-v1` artifact. CDIN stages both into its private install prefix and checks the Kernel version/ABI against the Manifest.
+The current developer/CI stack is hybrid. Kernel 1.2.1 plus its bundled logger 0.1.0 SDK are downloaded from the existing immutable Kernel Release assets, and Backend 1.2.1 is selected and materialized by Registry as a native `cmake-prefix-v1` artifact. CDIN stages both into its private install prefix and checks the Kernel version/ABI against the Manifest. Normal product resolution uses `delivery_mode: artifact`; only the explicit developer/CI path uses `artifact-or-source`.
 
-Runtime and Frontend are still source-delivered by the current Catalog; the stack builds those checked-out source units. GUI-SDL also builds the checksum-pinned SDL3 3.4.16 source archive until the merged SDK publisher has a real five-target Release with verified digests. TUI does not acquire SDL3.
+Runtime and Frontend are still source-delivered by the current Catalog; the hybrid developer stack builds those checked-out source units. Normal artifact-only resolution rejects these entries until their immutable module/variant package Releases are published. GUI-SDL developer mode also builds the checksum-pinned SDL3 3.4.16 source archive until the merged SDK publisher has a real five-target Release with verified digests. TUI does not acquire SDL3.
 
 The consumer Registry Release is still unavailable: the normal pin intentionally lacks descriptor digest/size, so the default binary path fails closed rather than using the unsafe `v0.1.0-dev` assets. The explicit Registry source-build mode is used for contributor/CI verification only. These partial artifact steps do not complete CDIN #122; the normal install still needs real Registry, Runtime, Frontend and SDL3 Releases and must then build only the Composition Root.
 
