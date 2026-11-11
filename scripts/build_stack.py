@@ -7,13 +7,18 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
+import tempfile
 import hashlib
 import json
 import stat
 import urllib.request
 import tomllib
 from pathlib import Path
+
+try:
+    from .package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+except ImportError:  # Direct execution: scripts/ is sys.path[0].
+    from package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
@@ -333,6 +338,9 @@ def install_sdl3(env: dict[str, str]) -> None:
     archive = ROOT / ".deps" / "archives" / f"SDL3-{version}.tar.gz"
     source_root = DEPS / "sdl3"
     archive.parent.mkdir(parents=True, exist_ok=True)
+    source_root.parent.mkdir(parents=True, exist_ok=True)
+    if source_root.is_symlink() or (source_root.exists() and not source_root.is_dir()):
+        raise RuntimeError("SDL3 source root is not a real directory")
     source_root.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
         print(f"Downloading SDL3 {version}", flush=True)
@@ -344,12 +352,48 @@ def install_sdl3(env: dict[str, str]) -> None:
         )
 
     source = source_root / f"SDL3-{version}"
-    if not (source / "CMakeLists.txt").is_file():
-        # The source archive is authenticated by the immutable SHA-256 above.
-        with tarfile.open(archive, "r:gz") as bundle:
-            bundle.extractall(source_root)
-    if not (source / "CMakeLists.txt").is_file():
-        raise RuntimeError(f"SDL3 source tree is missing: {source}")
+    marker = source / "CMakeLists.txt"
+    if source.is_symlink() or marker.is_symlink():
+        raise RuntimeError("SDL3 source cache contains a symlink")
+    if marker.exists() and not marker.is_file():
+        raise RuntimeError("SDL3 source cache marker is not a regular file")
+    if not marker.is_file():
+        # Extract to a fresh sibling directory. Never publish a partially
+        # extracted source tree into the reusable source cache.
+        with tempfile.TemporaryDirectory(
+            prefix=".sdl3-extract-", dir=source_root.parent
+        ) as temporary:
+            staging_root = Path(temporary)
+            staged_source = Path(safe_extract_sdl3_source(archive, staging_root))
+            if staged_source.resolve().parent != staging_root.resolve():
+                raise RuntimeError(
+                    f"SDL3 extractor returned a source tree outside staging: {staged_source}"
+                )
+            staged_marker = staged_source / "CMakeLists.txt"
+            if (
+                staged_source.is_symlink()
+                or staged_marker.is_symlink()
+                or not staged_marker.is_file()
+            ):
+                raise RuntimeError(
+                    f"SDL3 source archive did not produce a valid staged tree: {staged_source}"
+                )
+
+            backup_root = Path(tempfile.mkdtemp(prefix=".sdl3-rollback-", dir=staging_root))
+            backup = backup_root / "previous-source"
+            had_previous = source.exists()
+            if had_previous and (source.is_symlink() or not source.is_dir()):
+                raise RuntimeError("SDL3 source cache is not a real directory")
+            if had_previous:
+                os.replace(source, backup)
+            try:
+                os.replace(staged_source, source)
+            except Exception:
+                if had_previous and backup.exists() and not source.exists():
+                    os.replace(backup, source)
+                raise
+            if backup.exists():
+                shutil.rmtree(backup)
 
     options = [
         "-DCMAKE_BUILD_TYPE=Release",
