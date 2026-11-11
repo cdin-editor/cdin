@@ -20,8 +20,8 @@ depends_on = ["dependencies"]
 timeout_seconds = 2400
 
 [tasks.stack]
-description = "Build, test, install and smoke-test the selected Registry-prepared product profile"
-command = ["python3", "scripts/build_stack.py", "--registry-source-build"]
+description = "Build, test, install and smoke-test the selected Registry-prepared developer profile; SDL3 source is explicitly opted in"
+command = ["python3", "scripts/build_stack.py", "--registry-source-build", "--build-sdl3-from-source"]
 depends_on = ["registry"]
 timeout_seconds = 3600
 
@@ -46,8 +46,13 @@ description = "Test immutable Registry release bootstrap, provenance and cache v
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_artifact.py"]
 timeout_seconds = 60
 
+[tasks.sdl3-source-tests]
+description = "Test bounded SDL3 source extraction and explicit developer-only opt-in"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_build_stack_sdl3.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests"]
 timeout_seconds = 180
