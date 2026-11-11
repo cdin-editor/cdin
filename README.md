@@ -37,20 +37,25 @@ component release metadata, respectively.
 
 ## Build
 
-Requirements: C11 compiler, CMake 3.22+, Make, Git, Python 3.11+, Go 1.27.3+,
-`pkg-config` and Lua 5.4 development files.
+Consumer build requirements: C11 compiler, CMake 3.22+, Make, Python 3.11+,
+`pkg-config` and Lua 5.4 development files. Git and Go 1.27.3+ are needed only
+for the explicit hybrid developer/CI source-build targets.
 
 ```sh
 git clone https://github.com/cdin-editor/cdin.git
 cd cdin
-make stack                         # TUI product profile
-make stack-gui                     # TUI + GUI-SDL product profile
+make install                       # normal artifact-only TUI consumer path
+CDIN_FRONTEND_VARIANT=gui-sdl make install
+make stack-dev                      # explicit hybrid developer/CI TUI path
+make stack-gui-dev                  # explicit hybrid developer/CI GUI-SDL path
 ./.deps/install/bin/cdin --help
 ./.deps/install/bin/cdin --version
 ./.deps/install/bin/cdin --check
 ```
 
 On Windows, use `.deps/install/bin/cdin.exe` from MSYS2 UCRT64.
+
+**Current release readiness:** ordinary `make install` is intentionally fail-closed until the corrected Registry Release, Runtime/Frontend packages and GUI-SDL SDK are published and pinned. Use the `*-dev` targets only for the current hybrid source-development workflow; this is not a completed artifact-first consumer install.
 
 ## Documentation
 
