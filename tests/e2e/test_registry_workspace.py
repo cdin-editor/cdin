@@ -26,7 +26,6 @@ def main() -> int:
         for item in manifest["components"]
     }
     expected = {
-        ("kernel", "default"),
         ("runtime", "default"),
         ("backend", "default"),
         ("frontend", "tui"),
@@ -121,13 +120,29 @@ def main() -> int:
             for item in declarations
         )
 
-    kernel = components[("kernel", "default")]
     runtime = components[("runtime", "default")]
     backend = components[("backend", "default")]
-    if not has_contract(kernel, "provides", "org.cdin.kernel-abi", "1.1.0"):
-        raise SystemExit("Kernel ABI provider contract was not resolved")
-    if not has_contract(backend, "requires", "org.cdin.kernel-abi"):
-        raise SystemExit("Backend Kernel ABI requirement is missing")
+    environment_contracts = {
+        (item["contract_id"], item["version"])
+        for item in manifest.get("environment_contracts", [])
+    }
+    expected_environment = {
+        ("org.cdin.kernel-abi", "1.1.0"),
+        ("org.m-mdy-m.log-c-api", "0.1.0"),
+        ("org.lua.puc-lua-c-api", "5.4.0"),
+    }
+    if not expected_environment.issubset(environment_contracts):
+        raise SystemExit(
+            "Kernel/logger/Lua environment providers are not recorded in the Manifest"
+        )
+    backend_requirements = backend.get("contracts", {}).get("requires", [])
+    for contract_id in (
+        "org.cdin.kernel-abi",
+        "org.m-mdy-m.log-c-api",
+        "org.lua.puc-lua-c-api",
+    ):
+        if not any(item["contract_id"] == contract_id for item in backend_requirements):
+            raise SystemExit(f"Backend {contract_id} environment requirement is missing")
     if not has_contract(backend, "provides", "org.cdin.runtime-host-api", "1.0.0"):
         raise SystemExit("Backend Runtime Host API provider contract is missing")
     if not has_contract(runtime, "requires", "org.cdin.runtime-host-api"):
@@ -144,8 +159,8 @@ def main() -> int:
         (item["component_id"], item["variant"], item["version"])
         for item in backend["dependencies"]
     }
-    if not any(item[0] == "kernel" for item in dependencies):
-        raise SystemExit("Backend release did not resolve its Kernel dependency")
+    if any(item[0] == "kernel" for item in dependencies):
+        raise SystemExit("Kernel must be supplied by the CDIN environment, not Registry dependency closure")
     if not any(item[0] == "runtime" for item in dependencies):
         raise SystemExit("Backend release did not resolve its Runtime dependency")
 
