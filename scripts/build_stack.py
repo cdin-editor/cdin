@@ -361,12 +361,15 @@ def main() -> int:
     if args.registry_source_build:
         registry_command.extend(("--source-build", "--developer-source-components"))
     run(registry_command)
-    run([
+    e2e_command = [
         sys.executable,
         "tests/e2e/test_registry_workspace.py",
         "--workspace", str(WORKSPACE),
         "--profile", PROFILE,
-    ])
+    ]
+    if args.registry_source_build:
+        e2e_command.append("--developer-source-components")
+    run(e2e_command)
     run([sys.executable, "scripts/deps.py", "--verify"])
     manifest = json.loads((WORKSPACE / "registry-manifest.json").read_text(encoding="utf-8"))
     sdk_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["dependencies"]["kernel_sdk"]
