@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.configure import selected_package_version
