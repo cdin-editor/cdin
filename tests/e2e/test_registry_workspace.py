@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Product-level assertions for the Registry-prepared CDIN source graph."""
+"""Product-level assertions for the Registry artifact/source workspace."""
 from __future__ import annotations
 
 import argparse
 import json
 import re
 from pathlib import Path
+
+
+FULL_REVISION = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
 
 def main() -> int:
@@ -35,16 +38,66 @@ def main() -> int:
             f"resolved component graph mismatch: {sorted(components)} != {sorted(expected)}"
         )
 
+    resolution = manifest.get("resolution")
+    if not isinstance(resolution, dict):
+        raise SystemExit("Resolved Manifest is missing the immutable delivery policy")
+    if resolution.get("delivery_mode") != "artifact-or-source":
+        raise SystemExit("Resolved Manifest did not record artifact-or-source delivery")
+    target = resolution.get("target")
+    if not isinstance(target, dict) or set(target) != {"os", "architecture", "abi"}:
+        raise SystemExit("Resolved Manifest target tuple is missing or malformed")
+
     for key, component in components.items():
-        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9]+)"
-                            r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
-                            component["version"]):
+        if not re.fullmatch(
+            r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+            r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
+            component["version"],
+        ):
             raise SystemExit(f"invalid resolved SemVer for {key}: {component['version']}")
-        units = component["source_units"]
+
+        delivery = component.get("delivery", "source")
+        if key == ("backend", "default"):
+            if component["version"] != "1.2.1" or delivery != "artifact":
+                raise SystemExit("Backend 1.2.1 must be delivered as a native Registry artifact")
+            artifact = component.get("selected_artifact")
+            if not isinstance(artifact, dict):
+                raise SystemExit("Backend's selected artifact descriptor is missing")
+            if artifact.get("kind") != "native-development-package":
+                raise SystemExit("Backend selected artifact has the wrong package kind")
+            if artifact.get("layout") != "cmake-prefix-v1":
+                raise SystemExit("Backend selected artifact has the wrong package layout")
+            if artifact.get("target") != target:
+                raise SystemExit("Backend artifact target differs from the Manifest target")
+            if artifact.get("artifact_id") == "":
+                raise SystemExit("Backend artifact identity is empty")
+            if artifact.get("workspace_path") != "components/backend/default/package":
+                raise SystemExit("Backend package workspace path is not canonical")
+            package = args.workspace / artifact["workspace_path"]
+            for required in (
+                "include/cdin/backend.h",
+                "lib/libcdin_backend.a",
+                "lib/libcdin_backend_services.a",
+                "lib/libcdin_protocol.a",
+                "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
+                "lib/pkgconfig/cdin-backend.pc",
+            ):
+                candidate = package / required
+                if candidate.is_symlink() or not candidate.is_file():
+                    raise SystemExit(f"Backend Registry package is missing {required}")
+            provenance = artifact.get("source_provenance", [])
+            if len(provenance) != 1 or not FULL_REVISION.fullmatch(provenance[0].get("revision", "")):
+                raise SystemExit("Backend artifact source provenance is not an immutable Git revision")
+            if provenance[0].get("source_unit_id") != "backend-source":
+                raise SystemExit("Backend artifact provenance references the wrong source unit")
+            continue
+
+        if delivery != "source":
+            raise SystemExit(f"unexpected artifact delivery for {key}: {delivery}")
+        units = component.get("source_units", [])
         if len(units) != 1:
-            raise SystemExit(f"expected one declared source unit for {key}, found {len(units)}")
+            raise SystemExit(f"expected one source unit for {key}, found {len(units)}")
         for unit in units:
-            if not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", unit["revision"]):
+            if not FULL_REVISION.fullmatch(unit["revision"]):
                 raise SystemExit(f"non-immutable source revision for {key}: {unit['revision']}")
             source = args.workspace / unit["workspace_path"]
             if not source.is_dir():
@@ -97,8 +150,8 @@ def main() -> int:
         raise SystemExit("Backend release did not resolve its Runtime dependency")
 
     print(
-        "Registry product E2E passed: backend -> kernel/runtime, "
-        f"frontend={args.profile}, immutable sources materialized"
+        "Registry product E2E passed: Backend 1.2.1 artifact + "
+        f"source-delivered Kernel/Runtime/Frontend, frontend={args.profile}, target={target}"
     )
     return 0
 
