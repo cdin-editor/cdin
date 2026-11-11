@@ -778,11 +778,15 @@ def main() -> int:
 
     try:
         verify_installed(pin)
+    except SDKBootstrapError as error:
+        print(
+            f"Existing Kernel/logger SDK failed verification; reinstalling the pinned release: {error}",
+            file=sys.stderr,
+        )
+    else:
         if not args.force:
             print(f"Kernel/logger SDK already installed at {SDK_PREFIX}")
             return 0
-    except SDKBootstrapError:
-        pass
 
     target = target_key()
     try:
