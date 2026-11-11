@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -162,7 +163,8 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             )
             self.assertEqual(binary.read_bytes(), client.binary)
             self.assertEqual(catalog.read_bytes(), client.catalog_bytes)
-            self.assertTrue(binary.stat().st_mode & 0o100)
+            if os.name != "nt":
+                self.assertTrue(binary.stat().st_mode & 0o100)
 
     def test_uses_only_verified_exact_pin_cache_when_offline(self) -> None:
         client = FakeGitHubClient()
