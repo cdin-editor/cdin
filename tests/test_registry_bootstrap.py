@@ -7,8 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.build_stack import stage_cmake_prefix
+from scripts.build_stack import stage_cmake_prefix, stage_kernel_sdk_prefix
 from scripts.configure import selected_package_version
+from scripts.deps import SDKBootstrapError, parse_kernel_abi
 from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
@@ -342,6 +343,90 @@ class BackendArtifactStagingTests(unittest.TestCase):
             stage_cmake_prefix(self.package, self.root / "install-prefix")
 
         self.assertFalse((self.root / "install-prefix" / "include/cdin/backend.h").exists())
+
+
+
+
+
+class KernelSDKCompositionTests(unittest.TestCase):
+    def test_kernel_header_abi_parser_uses_public_three_part_constants(self) -> None:
+        header = (
+            "#define CDIN_KERNEL_ABI_MAJOR 1u\\n"
+            "#define CDIN_KERNEL_ABI_MINOR 1u\\n"
+            "#define CDIN_KERNEL_ABI_PATCH 0u\\n"
+        )
+        self.assertEqual(parse_kernel_abi(header), "1.1.0")
+        with self.assertRaisesRegex(SDKBootstrapError, "missing ABI PATCH"):
+            parse_kernel_abi(
+                "#define CDIN_KERNEL_ABI_MAJOR 1u\\n"
+                "#define CDIN_KERNEL_ABI_MINOR 1u\\n"
+            )
+
+    def test_kernel_logger_sdk_prefix_stages_all_cmake_and_pkgconfig_contracts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sdk = root / "sdk"
+            prefix = root / "install"
+            files = {
+                "include/cdin/kernel.h": b"kernel header",
+                "include/m-mdy-m/log.h": b"logger header",
+                "lib/libcdin_kernel.a": b"kernel static library",
+                "lib/libm-mdy-m-log.a": b"logger static library",
+                "lib/pkgconfig/cdin-kernel.pc": b"kernel pkgconfig",
+                "lib/pkgconfig/m-mdy-m-log.pc": b"logger pkgconfig",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake": b"logger cmake config",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake": b"logger imported targets",
+            }
+            for relative, payload in files.items():
+                path = sdk / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload)
+
+            stage_kernel_sdk_prefix(sdk, prefix)
+
+            for relative, payload in files.items():
+                self.assertEqual((prefix / relative).read_bytes(), payload)
+
+    def test_kernel_sdk_and_backend_install_prefixes_compose_together(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sdk = root / "kernel-sdk"
+            backend = root / "backend"
+            prefix = root / "install"
+            sdk_files = {
+                "include/cdin/kernel.h": b"kernel header",
+                "include/m-mdy-m/log.h": b"logger header",
+                "lib/libcdin_kernel.a": b"kernel static library",
+                "lib/libm-mdy-m-log.a": b"logger static library",
+                "lib/pkgconfig/cdin-kernel.pc": b"kernel pkgconfig",
+                "lib/pkgconfig/m-mdy-m-log.pc": b"logger pkgconfig",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake": b"logger cmake config",
+                "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake": b"logger targets",
+            }
+            for relative, payload in sdk_files.items():
+                path = sdk / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload)
+            backend_files = {
+                "include/cdin/backend.h": b"backend header",
+                "lib/libcdin_backend.a": b"backend archive",
+                "lib/libcdin_backend_services.a": b"backend services",
+                "lib/libcdin_protocol.a": b"protocol archive",
+                "lib/cmake/cdinBackend/cdinBackendConfig.cmake": b"backend config",
+                "lib/pkgconfig/cdin-backend.pc": b"backend pkgconfig",
+                "lib/pkgconfig/cdin-backend-services.pc": b"backend services pkgconfig",
+                "lib/pkgconfig/cdin-protocol.pc": b"protocol pkgconfig",
+            }
+            for relative, payload in backend_files.items():
+                path = backend / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload)
+
+            stage_kernel_sdk_prefix(sdk, prefix)
+            stage_cmake_prefix(backend, prefix)
+
+            for relative, payload in {**sdk_files, **backend_files}.items():
+                self.assertEqual((prefix / relative).read_bytes(), payload)
 
 
 
