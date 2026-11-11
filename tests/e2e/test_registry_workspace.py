@@ -15,6 +15,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--profile", choices=("tui", "gui-sdl"), required=True)
+    parser.add_argument(
+        "--developer-source-components",
+        action="store_true",
+        help="allow source-delivered Runtime/Frontend in the explicit developer workflow",
+    )
     args = parser.parse_args()
 
     manifest_path = args.workspace / "registry-manifest.json"
@@ -40,8 +45,14 @@ def main() -> int:
     resolution = manifest.get("resolution")
     if not isinstance(resolution, dict):
         raise SystemExit("Resolved Manifest is missing the immutable delivery policy")
-    if resolution.get("delivery_mode") != "artifact-or-source":
-        raise SystemExit("Resolved Manifest did not record artifact-or-source delivery")
+    expected_delivery_mode = (
+        "artifact-or-source" if args.developer_source_components else "artifact"
+    )
+    if resolution.get("delivery_mode") != expected_delivery_mode:
+        raise SystemExit(
+            f"Resolved Manifest delivery mode is {resolution.get('delivery_mode')!r}; "
+            f"expected {expected_delivery_mode!r}"
+        )
     target = resolution.get("target")
     if not isinstance(target, dict) or set(target) != {"os", "architecture", "abi"}:
         raise SystemExit("Resolved Manifest target tuple is missing or malformed")
@@ -92,24 +103,56 @@ def main() -> int:
                 raise SystemExit("Backend artifact provenance references the wrong source unit")
             continue
 
-        if delivery != "source":
-            raise SystemExit(f"unexpected artifact delivery for {key}: {delivery}")
-        units = component.get("source_units", [])
-        if len(units) != 1:
-            raise SystemExit(f"expected one source unit for {key}, found {len(units)}")
-        for unit in units:
-            if not FULL_REVISION.fullmatch(unit["revision"]):
-                raise SystemExit(f"non-immutable source revision for {key}: {unit['revision']}")
-            source = args.workspace / unit["workspace_path"]
-            if not source.is_dir():
-                raise SystemExit(f"missing materialized source unit for {key}: {source}")
+        if delivery == "source":
+            if not args.developer_source_components:
+                raise SystemExit(
+                    f"normal product mode cannot use source-delivered {key}; "
+                    "publish and pin its immutable artifact before enabling this path"
+                )
+            units = component.get("source_units", [])
+            if len(units) != 1:
+                raise SystemExit(f"expected one source unit for {key}, found {len(units)}")
+            for unit in units:
+                if not FULL_REVISION.fullmatch(unit["revision"]):
+                    raise SystemExit(f"non-immutable source revision for {key}: {unit['revision']}")
+                source = args.workspace / unit["workspace_path"]
+                if not source.is_dir():
+                    raise SystemExit(f"missing materialized source unit for {key}: {source}")
+            continue
 
-    frontend_revisions = {
-        unit["revision"]
-        for key, component in components.items()
-        if key[0] == "frontend"
-        for unit in component["source_units"]
-    }
+        if delivery != "artifact":
+            raise SystemExit(f"unexpected artifact delivery for {key}: {delivery}")
+        artifact = component.get("selected_artifact")
+        if not isinstance(artifact, dict):
+            raise SystemExit(f"selected artifact descriptor is missing for {key}")
+        expected_path = f"components/{key[0]}/{key[1]}/package"
+        if artifact.get("workspace_path") != expected_path:
+            raise SystemExit(f"artifact workspace path is not canonical for {key}")
+        package = args.workspace / expected_path
+        if not package.is_dir():
+            raise SystemExit(f"materialized package is missing for {key}: {package}")
+        if artifact.get("kind") == "native-development-package" and artifact.get("target") != target:
+            raise SystemExit(f"native artifact target differs from the Manifest target for {key}")
+
+    frontend_revisions: set[str] = set()
+    for key, component in components.items():
+        if key[0] != "frontend":
+            continue
+        if component.get("delivery", "source") == "source":
+            provenance = component.get("source_units", [])
+            if len(provenance) == 1:
+                revision = provenance[0].get("revision", "")
+            else:
+                raise SystemExit(f"Frontend source provenance is incomplete for {key}")
+        else:
+            artifact = component.get("selected_artifact", {})
+            provenance = artifact.get("source_provenance", [])
+            if len(provenance) != 1:
+                raise SystemExit(f"Frontend artifact provenance is incomplete for {key}")
+            revision = provenance[0].get("revision", "")
+        if not FULL_REVISION.fullmatch(revision):
+            raise SystemExit(f"Frontend provenance is not an immutable revision for {key}")
+        frontend_revisions.add(revision)
     if len(frontend_revisions) != 1:
         raise SystemExit("TUI and GUI-SDL variants must resolve to the same Frontend source revision")
 
