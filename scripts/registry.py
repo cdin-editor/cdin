@@ -211,6 +211,8 @@ def create_effective_product_definition(
     source: Path,
     destination: Path,
     target: dict[str, str],
+    *,
+    delivery_mode: str,
 ) -> Path:
     """Create a private host-specific Product Definition copy for resolution."""
     content = source.read_text(encoding="utf-8")
@@ -224,9 +226,11 @@ def create_effective_product_definition(
     )
     if substitutions != 1:
         raise RuntimeError(f"unsupported Product Definition schema version in {source}")
+    if delivery_mode not in {"artifact", "artifact-or-source"}:
+        raise RuntimeError(f"unsupported Product Definition delivery mode: {delivery_mode}")
     content = content.rstrip() + (
         "\n\nresolution:\n"
-        "  delivery_mode: artifact-or-source\n"
+        f"  delivery_mode: {delivery_mode}\n"
         "  target:\n"
         f"    os: {target['os']}\n"
         f"    architecture: {target['architecture']}\n"
@@ -237,7 +241,13 @@ def create_effective_product_definition(
     return destination
 
 
-def verify_workspace(binary: Path, profile: str, target: dict[str, str]) -> None:
+def verify_workspace(
+    binary: Path,
+    profile: str,
+    target: dict[str, str],
+    *,
+    developer_source_components: bool,
+) -> None:
     _, workspace, _ = paths(profile)
     manifest_path = workspace / "registry-manifest.json"
     if not manifest_path.is_file():
@@ -289,18 +299,51 @@ def verify_workspace(binary: Path, profile: str, target: dict[str, str]) -> None
     for key, component in by_key.items():
         if key[0] == "backend":
             continue
-        if component.get("delivery", "source") != "source":
-            raise RuntimeError(f"unexpected artifact delivery for component {key}")
-        units = component.get("source_units", [])
-        if len(units) != 1:
-            raise RuntimeError(f"CDIN build adapter expects one source unit for {key}")
-        for source in units:
-            materialized = workspace / source["workspace_path"]
-            if not materialized.is_dir():
-                raise RuntimeError(f"Registry source unit is missing: {materialized}")
+        if developer_source_components:
+            if component.get("delivery", "source") != "source":
+                raise RuntimeError(
+                    f"developer source mode expected source delivery for {key}, "
+                    f"found {component.get('delivery')}"
+                )
+            if not developer_source_components:
+                raise RuntimeError(
+                    f"normal CDIN install cannot stage source-delivered {component_id}; "
+                    "a compatible immutable artifact is required"
+                )
+            units = component.get("source_units", [])
+            if len(units) != 1:
+                raise RuntimeError(f"CDIN developer adapter expects one source unit for {key}")
+            for source in units:
+                materialized = workspace / source["workspace_path"]
+                if not materialized.is_dir():
+                    raise RuntimeError(f"Registry source unit is missing: {materialized}")
+        else:
+            if component.get("delivery") != "artifact":
+                raise RuntimeError(
+                    f"normal CDIN installation requires a published artifact for {key}; "
+                    "source fallback is disabled. Use the explicit developer source mode only "
+                    "for contribution/CI validation."
+                )
+            artifact = component.get("selected_artifact")
+            if not isinstance(artifact, dict):
+                raise RuntimeError(f"Registry Manifest is missing the selected artifact for {key}")
+            expected_path = f"components/{key[0]}/{key[1]}/package"
+            if artifact.get("workspace_path") != expected_path:
+                raise RuntimeError(f"Registry artifact workspace path is not canonical for {key}")
+            package = workspace / expected_path
+            if not package.is_dir():
+                raise RuntimeError(f"Registry artifact package is missing for {key}: {package}")
+            if artifact.get("kind") == "native-development-package":
+                if artifact.get("target") != target:
+                    raise RuntimeError(f"native artifact target does not match the CDIN host for {key}")
 
 
-def prepare(profile: str, binary: Path) -> None:
+def prepare(
+    profile: str,
+    binary: Path,
+    *,
+    developer_source_components: bool,
+) -> None:
     source_product, workspace, replay = paths(profile)
     catalog = REGISTRY_CATALOG
     if not catalog.is_file():
@@ -321,6 +364,7 @@ def prepare(profile: str, binary: Path) -> None:
             source_product,
             Path(temporary) / "product-definition.yaml",
             target,
+            delivery_mode="artifact-or-source" if developer_source_components else "artifact",
         )
         run([str(binary), "validate", "product-definition", str(product)])
         run([str(binary), "validate", "catalog-index", str(catalog)])
@@ -332,7 +376,12 @@ def prepare(profile: str, binary: Path) -> None:
         ]
         run([str(binary), "resolve", *common])
         run([str(binary), "prepare", *common, "--output", str(workspace)])
-        verify_workspace(binary, profile, target)
+        verify_workspace(
+            binary,
+            profile,
+            target,
+            developer_source_components=developer_source_components,
+        )
 
         manifest_path = workspace / "registry-manifest.json"
         run([
@@ -354,17 +403,9 @@ def prepare(profile: str, binary: Path) -> None:
         source_root.mkdir(parents=True, exist_ok=True)
         for component in json.loads(original.decode("utf-8"))["components"]:
             component_id = component["component_id"]
-            if component_id not in {"kernel", "runtime", "backend", "frontend"}:
+            if component_id not in {"runtime", "backend", "frontend"}:
                 continue
-            # Kernel is provided by the separately pinned 1.2.1 + logger 0.1.0
-            # SDK asset in deps.lock; keep its Registry metadata in the Manifest
-            # but do not create a second source-build checkout.
-            if component_id == "kernel":
-                stale = source_root / component_id
-                if stale.exists():
-                    shutil.rmtree(stale)
-                continue
-            if component_id == "backend" and component.get("delivery") == "artifact":
+            if component.get("delivery") == "artifact":
                 stale = source_root / component_id
                 if stale.exists():
                     shutil.rmtree(stale)
@@ -392,7 +433,8 @@ def prepare(profile: str, binary: Path) -> None:
         raise RuntimeError("Resolved Manifest does not contain exactly one Backend version")
     print(
         f"Registry workspace ready: {workspace} "
-        f"(delivery=artifact-or-source, backend={backend_versions[0]}, target={target})",
+        f"(backend={backend_versions[0]}, target={target}, "
+        f"developer_source_components={developer_source_components})",
         flush=True,
     )
 
@@ -405,6 +447,11 @@ def main() -> int:
                         help="verify an already prepared workspace without resolving again")
     parser.add_argument("--source-build", action="store_true",
                         help="developer-only: clone, test and compile Registry from its pinned source")
+    parser.add_argument(
+        "--developer-source-components",
+        action="store_true",
+        help="developer/CI-only: allow source delivery for Runtime and Frontend when artifacts are not published",
+    )
     parser.add_argument("--offline", action="store_true",
                         help="reuse only a previously verified Registry executable/Catalog cache")
     args = parser.parse_args()
@@ -415,9 +462,18 @@ def main() -> int:
         offline=args.offline or os.environ.get("CDIN_OFFLINE", "").lower() in {"1", "true", "yes"},
     )
     if args.verify_workspace:
-        verify_workspace(binary, profile, detect_target_tuple())
+        verify_workspace(
+            binary,
+            profile,
+            detect_target_tuple(),
+            developer_source_components=args.developer_source_components,
+        )
     else:
-        prepare(profile, binary)
+        prepare(
+            profile,
+            binary,
+            developer_source_components=args.developer_source_components,
+        )
     return 0
 
 
