@@ -1,4 +1,4 @@
-.PHONY: help deps registry registry-gui stack stack-gui configure build install test check integration clean package
+.PHONY: help deps registry registry-gui registry-dev registry-gui-dev stack stack-gui configure build install test check integration clean package
 BUILD_DIR ?= build
 # Native Windows shells may not expose the OS variable to GNU Make consistently.
 # ComSpec is a second reliable signal; keep python3 for Unix environments.
@@ -14,8 +14,10 @@ CDIN_FRONTEND_VARIANT ?= tui
 
 help:
 	@echo "make deps         checkout immutable non-component build dependencies"
-	@echo "make registry     resolve and prepare the selected Registry component workspace"
-	@echo "make registry-gui resolve and prepare the GUI-SDL + TUI workspace"
+	@echo "make registry     acquire the pinned Registry release and resolve the product"
+	@echo "make registry-gui acquire the pinned Registry release for the GUI-SDL profile"
+	@echo "make registry-dev build Registry from source (developer-only)"
+	@echo "make registry-gui-dev build Registry from source for GUI-SDL (developer-only)"
 	@echo "make stack        build/test/install the selected component profile"
 	@echo "make stack-gui    build/test/install the GUI-SDL + TUI profile"
 	@echo "make configure    configure CDIN after its components are installed"
@@ -35,13 +37,19 @@ registry: deps
 registry-gui: deps
 	$(PYTHON) scripts/registry.py --profile gui-sdl
 
-stack: registry
+registry-dev: deps
+	$(PYTHON) scripts/registry.py --profile "$(CDIN_FRONTEND_VARIANT)" --source-build
+
+registry-gui-dev: deps
+	$(PYTHON) scripts/registry.py --profile gui-sdl --source-build
+
+stack: registry-dev
 	$(PYTHON) scripts/build_stack.py --profile "$(CDIN_FRONTEND_VARIANT)"
 
-stack-gui: registry-gui
+stack-gui: registry-gui-dev
 	$(PYTHON) scripts/build_stack.py --profile gui-sdl
 
-configure: registry
+configure: registry-dev
 	$(PYTHON) scripts/configure.py --build-dir "$(BUILD_DIR)" --profile "$(CDIN_FRONTEND_VARIANT)"
 
 build: configure
