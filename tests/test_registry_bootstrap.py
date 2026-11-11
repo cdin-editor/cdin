@@ -869,7 +869,7 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         )
         entry = root / "lua/cdin/runtime.lua"
         entry.parent.mkdir(parents=True)
-        entry.write_text("return {}\\n", encoding="utf-8")
+        entry.write_text("return {}\n", encoding="utf-8")
         manifest = {
             "components": [{
                 "component_id": "runtime",
@@ -923,7 +923,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
         payloads = {
             "LICENSE": b"runtime license",
             "NOTICE": b"runtime notice",
-            "lua/cdin/runtime.lua": b"return {}\\n",
+            "lua/cdin/runtime.lua": b"return {}\n",
         }
         file_records = []
         for relative, payload in payloads.items():
@@ -964,7 +964,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
         }
         verify_runtime_package(self.workspace, component)
 
-        (root / "lua/cdin/runtime.lua").write_bytes(b"modified\\n")
+        (root / "lua/cdin/runtime.lua").write_bytes(b"modified\n")
         with self.assertRaisesRegex(SystemExit, "digest/size mismatch"):
             verify_runtime_package(self.workspace, component)
 
@@ -981,7 +981,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
         build_info = package / "share/cdin-frontend/BUILD-INFO.txt"
         build_info.parent.mkdir(parents=True, exist_ok=True)
         build_info.write_text(
-            "\\n".join((
+            "\n".join((
                 "component=frontend",
                 "variant=tui",
                 f"package_version={version}",
@@ -989,7 +989,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
                 "target_os=linux",
                 "target_architecture=x86_64",
                 "target_abi=gnu-glibc-2.39",
-            )) + "\\n",
+            )) + "\n",
             encoding="utf-8",
         )
         component = {
@@ -1012,7 +1012,7 @@ class RegistryArtifactConsumerValidationTests(unittest.TestCase):
             ),
             revision,
         )
-        build_info.write_text("component=frontend\\nvariant=wrong\\n", encoding="utf-8")
+        build_info.write_text("component=frontend\nvariant=wrong\n", encoding="utf-8")
         with self.assertRaisesRegex(SystemExit, "BUILD-INFO does not match"):
             verify_frontend_artifact(
                 self.workspace, target, ("frontend", variant), component
