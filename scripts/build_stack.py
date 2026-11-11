@@ -291,6 +291,12 @@ def main() -> int:
     if args.registry_source_build:
         registry_command.append("--source-build")
     run(registry_command)
+    run([
+        sys.executable,
+        "tests/e2e/test_registry_workspace.py",
+        "--workspace", str(WORKSPACE),
+        "--profile", PROFILE,
+    ])
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
