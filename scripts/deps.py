@@ -12,6 +12,7 @@ import hashlib
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -437,6 +438,22 @@ def install_package(package_root: Path) -> None:
         )
 
 
+def parse_kernel_abi(header_text: str) -> str:
+    """Read the public three-part Kernel C ABI from kernel.h."""
+    values: dict[str, str] = {}
+    for name in ("MAJOR", "MINOR", "PATCH"):
+        match = re.search(
+            rf"^#define CDIN_KERNEL_ABI_{name}\s+([0-9]+)u?$",
+            header_text,
+            flags=re.MULTILINE,
+        )
+        if match is None:
+            raise SDKBootstrapError(f"installed Kernel header is missing ABI {name}")
+        values[name] = match.group(1)
+    return ".".join(values[name] for name in ("MAJOR", "MINOR", "PATCH"))
+
+
+
 def verify_installed(pin: dict) -> None:
     required = (
         "include/cdin/kernel.h",
@@ -473,17 +490,7 @@ def verify_installed(pin: dict) -> None:
             f"installed logger pkg-config version is {pc_versions['logger']}, expected {pin['logger_version']}"
         )
     header = (SDK_PREFIX / "include/cdin/kernel.h").read_text(encoding="utf-8")
-    abi_parts: dict[str, str] = {}
-    for name in ("MAJOR", "MINOR", "PATCH"):
-        import re
-        match = re.search(
-            rf"^#define CDIN_KERNEL_ABI_{name}\s+([0-9]+)u?$",
-            header, flags=re.MULTILINE
-        )
-        if match is None:
-            raise SDKBootstrapError(f"installed Kernel header is missing ABI {name}")
-        abi_parts[name] = match.group(1)
-    abi_version = ".".join(abi_parts[name] for name in ("MAJOR", "MINOR", "PATCH"))
+    abi_version = parse_kernel_abi(header)
     if abi_version != pin["kernel_abi"]:
         raise SDKBootstrapError(
             f"installed Kernel ABI is {abi_version}, expected {pin['kernel_abi']}"
