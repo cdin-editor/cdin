@@ -109,7 +109,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       repair_required: ${{ steps.inspect.outputs.repair_required }}
     steps:
