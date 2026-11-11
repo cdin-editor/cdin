@@ -11,12 +11,18 @@ import sys
 import tomllib
 from pathlib import Path
 
+try:
+    from .registry_artifact import acquire_registry_artifact
+except ImportError:  # Direct execution: scripts/ is sys.path[0].
+    from registry_artifact import acquire_registry_artifact
+
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 REGISTRY_SOURCE = ROOT / ".deps" / "tools" / "registry"
 REGISTRY_CATALOG = REGISTRY_SOURCE / "catalogs" / "cdin-components" / "catalog-index.json"
 REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
+REGISTRY_CACHE = WORKSPACE_ROOT / "cache" / "registry"
 
 
 def run(
@@ -81,9 +87,29 @@ def checkout_registry() -> None:
         raise RuntimeError(f"Registry source pin mismatch: expected {revision}, found {actual}")
 
 
-def build_registry(*, run_tests: bool = True) -> Path:
+def build_registry(
+    *,
+    run_tests: bool = True,
+    source_build: bool = False,
+    offline: bool = False,
+) -> Path:
+    global REGISTRY_CATALOG
+    if not source_build:
+        pin = load_lock()["tooling"]["registry"]
+        binary, catalog = acquire_registry_artifact(
+            pin,
+            cache_root=REGISTRY_CACHE,
+            offline=offline,
+        )
+        REGISTRY_CATALOG = catalog
+        print(f"Verified Registry executable: {binary}", flush=True)
+        print(f"Verified Registry Catalog: {catalog}", flush=True)
+        return binary
+
     if shutil.which("git") is None or shutil.which("go") is None:
-        raise RuntimeError("Registry preparation requires Git and Go 1.27.3 or newer")
+        raise RuntimeError(
+            "Registry source builds are developer-only and require Git and Go 1.27.3 or newer"
+        )
     _, revision = registry_pin()
     if run_tests or not REGISTRY_SOURCE.exists():
         checkout_registry()
@@ -210,9 +236,17 @@ def main() -> int:
                         default=os.environ.get("CDIN_FRONTEND_VARIANT", "tui"))
     parser.add_argument("--verify-workspace", action="store_true",
                         help="verify an already prepared workspace without resolving again")
+    parser.add_argument("--source-build", action="store_true",
+                        help="developer-only: clone, test and compile Registry from its pinned source")
+    parser.add_argument("--offline", action="store_true",
+                        help="reuse only a previously verified Registry executable/Catalog cache")
     args = parser.parse_args()
     profile = profile_name(args.profile)
-    binary = build_registry(run_tests=not args.verify_workspace)
+    binary = build_registry(
+        run_tests=not args.verify_workspace,
+        source_build=args.source_build,
+        offline=args.offline or os.environ.get("CDIN_OFFLINE", "").lower() in {"1", "true", "yes"},
+    )
     if args.verify_workspace:
         verify_workspace(binary, profile)
     else:
