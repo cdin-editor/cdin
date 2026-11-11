@@ -3,10 +3,11 @@
 The composition root for the CDIN editor components.
 
 CDIN supplies declarative Product Definitions and uses the independently
-maintained Registry tool to resolve, collect and verify component source. It
-builds, packages and launches the prepared product. It does not own a Catalog
-Index or component repository map; those are maintained with Registry and
-component release metadata, respectively.
+maintained Registry tool to resolve, acquire and verify immutable component
+artifacts or explicitly permitted developer source. It builds, packages and
+launches the prepared product. It does not own a Catalog Index or component
+repository map; those are maintained with Registry and component release
+metadata, respectively.
 
 ## Components
 
@@ -16,7 +17,7 @@ component release metadata, respectively.
 | **Runtime** | Lua editor behavior: commands, keymaps, configuration and plugins. |
 | **Backend** | Sessions, OS services, Runtime host and Frontend Protocol server. |
 | **Frontend** | Input adapters, semantic UI presentation, layout and rendering. |
-| **Registry** | Build-time release resolution, immutable source collection and Resolved Manifest; never a runtime dependency. |
+| **Registry** | Build-time release resolution, immutable artifact/source acquisition and Resolved Manifest; never a runtime dependency. |
 | **CDIN** | Product Definitions, build, packaging, launcher and process lifecycle. |
 
 ## Current status
