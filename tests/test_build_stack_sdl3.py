@@ -66,6 +66,50 @@ class SDL3SourceExtractionTests(unittest.TestCase):
             configure = run_mock.call_args_list[0].args[0]
             self.assertEqual(configure[:3], ["cmake", "-S", str(source)])
 
+    def test_partial_extraction_is_discarded_before_a_clean_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / ".deps" / "archives" / "SDL3-3.4.16.tar.gz"
+            write_archive(archive, "SDL3-3.4.16/CMakeLists.txt")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            lock = self._write_lock(root, digest)
+            source = root / ".deps" / "src" / "sdl3" / "SDL3-3.4.16"
+
+            def fail_after_writing_marker(_archive: Path, destination: Path) -> None:
+                partial = destination / "SDL3-3.4.16"
+                partial.mkdir(parents=True)
+                (partial / "CMakeLists.txt").write_text(
+                    "project(untrusted-partial-extraction)\\n", encoding="utf-8"
+                )
+                raise RuntimeError("simulated late extraction failure")
+
+            with patch.multiple(
+                build_stack,
+                ROOT=root,
+                DEPS=root / ".deps" / "src",
+                PREFIX=root / ".deps" / "install",
+                BUILD=root / "build" / "stack",
+                LOCK=lock,
+            ):
+                original_extractor = build_stack.safe_extract_sdl3_source
+                with patch.object(
+                    build_stack, "safe_extract_sdl3_source",
+                    side_effect=fail_after_writing_marker,
+                ), patch.object(build_stack, "run") as failed_run:
+                    with self.assertRaisesRegex(RuntimeError, "simulated late extraction failure"):
+                        build_stack.install_sdl3({})
+                    failed_run.assert_not_called()
+
+                self.assertFalse(source.exists())
+
+                with patch.object(
+                    build_stack, "safe_extract_sdl3_source",
+                    side_effect=original_extractor,
+                ), patch.object(build_stack, "run") as retry_run:
+                    build_stack.install_sdl3({})
+                    self.assertTrue((source / "CMakeLists.txt").is_file())
+                    self.assertTrue(retry_run.called)
+
     def test_rejects_traversal_even_when_archive_digest_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
