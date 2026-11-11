@@ -23,17 +23,37 @@ endif()
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # The Composition Root never compiles copied component sources.
 set(CDIN_BACKEND_PACKAGE_VERSION "" CACHE STRING "Backend package version selected by Registry")
-set(CDIN_FRONTEND_PACKAGE_VERSION "" CACHE STRING "Frontend package version selected by Registry")
-if(CDIN_BACKEND_PACKAGE_VERSION STREQUAL "" OR CDIN_FRONTEND_PACKAGE_VERSION STREQUAL "")
-    message(FATAL_ERROR "Backend and Frontend package versions must come from registry-manifest.json")
+set(CDIN_FRONTEND_CORE_PACKAGE_VERSION "" CACHE STRING "Frontend Core package version selected by Registry")
+set(CDIN_FRONTEND_TUI_PACKAGE_VERSION "" CACHE STRING "Frontend TUI package version selected by Registry")
+set(CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION "" CACHE STRING "Frontend GUI-SDL package version selected by Registry")
+if(CDIN_BACKEND_PACKAGE_VERSION STREQUAL "" OR
+   CDIN_FRONTEND_CORE_PACKAGE_VERSION STREQUAL "" OR
+   CDIN_FRONTEND_TUI_PACKAGE_VERSION STREQUAL "")
+    message(FATAL_ERROR
+        "Backend and Frontend Core/TUI package versions must come from registry-manifest.json")
+endif()
+if(CDIN_ENABLE_GUI_SDL AND CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION STREQUAL "")
+    message(FATAL_ERROR "GUI-SDL package version must come from registry-manifest.json")
 endif()
 
 find_package(m-mdy-m-log 0.1.0 CONFIG REQUIRED)
-find_package(cdinFrontend ${CDIN_FRONTEND_PACKAGE_VERSION} CONFIG REQUIRED)
+find_package(cdinFrontendCore ${CDIN_FRONTEND_CORE_PACKAGE_VERSION} CONFIG REQUIRED)
+find_package(cdinFrontendTUI ${CDIN_FRONTEND_TUI_PACKAGE_VERSION} CONFIG REQUIRED)
 find_package(cdinBackend ${CDIN_BACKEND_PACKAGE_VERSION} CONFIG REQUIRED)
-if(DEFINED cdinFrontend_VERSION AND
-   NOT cdinFrontend_VERSION VERSION_EQUAL CDIN_FRONTEND_PACKAGE_VERSION)
-    message(FATAL_ERROR "Frontend package version differs from the Registry Resolved Manifest")
+if(CDIN_ENABLE_GUI_SDL)
+    find_package(cdinFrontendGUISDL ${CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION} CONFIG REQUIRED)
+endif()
+if(DEFINED cdinFrontendCore_VERSION AND
+   NOT cdinFrontendCore_VERSION VERSION_EQUAL CDIN_FRONTEND_CORE_PACKAGE_VERSION)
+    message(FATAL_ERROR "Frontend Core package version differs from the Registry Resolved Manifest")
+endif()
+if(DEFINED cdinFrontendTUI_VERSION AND
+   NOT cdinFrontendTUI_VERSION VERSION_EQUAL CDIN_FRONTEND_TUI_PACKAGE_VERSION)
+    message(FATAL_ERROR "Frontend TUI package version differs from the Registry Resolved Manifest")
+endif()
+if(CDIN_ENABLE_GUI_SDL AND DEFINED cdinFrontendGUISDL_VERSION AND
+   NOT cdinFrontendGUISDL_VERSION VERSION_EQUAL CDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION)
+    message(FATAL_ERROR "Frontend GUI-SDL package version differs from the Registry Resolved Manifest")
 endif()
 if(DEFINED cdinBackend_VERSION AND
    NOT cdinBackend_VERSION VERSION_EQUAL CDIN_BACKEND_PACKAGE_VERSION)
@@ -55,9 +75,11 @@ target_compile_features(cdin PRIVATE c_std_11)
 target_compile_definitions(cdin PRIVATE
     CDIN_VERSION="${PROJECT_VERSION}"
     CDIN_DEFAULT_RUNTIME_ROOT="${CMAKE_INSTALL_FULL_DATADIR}/cdin/lua")
-if(NOT TARGET cdin::frontend_ui_tui)
-    message(FATAL_ERROR "The pinned Frontend package must export cdin::frontend_ui_tui")
-endif()
+foreach(required_frontend_target IN ITEMS cdin::frontend_core cdin::frontend_ui_tui)
+    if(NOT TARGET ${required_frontend_target})
+        message(FATAL_ERROR "Pinned Frontend Core/TUI packages must export ${required_frontend_target}")
+    endif()
+endforeach()
 target_link_libraries(cdin PRIVATE
     cdin_options
     cdin::backend
@@ -67,10 +89,9 @@ target_link_libraries(cdin PRIVATE
 
 if(CDIN_ENABLE_GUI_SDL)
     if(NOT TARGET cdin::frontend_ui_gui_sdl)
-        message(FATAL_ERROR
-            "CDIN_ENABLE_GUI_SDL requires the pinned Frontend package built with CDIN_FRONTEND_BUILD_UI_SDL=ON")
+        message(FATAL_ERROR "Pinned Frontend GUI-SDL package did not export cdin::frontend_ui_gui_sdl")
     endif()
-    find_package(SDL3 3.2 CONFIG REQUIRED)
+    find_package(SDL3 3.4.16 EXACT CONFIG REQUIRED)
     target_sources(cdin PRIVATE src/integration/gui_sdl.c)
     target_link_libraries(cdin PRIVATE cdin::frontend_ui_gui_sdl SDL3::SDL3)
     target_compile_definitions(cdin PRIVATE CDIN_ENABLE_GUI_SDL=1)
@@ -101,7 +122,7 @@ cdin_enable_strict(cdin)
 install(TARGETS cdin RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(CDIN_INSTALL_RUNTIME)
     set(CDIN_RUNTIME_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/src/runtime" CACHE PATH
-        "Path to the pinned cdin-editor/runtime checkout")
+        "Root of the pinned Runtime package or developer source tree; must contain lua/")
     if(NOT EXISTS "${CDIN_RUNTIME_SOURCE_DIR}/lua/cdin/runtime.lua")
         message(FATAL_ERROR "Pinned Runtime Lua modules are missing at ${CDIN_RUNTIME_SOURCE_DIR}; run make registry")
     endif()
