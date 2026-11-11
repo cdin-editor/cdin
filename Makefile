@@ -13,7 +13,7 @@ PREFIX ?= $(CURDIR)/.deps/install
 CDIN_FRONTEND_VARIANT ?= tui
 
 help:
-	@echo "make deps         checkout immutable non-component build dependencies"
+	@echo "make deps         install/verify the pinned Kernel 1.2.1 + logger 0.1.0 SDK"
 	@echo "make registry     acquire the pinned Registry release and resolve the product"
 	@echo "make registry-gui acquire the pinned Registry release for the GUI-SDL profile"
 	@echo "make registry-dev build Registry from source (developer-only)"
