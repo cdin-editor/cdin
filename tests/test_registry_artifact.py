@@ -59,7 +59,7 @@ class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
                 captured["timeout"] = timeout
                 return FakeResponse()
 
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-registry-test"}, clear=True), \\
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-registry-test"}, clear=True), \
              patch("scripts.registry_artifact.urllib.request.build_opener", return_value=FakeOpener()):
             value = GitHubReleaseClient().get_json(
                 "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
