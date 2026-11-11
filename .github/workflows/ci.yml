@@ -41,6 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      GITHUB_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -231,6 +232,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
