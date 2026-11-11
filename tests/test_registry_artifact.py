@@ -286,7 +286,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             binary, catalog = acquire_registry_artifact(
                 self._pin(client),
-                cache_root=Path(temporary) / "cache",
+                cache_root=Path(temporary).resolve() / "cache",
                 target=("linux", "amd64"),
                 client=client,
             )
@@ -298,7 +298,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
     def test_uses_only_verified_exact_pin_cache_when_offline(self) -> None:
         client = FakeGitHubClient()
         with tempfile.TemporaryDirectory() as temporary:
-            cache = Path(temporary) / "cache"
+            cache = Path(temporary).resolve() / "cache"
             first_binary, first_catalog = acquire_registry_artifact(
                 self._pin(client), cache_root=cache, target=("linux", "amd64"), client=client
             )
@@ -323,7 +323,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
     def test_rejects_corrupt_cache_in_offline_mode(self) -> None:
         client = FakeGitHubClient()
         with tempfile.TemporaryDirectory() as temporary:
-            cache = Path(temporary) / "cache"
+            cache = Path(temporary).resolve() / "cache"
             binary, _catalog = acquire_registry_artifact(
                 self._pin(client), cache_root=cache, target=("linux", "amd64"), client=client
             )
@@ -342,7 +342,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
     def test_rejects_symlinked_cache_ancestor_before_network(self) -> None:
         client = FakeGitHubClient()
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             real = root / "real-cache"
             real.mkdir()
             linked = root / "linked-cache"
@@ -367,7 +367,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
     def test_rejects_cached_binary_without_executable_permission(self) -> None:
         client = FakeGitHubClient()
         with tempfile.TemporaryDirectory() as temporary:
-            cache = Path(temporary) / "cache"
+            cache = Path(temporary).resolve() / "cache"
             binary, _catalog = acquire_registry_artifact(
                 self._pin(client),
                 cache_root=cache,
@@ -400,7 +400,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             with self.assertRaisesRegex(RegistryBootstrapError, "tag moved or mismatched"):
                 acquire_registry_artifact(
                     self._pin(client),
-                    cache_root=Path(temporary) / "cache",
+                    cache_root=Path(temporary).resolve() / "cache",
                     target=("linux", "amd64"),
                     client=client,
                 )
@@ -422,7 +422,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             binary, catalog = acquire_registry_artifact(
                 self._pin(client),
-                cache_root=Path(temporary) / "cache",
+                cache_root=Path(temporary).resolve() / "cache",
                 target=("linux", "amd64"),
                 client=AnnotatedTagClient(),
             )
