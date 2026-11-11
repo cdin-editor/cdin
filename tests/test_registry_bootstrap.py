@@ -347,6 +347,7 @@ class EffectiveProductDefinitionTests(unittest.TestCase):
                 create_effective_product_definition(
                     source, destination,
                     {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                    delivery_mode="artifact-or-source",
                 )
 
 
