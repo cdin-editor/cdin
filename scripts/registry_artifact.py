@@ -112,7 +112,7 @@ class _TrustedAPIHostRedirectHandler(urllib.request.HTTPRedirectHandler):
         try:
             port = parsed.port
         except ValueError as error:
-            raise RegistryBootstrapError("untrusted Registry API redirect port") from error
+            raise RegistryBootstrapError("invalid port in Registry API redirect") from error
         if (
             parsed.scheme != "https"
             or parsed.hostname != "api.github.com"
