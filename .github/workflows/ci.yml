@@ -92,7 +92,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run SDL3 SDK packaging safety tests
-        run: python -m unittest discover -s tests -p test_sdl3_sdk.py
+        run: python -m unittest discover -s tests -p "test_*sdl3*.py"
       - name: Prepare Git identity and base branch for gix
         run: |
           git config user.name "github-actions[bot]"
