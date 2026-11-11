@@ -31,10 +31,10 @@ help:
 deps:
 	$(PYTHON) scripts/deps.py
 
-registry: deps
+registry:
 	$(PYTHON) scripts/registry.py --profile "$(CDIN_FRONTEND_VARIANT)"
 
-registry-gui: deps
+registry-gui:
 	$(PYTHON) scripts/registry.py --profile gui-sdl
 
 registry-dev: deps
