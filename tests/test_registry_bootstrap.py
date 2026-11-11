@@ -15,6 +15,7 @@ from scripts.build_stack import (
 )
 from scripts.configure import selected_package_version
 from scripts.deps import (
+    CACHE as SDK_CACHE,
     SDKBootstrapError,
     install_sdk_atomically,
     parse_kernel_abi,
@@ -580,6 +581,15 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+
+    def test_persistent_sdk_cache_is_outside_the_cleaned_build_tree(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(
+            SDK_CACHE,
+            root / ".deps" / "cache" / "kernel-sdk",
+        )
+        self.assertNotIn("build", SDK_CACHE.relative_to(root).parts)
 
     def test_offline_mode_reuses_only_exact_lock_pinned_cache_bytes(self) -> None:
         self.cache.mkdir(parents=True)
