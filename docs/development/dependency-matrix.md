@@ -2,6 +2,8 @@
 
 Component versions/revisions remain selected by the Registry Catalog and the Product Definitions, then recorded in the generated `registry-manifest.json`. `deps.lock` holds the separate immutable Kernel/logger SDK asset pin, the Registry consumer/development pins and developer tooling; it is not a second component-version resolver.
 
+This table describes the current **hybrid developer/CI inventory**. It is not the normal consumer delivery policy: normal Product Definitions are resolved with `delivery_mode: artifact` and reject source-only Runtime/Frontend entries. The developer/CI path opts into `artifact-or-source` explicitly.
+
 | Component/tool | Current selected identity | Current delivery in the CDIN development stack | Notes |
 | --- | --- | --- | --- |
 | Kernel | `1.2.1`, source revision `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Existing immutable GitHub Release SDK package | Five target archive hashes/sizes are in `[dependencies.kernel_sdk]`. Provides Kernel ABI `1.1.0`. No new Kernel packaging work is part of CDIN #122. |
