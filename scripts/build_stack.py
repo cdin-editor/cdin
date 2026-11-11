@@ -7,7 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import hashlib
 import json
 import urllib.request
@@ -15,6 +14,10 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
 DEPS = ROOT / ".deps" / "src"
 PROFILE = "tui"
 WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
@@ -80,9 +83,10 @@ def install_sdl3(env: dict[str, str]) -> None:
 
     source = source_root / f"SDL3-{version}"
     if not (source / "CMakeLists.txt").is_file():
-        # The source archive is authenticated by the immutable SHA-256 above.
-        with tarfile.open(archive, "r:gz") as bundle:
-            bundle.extractall(source_root)
+        # SHA-256 authenticates the downloaded bytes; safe_extract separately
+        # enforces path, entry-type, collision and expansion limits before any
+        # source file is written.
+        safe_extract_sdl3_source(archive, source_root)
     if not (source / "CMakeLists.txt").is_file():
         raise RuntimeError(f"SDL3 source tree is missing: {source}")
 
