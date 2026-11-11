@@ -501,7 +501,7 @@ class BackendArtifactStagingTests(unittest.TestCase):
         collision.parent.mkdir(parents=True, exist_ok=True)
         collision.write_bytes(b"pre-existing file")
 
-        with self.assertRaisesRegex(RuntimeError, "overwrite an existing staged file"):
+        with self.assertRaisesRegex(RuntimeError, "overwrite a different staged file"):
             stage_cmake_prefix(self.package, prefix)
 
         self.assertEqual(collision.read_bytes(), b"pre-existing file")
