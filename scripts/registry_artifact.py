@@ -257,6 +257,16 @@ def _validate_pin(pin: dict[str, Any]) -> tuple[str, str, str, str, int]:
     revision = pin.get("revision")
     version = pin.get("version")
     tag = pin.get("release_tag")
+    required = ("repository", "revision", "version", "release_tag",
+                "release_descriptor_sha256", "release_descriptor_size")
+    missing = [key for key in required if key not in pin]
+    if missing:
+        raise RegistryBootstrapError(
+            "deps.lock [tooling.registry] is missing immutable Release pin fields: "
+            + ", ".join(missing)
+            + ". Publish and verify Registry #58, then pin its tag, commit, "
+              "descriptor SHA-256 and byte size; the old v0.1.0-dev assets are unsafe."
+        )
     descriptor_sha = _require_sha(
         pin.get("release_descriptor_sha256"), "Registry release descriptor digest"
     )
