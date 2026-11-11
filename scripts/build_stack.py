@@ -113,8 +113,12 @@ def install_sdl3(env: dict[str, str]) -> None:
             prefix=".sdl3-extract-", dir=source_root.parent
         ) as temporary:
             staging_root = Path(temporary)
-            safe_extract_sdl3_source(archive, staging_root)
-            staged_source = staging_root / f"SDL3-{version}"
+            staged_source = safe_extract_sdl3_source(archive, staging_root)
+            staged_source = Path(staged_source)
+            if staged_source.parent.resolve() != staging_root.resolve():
+                raise RuntimeError(
+                    f"SDL3 extractor returned a source tree outside its staging directory: {staged_source}"
+                )
             staged_marker = staged_source / "CMakeLists.txt"
             if (
                 staged_source.is_symlink()
