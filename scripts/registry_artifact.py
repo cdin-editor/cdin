@@ -147,14 +147,18 @@ class GitHubReleaseClient:
             or parsed.fragment
         ):
             raise RegistryBootstrapError(f"untrusted Registry API URL: {url!r}")
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "cdin-registry-bootstrap/1",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "cdin-registry-bootstrap/1",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        # The hosted matrix shares GitHub's anonymous REST quota. Prefer the
+        # workflow-scoped token for API requests, but never send it to asset
+        # download hosts or redirects outside api.github.com.
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = urllib.request.Request(url, headers=headers)
         opener = urllib.request.build_opener(_TrustedAPIHostRedirectHandler())
         try:
             with opener.open(request, timeout=30) as response:
