@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 FULL_REVISION = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})")
@@ -44,12 +44,24 @@ def main() -> int:
     if not isinstance(components, list):
         raise SystemExit("Registry Resolved Manifest has no components array")
 
-    required_components = {"runtime", "backend", "frontend"}
-    selected_components = {item.get("component_id") for item in components}
-    if selected_components != required_components:
+    component_keys = [
+        (item.get("component_id"), item.get("variant"))
+        for item in components
+        if isinstance(item, dict)
+    ]
+    if len(component_keys) != len(components) or len(set(component_keys)) != len(component_keys):
+        raise SystemExit("Resolved Manifest contains malformed or duplicate component/variant identities")
+    expected_component_keys = {
+        ("runtime", "default"),
+        ("backend", "default"),
+        ("frontend", "tui"),
+    }
+    if profile == "gui-sdl":
+        expected_component_keys.add(("frontend", "gui-sdl"))
+    if set(component_keys) != expected_component_keys:
         raise SystemExit(
-            f"Resolved Manifest components are {sorted(selected_components)}, "
-            f"expected {sorted(required_components)}; Kernel/logger are environment providers, "
+            f"Resolved Manifest component identities are {sorted(component_keys)}, "
+            f"expected {sorted(expected_component_keys)}; Kernel/logger are environment providers, "
             "not separately resolved component packages"
         )
 
@@ -139,7 +151,7 @@ def main() -> int:
         "profile": profile,
         "verification": {
             "pipeline_task": "pre-release",
-            "required_pipeline_dependencies": ["check", "package"],
+            "required_pipeline_dependencies": [\n                "check", "package", "bootstrap-tests", "registry-artifact-tests",\n                "sdl3-source-tests", "pre-release-tests",\n            ],
             "registry_manifest_sha256": sha256(manifest_bytes).hexdigest(),
             "source_archive_sha256": actual,
         },
