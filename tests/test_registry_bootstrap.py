@@ -1,6 +1,7 @@
 """Unit tests for the Registry toolchain bootstrap environment."""
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from scripts.deps import (
     SDKBootstrapError,
     install_sdk_atomically,
     parse_kernel_abi,
+    download_asset,
     verify_release_asset_identity,
 )
 from scripts.registry import (
@@ -529,6 +531,77 @@ class KernelSDKCompositionTests(unittest.TestCase):
             for relative, payload in {**sdk_files, **backend_files}.items():
                 self.assertEqual((prefix / relative).read_bytes(), payload)
 
+
+
+
+class KernelSDKOfflineCacheTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.cache = Path(self.temporary.name) / "cache"
+        self.payload = b"immutable-kernel-sdk-fixture"
+        self.asset = {
+            "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
+            "size_bytes": len(self.payload),
+            "sha256": hashlib.sha256(self.payload).hexdigest(),
+        }
+        self.pin = {
+            "repository": "https://github.com/cdin-editor/kernel",
+            "tag": "v1.2.1",
+            "version": "1.2.1",
+            "revision": "f4875b6eb59bd76878e7ff486b6114abd9bb1329",
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_offline_mode_reuses_only_exact_lock_pinned_cache_bytes(self) -> None:
+        self.cache.mkdir(parents=True)
+        cached = self.cache / self.asset["file_name"]
+        cached.write_bytes(self.payload)
+        with patch("scripts.deps.CACHE", self.cache), \
+             patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
+             patch(
+                 "scripts.deps.verify_release_asset_identity",
+                 side_effect=AssertionError("offline cache reuse must not access GitHub"),
+             ):
+            result = download_asset(self.pin, self.asset)
+        self.assertEqual(result, cached)
+        self.assertEqual(result.read_bytes(), self.payload)
+
+    def test_offline_mode_rejects_a_cache_miss(self) -> None:
+        with patch("scripts.deps.CACHE", self.cache), \
+             patch.dict(os.environ, {"CDIN_OFFLINE": "true"}), \
+             patch(
+                 "scripts.deps.verify_release_asset_identity",
+                 side_effect=AssertionError("offline cache miss must not access GitHub"),
+             ):
+            with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK installation requires"):
+                download_asset(self.pin, self.asset)
+
+    def test_offline_mode_rejects_corrupt_cached_bytes(self) -> None:
+        self.cache.mkdir(parents=True)
+        cached = self.cache / self.asset["file_name"]
+        cached.write_bytes(b"corrupt")
+        with patch("scripts.deps.CACHE", self.cache), \
+             patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
+             patch(
+                 "scripts.deps.verify_release_asset_identity",
+                 side_effect=AssertionError("offline cache verification must not access GitHub"),
+             ):
+            with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK cache entry"):
+                download_asset(self.pin, self.asset)
+        self.assertTrue(cached.is_file())
+
+    @unittest.skipIf(os.name == "nt", "POSIX symlink semantics are required for this test")
+    def test_rejects_symlinked_sdk_cache_ancestor(self) -> None:
+        real = Path(self.temporary.name) / "real"
+        real.mkdir()
+        linked = Path(self.temporary.name) / "linked"
+        linked.symlink_to(real, target_is_directory=True)
+        with patch("scripts.deps.CACHE", linked / "cache"), \
+             patch.dict(os.environ, {"CDIN_OFFLINE": "1"}):
+            with self.assertRaisesRegex(SDKBootstrapError, "symlink or non-directory ancestor"):
+                download_asset(self.pin, self.asset)
 
 
 class KernelSDKAtomicInstallTests(unittest.TestCase):
