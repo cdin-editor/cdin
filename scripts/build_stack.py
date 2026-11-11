@@ -552,6 +552,7 @@ def main() -> int:
          f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl') if gui_enabled else ''}",
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
+         f"-DCDIN_DEVELOPER_SOURCE_COMPONENTS={'ON' if args.registry_source_build else 'OFF'}",
          "-DBUILD_TESTING=ON",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)
