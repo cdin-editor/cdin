@@ -176,7 +176,7 @@ def main() -> int:
 
     # Registry owns component discovery and immutable source collection.
     # The manifest, not deps.lock, is the authoritative component selection.
-    run([sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"])
+    run([sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace", "--source-build"])
     run([sys.executable, "scripts/deps.py", "--verify"])
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
