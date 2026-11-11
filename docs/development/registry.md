@@ -70,7 +70,11 @@ make registry-gui-dev
 
 These targets use the pinned source revision and require Git and Go 1.27.3 or newer. The Pipeline's source-build Registry task is likewise a contributor/CI path; it is not the ordinary consumer bootstrap.
 
-The current CDIN source-stack workflow still uses Registry's source-unit delivery model and builds component sources. That development workflow is not the completed artifact-first installation required by CDIN #122. The component package releases, SDK consumption, secure artifact installation and product Manifest replay must be completed before the normal product installation can stop using component source checkouts.
+The current developer/CI stack is hybrid. Kernel 1.2.1 plus its bundled logger 0.1.0 SDK are downloaded from the existing immutable Kernel Release assets, and Backend 1.2.1 is selected and materialized by Registry as a native `cmake-prefix-v1` artifact. CDIN stages both into its private install prefix and checks the Kernel version/ABI against the Manifest.
+
+Runtime and Frontend are still source-delivered by the current Catalog; the stack builds those checked-out source units. GUI-SDL also builds the checksum-pinned SDL3 3.4.16 source archive until the merged SDK publisher has a real five-target Release with verified digests. TUI does not acquire SDL3.
+
+The consumer Registry Release is still unavailable: the normal pin intentionally lacks descriptor digest/size, so the default binary path fails closed rather than using the unsafe `v0.1.0-dev` assets. The explicit Registry source-build mode is used for contributor/CI verification only. These partial artifact steps do not complete CDIN #122; the normal install still needs real Registry, Runtime, Frontend and SDL3 Releases and must then build only the Composition Root.
 
 ## Product profiles
 
@@ -91,14 +95,16 @@ make registry-gui
 CDIN_OFFLINE=1 make registry
 ```
 
-The full current developer stack:
+The current hybrid developer stack (explicit Registry source mode):
 
 ```sh
 make deps
 make registry-dev
-make stack
+make stack-dev
 make check
 ```
+
+The ordinary `make registry` / `make stack` path uses the pinned Registry Release executable and fails closed until Registry #58 publishes the corrected immutable Release.
 
 For a GUI-SDL source-development stack, use `make registry-gui-dev` and the explicit SDL3 developer-source opt-in provided by the GUI stack target. Ordinary GUI-SDL consumer installation must use the pinned prebuilt SDK and must not build SDL3 from source.
 
