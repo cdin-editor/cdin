@@ -118,6 +118,31 @@ class RegistryMakeTargetTests(unittest.TestCase):
 
 
 
+class RegistryPinSeparationTests(unittest.TestCase):
+    def test_consumer_release_and_developer_source_pins_are_separate(self) -> None:
+        from scripts.registry import registry_pin
+        lock = Path(__file__).resolve().parents[1] / "deps.lock"
+        import tomllib
+
+        data = tomllib.loads(lock.read_text(encoding="utf-8"))
+        consumer = data["tooling"]["registry"]
+        development = consumer["development"]
+        self.assertEqual(consumer["release_tag"], "v0.1.0-dev")
+        self.assertNotIn("release_descriptor_sha256", consumer)
+        self.assertNotIn("release_descriptor_size", consumer)
+        self.assertEqual(
+            registry_pin(),
+            ("https://github.com/cdin-editor/registry.git", "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"),
+        )
+        self.assertEqual(
+            registry_pin(development=True),
+            ("https://github.com/cdin-editor/registry.git", "ff317e458a57dd9d8b8a2be8f7439ba860c99f10"),
+        )
+        self.assertNotEqual(consumer["revision"], development["revision"])
+
+
+
+
 class RegistryTargetDetectionTests(unittest.TestCase):
     def test_linux_target_uses_supported_glibc_baseline(self) -> None:
         self.assertEqual(
