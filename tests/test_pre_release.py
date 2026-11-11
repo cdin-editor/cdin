@@ -83,6 +83,10 @@ class PreReleaseManifestTests(unittest.TestCase):
         self.manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
 
     def run_report(self, profile: str = "tui") -> dict:
+        workspace = self.root / ".deps" / f"registry-workspace-{profile}"
+        workspace.mkdir(parents=True, exist_ok=True)
+        manifest_path = workspace / "registry-manifest.json"
+        manifest_path.write_text(json.dumps(self.manifest), encoding="utf-8")
         with (
             patch.object(pre_release, "ROOT", self.root),
             patch.object(pre_release, "DIST", self.dist),
