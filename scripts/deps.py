@@ -839,7 +839,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="extract-", dir=CACHE) as temporary:
         stage = Path(temporary)
         root = extract_zip(archive, stage) if asset["format"] == "zip" else extract_tar_gz(archive, stage)
-        expected_root = f"cdin-kernel-{pin['version']}"
+        expected_root = f"cdin-kernel-{pin['version']}-{target}"
         if root.name != expected_root:
             raise SDKBootstrapError(f"Kernel SDK package root is {root.name}, expected {expected_root}")
         validate_package_tree(root, pin, target)
