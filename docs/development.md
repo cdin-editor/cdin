@@ -82,22 +82,22 @@ make stack
 
 The current stack is a **hybrid artifact/source integration candidate**, not yet a complete artifact-first consumer installation:
 
-1. \`make deps\` downloads, verifies and safely installs the existing Kernel 1.2.1 Release package, which also contains the pinned \`m-mdy-m/log.c\` 0.1.0 SDK. The installed Kernel version and ABI are checked against the Registry Manifest before either SDK is staged into CDIN's private prefix. Kernel and logger are not cloned or compiled from source.
-2. Backend 1.2.1 is selected as a native \`cmake-prefix-v1\` artifact by Registry for the detected target. CDIN verifies the selected target, package identity and required CMake/pkg-config files, then stages it into the same private prefix without overwriting Kernel/logger files.
+1. `make deps` downloads, verifies and safely installs the existing Kernel 1.2.1 Release package, which also contains the pinned `m-mdy-m/log.c` 0.1.0 SDK. The installed Kernel version and ABI are checked against the Registry Manifest before either SDK is staged into CDIN's private prefix. Kernel and logger are not cloned or compiled from source.
+2. Backend 1.2.1 is selected as a native `cmake-prefix-v1` artifact by Registry for the detected target. CDIN verifies the selected target, package identity and required CMake/pkg-config files, then stages it into the same private prefix without overwriting Kernel/logger files.
 3. Registry still resolves the component graph and collects source units for Runtime and Frontend because their current Catalog identities do not yet provide the required module/variant artifacts. These source units are kept in the immutable Manifest/workspace and staged only for the current development build.
 4. GUI-SDL currently builds the checksum-pinned SDL3 3.4.16 source archive. The SDK publisher is merged, but the actual five-target SDK Release and its digests are not yet available. TUI does not build or stage SDL3.
 5. CDIN configures and builds the Composition Root against the staged Kernel/logger and Backend packages, the source-delivered Runtime/Frontend development trees, and (for GUI-SDL only) SDL3. Registry replay and product E2E assertions run before the Composition Root is built.
 
-**Registry release blocker:** the normal consumer Registry pin is deliberately missing the descriptor SHA-256/size because the corrected \`v0.2.0-dev.1\` Release has not been published. The old \`v0.1.0-dev\` target binaries are unsafe. Consequently \`make registry\`, \`make stack\` and \`make install\` fail closed at Registry acquisition until a real verified Release is available. They do not silently switch to the source path.
+**Registry release blocker:** the normal consumer Registry pin is deliberately missing the descriptor SHA-256/size because the corrected `v0.2.0-dev.1` Release has not been published. The old `v0.1.0-dev` target binaries are unsafe. Consequently `make registry`, `make stack` and `make install` fail closed at Registry acquisition until a real verified Release is available. They do not silently switch to the source path.
 
 The explicit contributor/CI source mode is separate:
 
-\`\`\`sh
+```sh
 make registry-dev
 make stack-dev
 make registry-gui-dev
 make stack-gui-dev
-\`\`\`
+```
 
 Those targets use the separately pinned Registry development commit, compile/test Registry from source, and run the current hybrid component integration. Pipeline's CI task graph passes the explicit source-build option for that reason. It is not evidence that ordinary consumer installation is ready.
 
