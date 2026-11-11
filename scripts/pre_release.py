@@ -111,6 +111,12 @@ def main() -> int:
             "delivery": delivery,
             "source_revisions": revisions,
         }
+        if item.get("release_metadata_uri") is not None:
+            record["release_metadata_uri"] = item["release_metadata_uri"]
+        if item.get("release_metadata_sha256") is not None:
+            record["release_metadata_sha256"] = item["release_metadata_sha256"]
+        if item.get("release_discovery") is not None:
+            record["release_discovery"] = item["release_discovery"]
         if artifact is not None:
             record["selected_artifact"] = artifact
         package_records.append(record)
@@ -138,6 +144,9 @@ def main() -> int:
             "source_archive_sha256": actual,
         },
         "registry_version": manifest.get("registry_version"),
+        "catalogs": manifest.get("catalogs", []),
+        "roots": manifest.get("roots", []),
+        "resolution_order": manifest.get("resolution_order", []),
         "resolution": manifest.get("resolution"),
         "environment_contracts": sorted(
             ({"contract_id": item["contract_id"], "version": item["version"]}
