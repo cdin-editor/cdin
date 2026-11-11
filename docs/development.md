@@ -15,7 +15,7 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `src/cli/` | Small launcher argument parser. |
 | `src/diagnostics/` | CDIN logger adapter and Backend log callback. |
 | `include/cdin/` | Private headers shared by launcher modules. |
-| `scripts/deps.py` | Pinned non-component dependency checkout and materialization. |
+| `scripts/deps.py` | Download, validate and atomically install the pinned Kernel 1.2.1 + logger 0.1.0 SDK Release package. |
 | `scripts/registry.py` | Acquire the pinned Registry Release binary/Catalog by default; validate, resolve, prepare, verify and replay the component workspace. Its explicit `--source-build` switch is for Registry development only. |
 | `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |
 | `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
@@ -36,7 +36,7 @@ Registry prepares immutable component source units under `.deps/registry-workspa
 
 ## 2. Prerequisites
 
-The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal Registry bootstrap uses its pinned prebuilt Release executable and does not need a local Go toolchain. Go 1.27.3 or newer is needed only for the explicit Registry source-build path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
+The current hybrid development stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal Registry bootstrap uses its pinned prebuilt Release executable and does not need a local Go toolchain. Go 1.27.3 or newer is needed only for the explicit Registry source-build path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
 
 ### GNU/Linux
 
@@ -80,26 +80,28 @@ From the repository root:
 make stack
 ```
 
-The normal Makefile stack now follows the artifact-first Registry tool path:
+The current stack is a **hybrid artifact/source integration candidate**, not yet a complete artifact-first consumer installation:
 
-1. Materialize the pinned non-component logger dependency needed by the current component build.
-2. Acquire the exact Registry executable and Catalog snapshot from the immutable Release pin in `deps.lock`; verify the descriptor, Release asset digests/sizes and native executable target before execution.
-3. Validate the selected Product Definition and Catalog Index against Registry's versioned contracts.
-4. Resolve the transitive component/dependency/contract graph and prepare its Resolved Manifest/workspace.
-5. Verify the Manifest, replay it into a second workspace and compare the resulting Manifest bytes.
-6. Materialize the selected component source units for the existing dependency-ordered build.
-7. Build/test/install Kernel, Backend and Frontend, configure/build/test/install CDIN, and run product lifecycle E2E.
+1. \`make deps\` downloads, verifies and safely installs the existing Kernel 1.2.1 Release package, which also contains the pinned \`m-mdy-m/log.c\` 0.1.0 SDK. The installed Kernel version and ABI are checked against the Registry Manifest before either SDK is staged into CDIN's private prefix. Kernel and logger are not cloned or compiled from source.
+2. Backend 1.2.1 is selected as a native \`cmake-prefix-v1\` artifact by Registry for the detected target. CDIN verifies the selected target, package identity and required CMake/pkg-config files, then stages it into the same private prefix without overwriting Kernel/logger files.
+3. Registry still resolves the component graph and collects source units for Runtime and Frontend because their current Catalog identities do not yet provide the required module/variant artifacts. These source units are kept in the immutable Manifest/workspace and staged only for the current development build.
+4. GUI-SDL currently builds the checksum-pinned SDL3 3.4.16 source archive. The SDK publisher is merged, but the actual five-target SDK Release and its digests are not yet available. TUI does not build or stage SDL3.
+5. CDIN configures and builds the Composition Root against the staged Kernel/logger and Backend packages, the source-delivered Runtime/Frontend development trees, and (for GUI-SDL only) SDL3. Registry replay and product E2E assertions run before the Composition Root is built.
 
-**Migration status:** the Registry CLI itself is acquired as a prebuilt binary in the normal path. The current static Catalog still has source-delivered Kernel, Runtime and Frontend releases, and the current stack builder still compiles selected component sources. The broader component-artifact migration is tracked separately in CDIN #122; do not interpret the Registry binary bootstrap as proof that a clean install is already source-free.
+**Registry release blocker:** the normal consumer Registry pin is deliberately missing the descriptor SHA-256/size because the corrected \`v0.2.0-dev.1\` Release has not been published. The old \`v0.1.0-dev\` target binaries are unsafe. Consequently \`make registry\`, \`make stack\` and \`make install\` fail closed at Registry acquisition until a real verified Release is available. They do not silently switch to the source path.
 
-The explicit source-build path remains available to contributors who modify Registry:
+The explicit contributor/CI source mode is separate:
 
-```sh
+\`\`\`sh
+make registry-dev
 make stack-dev
+make registry-gui-dev
 make stack-gui-dev
-```
+\`\`\`
 
-Those targets build/test the pinned Registry source and then run the same stack orchestration. The default `make stack` and `make stack-gui` do not silently fall back to this path.
+Those targets use the separately pinned Registry development commit, compile/test Registry from source, and run the current hybrid component integration. Pipeline's CI task graph passes the explicit source-build option for that reason. It is not evidence that ordinary consumer installation is ready.
+
+The broader artifact-first migration remains open in CDIN #122. Runtime's platform-neutral module archive, Frontend's Core/TUI/GUI-SDL package set, SDL3's five-target SDK Release, and the corrected Registry executable/Catalog Release must be published and pinned before the normal product install can become source-free.
 
 The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains non-component dependency pins and the exact Registry Release pin. See [Registry integration](development/registry.md).
 
