@@ -150,8 +150,8 @@ def main() -> int:
         raise SystemExit("Backend release did not resolve its Runtime dependency")
 
     print(
-        "Registry product E2E passed: Backend 1.2.1 artifact + "
-        f"source-delivered Kernel/Runtime/Frontend, frontend={args.profile}, target={target}"
+        "Registry product E2E passed: Backend 1.2.1 artifact + pinned Kernel/logger SDK "
+        f"+ source-delivered Runtime/Frontend, frontend={args.profile}, target={target}"
     )
     return 0
 
