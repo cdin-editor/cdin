@@ -60,10 +60,14 @@ def load_pin() -> dict:
         pin = lock["dependencies"]["kernel_sdk"]
     except (KeyError, TypeError) as error:
         raise SDKBootstrapError("deps.lock is missing dependencies.kernel_sdk") from error
+    repository = pin.get("repository")
+    revision = pin.get("revision")
     if (
-        pin.get("repository", "").rstrip("/") != "https://github.com/cdin-editor/kernel"
+        not isinstance(repository, str)
+        or repository.rstrip("/") != "https://github.com/cdin-editor/kernel"
         or pin.get("tag") != f"v{pin.get('version')}"
-        or not re.fullmatch(r"[0-9a-f]{40}", pin.get("revision", ""))
+        or not isinstance(revision, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", revision)
     ):
         raise SDKBootstrapError("Kernel SDK repository/tag/version/source revision pin is invalid")
     if pin.get("kernel_abi") != "1.1.0" or pin.get("logger_version") != "0.1.0":
@@ -150,6 +154,12 @@ def verify_release_asset_identity(pin: dict, asset: dict) -> None:
     """Bind the download to the exact tag commit and GitHub Release asset."""
     tag = pin.get("tag")
     revision = pin.get("revision")
+    repository = pin.get("repository")
+    if (
+        not isinstance(repository, str)
+        or repository.rstrip("/") != "https://github.com/cdin-editor/kernel"
+    ):
+        raise SDKBootstrapError("Kernel SDK repository pin is invalid")
     if (
         not isinstance(tag, str)
         or tag != f"v{pin.get('version')}"
@@ -157,8 +167,6 @@ def verify_release_asset_identity(pin: dict, asset: dict) -> None:
         or not re.fullmatch(r"[0-9a-f]{40}", revision)
     ):
         raise SDKBootstrapError("Kernel SDK tag/source revision pin is invalid")
-    if pin.get("repository", "").rstrip("/") != "https://github.com/cdin-editor/kernel":
-        raise SDKBootstrapError("Kernel SDK repository pin is invalid")
 
     release = fetch_github_json(
         f"https://api.github.com/repos/cdin-editor/kernel/releases/tags/{urllib.parse.quote(tag, safe='')}"
