@@ -15,6 +15,7 @@ from scripts.registry_artifact import (
     acquire_registry_artifact,
     detect_target,
     verify_binary_target,
+    _api_asset_identity,
 )
 
 
@@ -26,6 +27,47 @@ def elf64(machine: int = 62) -> bytes:
     data[6] = 1
     data[18:20] = machine.to_bytes(2, "little")
     return bytes(data)
+
+
+
+class RegistryReleaseAssetURLTests(unittest.TestCase):
+    def _asset(self, url: str) -> dict:
+        return {
+            "name": "registry-linux-amd64",
+            "digest": "sha256:" + "a" * 64,
+            "size": 123,
+            "browser_download_url": url,
+        }
+
+    def test_accepts_canonical_github_release_asset_url(self) -> None:
+        url = "https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"
+        result = _api_asset_identity(
+            self._asset(url),
+            name="registry-linux-amd64",
+            sha256="a" * 64,
+            size=123,
+        )
+        self.assertEqual(result, url)
+
+    def test_rejects_nonstandard_asset_url_port(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "untrusted download URL"):
+            _api_asset_identity(
+                self._asset("https://github.com:444/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"),
+                name="registry-linux-amd64",
+                sha256="a" * 64,
+                size=123,
+            )
+
+    def test_rejects_asset_url_query_or_fragment(self) -> None:
+        for suffix in ("?redirect=evil", "#fragment"):
+            with self.subTest(suffix=suffix):
+                with self.assertRaisesRegex(RegistryBootstrapError, "untrusted download URL"):
+                    _api_asset_identity(
+                        self._asset("https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64" + suffix),
+                        name="registry-linux-amd64",
+                        sha256="a" * 64,
+                        size=123,
+                    )
 
 
 class FakeGitHubClient:
