@@ -17,12 +17,83 @@ from scripts.deps import (
     SDKBootstrapError,
     install_sdk_atomically,
     parse_kernel_abi,
+    verify_release_asset_identity,
 )
 from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
 )
+
+
+
+class KernelSDKReleasePinTests(unittest.TestCase):
+    revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
+    tag_object = "a" * 40
+    asset = {
+        "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
+        "size_bytes": 268126,
+        "sha256": "05779c5a23a24b3a5cb4e978d803f8e4bd81c73dbf5ba2b47e36b34ed0ddda21",
+    }
+
+    def setUp(self) -> None:
+        self.pin = {
+            "repository": "https://github.com/cdin-editor/kernel",
+            "tag": "v1.2.1",
+            "version": "1.2.1",
+            "revision": self.revision,
+        }
+
+    def _api_responses(self, *, commit: str | None = None, digest: str | None = None):
+        commit = commit or self.revision
+        digest = digest or self.asset["sha256"]
+        release = {
+            "tag_name": "v1.2.1",
+            "draft": False,
+            "prerelease": False,
+            "assets": [{
+                "name": self.asset["file_name"],
+                "size": self.asset["size_bytes"],
+                "digest": "sha256:" + digest,
+            }],
+        }
+
+        def fetch(url: str) -> dict:
+            if url.endswith("/releases/tags/v1.2.1"):
+                return release
+            if url.endswith("/git/ref/tags/v1.2.1"):
+                return {"object": {"type": "tag", "sha": self.tag_object}}
+            if url.endswith("/git/tags/" + self.tag_object):
+                return {
+                    "sha": self.tag_object,
+                    "object": {"type": "commit", "sha": commit},
+                }
+            raise AssertionError(f"unexpected GitHub API URL: {url}")
+
+        return fetch
+
+    def test_verifies_annotated_tag_commit_and_github_asset_digest_size(self) -> None:
+        with patch(
+            "scripts.deps.fetch_github_json",
+            side_effect=self._api_responses(),
+        ):
+            verify_release_asset_identity(self.pin, self.asset)
+
+    def test_rejects_tag_resolving_to_a_different_source_commit(self) -> None:
+        with patch(
+            "scripts.deps.fetch_github_json",
+            side_effect=self._api_responses(commit="0" * 40),
+        ):
+            with self.assertRaisesRegex(SDKBootstrapError, "tag moved or mismatched"):
+                verify_release_asset_identity(self.pin, self.asset)
+
+    def test_rejects_github_asset_digest_that_differs_from_lock(self) -> None:
+        with patch(
+            "scripts.deps.fetch_github_json",
+            side_effect=self._api_responses(digest="0" * 64),
+        ):
+            with self.assertRaisesRegex(SDKBootstrapError, "digest differs from deps.lock"):
+                verify_release_asset_identity(self.pin, self.asset)
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
