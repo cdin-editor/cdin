@@ -46,8 +46,13 @@ description = "Test SDL3 source archive extraction and SDK package safety"
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*sdl3*.py"]
 timeout_seconds = 60
 
+[tasks.release-workflow-tests]
+description = "Verify legacy release repair workflows preserve immutable tags and existing Releases"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_release_workflow_safety.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "sdl3-source-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "sdl3-source-tests", "release-workflow-tests"]
 timeout_seconds = 180
