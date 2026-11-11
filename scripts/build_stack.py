@@ -84,6 +84,12 @@ def install_sdl3(env: dict[str, str]) -> None:
     source_root = DEPS / "sdl3"
     archive.parent.mkdir(parents=True, exist_ok=True)
     source_root.parent.mkdir(parents=True, exist_ok=True)
+    if source_root.is_symlink() or (source_root.exists() and not source_root.is_dir()):
+        raise RuntimeError("SDL3 source root is not a real directory")
+    # The final os.replace() installs a versioned directory beneath this path.
+    # Create and validate the parent first; otherwise fresh Windows/macOS/Linux
+    # workspaces fail when the staged tree is atomically moved into place.
+    source_root.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
         print(f"Downloading SDL3 {version}", flush=True)
         urllib.request.urlretrieve(spec["archive"], archive)
