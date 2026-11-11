@@ -416,7 +416,7 @@ def _windows_path(path: Path) -> str:
     return subprocess.check_output([cygpath, "-w", str(path)], text=True).strip()
 
 
-def install_package(package_root: Path) -> None:
+def install_package(package_root: Path, prefix: Path) -> None:
     if os.name == "nt":
         powershell = shutil.which("powershell.exe") or shutil.which("pwsh")
         if powershell is None:
@@ -425,14 +425,14 @@ def install_package(package_root: Path) -> None:
             [
                 powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                 "-File", _windows_path(package_root / "install.ps1"),
-                "-Prefix", _windows_path(SDK_PREFIX),
+                "-Prefix", _windows_path(prefix),
             ],
             cwd=package_root,
             check=True,
         )
     else:
         subprocess.run(
-            ["bash", str(package_root / "install.sh"), "--prefix", str(SDK_PREFIX)],
+            ["bash", str(package_root / "install.sh"), "--prefix", str(prefix)],
             cwd=package_root,
             check=True,
         )
@@ -454,7 +454,7 @@ def parse_kernel_abi(header_text: str) -> str:
 
 
 
-def verify_installed(pin: dict) -> None:
+def verify_installed(pin: dict, prefix: Path = SDK_PREFIX) -> None:
     required = (
         "include/cdin/kernel.h",
         "include/m-mdy-m/log.h",
@@ -465,7 +465,7 @@ def verify_installed(pin: dict) -> None:
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
         "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
     )
-    missing = [name for name in required if not (SDK_PREFIX / name).is_file()]
+    missing = [name for name in required if not (prefix / name).is_file()]
     if missing:
         raise SDKBootstrapError("pinned Kernel/logger SDK is not installed: " + ", ".join(missing))
     pc_versions: dict[str, str] = {}
@@ -474,7 +474,7 @@ def verify_installed(pin: dict) -> None:
         ("logger", "lib/pkgconfig/m-mdy-m-log.pc"),
     ):
         values: dict[str, str] = {}
-        for line in (SDK_PREFIX / filename).read_text(encoding="utf-8").splitlines():
+        for line in (prefix / filename).read_text(encoding="utf-8").splitlines():
             key, separator, value = line.partition(":")
             if separator:
                 values[key.strip()] = value.strip()
@@ -489,7 +489,7 @@ def verify_installed(pin: dict) -> None:
         raise SDKBootstrapError(
             f"installed logger pkg-config version is {pc_versions['logger']}, expected {pin['logger_version']}"
         )
-    header = (SDK_PREFIX / "include/cdin/kernel.h").read_text(encoding="utf-8")
+    header = (prefix / "include/cdin/kernel.h").read_text(encoding="utf-8")
     abi_version = parse_kernel_abi(header)
     if abi_version != pin["kernel_abi"]:
         raise SDKBootstrapError(
@@ -497,8 +497,57 @@ def verify_installed(pin: dict) -> None:
         )
     if os.name == "nt":
         for name in ("lib/libcdin_kernel.dll.a", "bin/cdin_kernel.dll"):
-            if not (SDK_PREFIX / name).is_file():
+            if not (prefix / name).is_file():
                 raise SDKBootstrapError(f"installed Windows Kernel SDK is missing {name}")
+
+
+
+def install_sdk_atomically(
+    package_root: Path,
+    pin: dict,
+    destination: Path = SDK_PREFIX,
+) -> None:
+    """Install to a sibling staging directory and swap only after full verification.
+
+    A failed installer or verification leaves any previously working SDK prefix
+    untouched. The staging directory is on the same filesystem as the target so
+    the final directory replacement is an atomic rename.
+    """
+    destination = Path(os.path.abspath(destination))
+    parent = destination.parent
+    parent.mkdir(parents=True, exist_ok=True)
+
+    current = destination
+    while current != current.parent:
+        if current.is_symlink():
+            raise SDKBootstrapError(f"Kernel SDK destination contains a symlink ancestor: {current}")
+        current = current.parent
+    if destination.exists() and (destination.is_symlink() or not destination.is_dir()):
+        raise SDKBootstrapError("Kernel SDK destination must be a real directory")
+
+    backup = destination.with_name(destination.name + ".previous")
+    if backup.is_symlink():
+        raise SDKBootstrapError("Kernel SDK backup path must not be a symlink")
+    if backup.exists():
+        raise SDKBootstrapError("Kernel SDK backup path already exists; inspect it before retrying")
+
+    with tempfile.TemporaryDirectory(prefix=destination.name + ".staging-", dir=parent) as temporary:
+        staged_prefix = Path(temporary) / "prefix"
+        install_package(package_root, staged_prefix)
+        verify_installed(pin, staged_prefix)
+
+        had_previous = destination.exists()
+        if had_previous:
+            os.replace(destination, backup)
+        try:
+            os.replace(staged_prefix, destination)
+        except Exception:
+            if had_previous and backup.exists() and not destination.exists():
+                os.replace(backup, destination)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+
 
 
 def main() -> int:
@@ -535,10 +584,7 @@ def main() -> int:
         if root.name != expected_root:
             raise SDKBootstrapError(f"Kernel SDK package root is {root.name}, expected {expected_root}")
         validate_package_tree(root, pin, target)
-        if SDK_PREFIX.exists():
-            shutil.rmtree(SDK_PREFIX)
-        SDK_PREFIX.parent.mkdir(parents=True, exist_ok=True)
-        install_package(root)
+        install_sdk_atomically(root, pin)
     verify_installed(pin)
     print(f"Installed Kernel SDK {pin['version']} (ABI {pin['kernel_abi']}) + logger {pin['logger_version']}")
     return 0
