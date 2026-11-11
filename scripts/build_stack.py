@@ -356,7 +356,7 @@ def main() -> int:
         sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"
     ]
     if args.registry_source_build:
-        registry_command.append("--source-build")
+        registry_command.extend(("--source-build", "--developer-source-components"))
     run(registry_command)
     run([
         sys.executable,
