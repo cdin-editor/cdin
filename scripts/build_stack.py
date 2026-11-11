@@ -330,6 +330,16 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--install", str(build)], env=env)
 
 
+def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
+    """Prevent GUI-SDL source compilation from becoming an implicit install path."""
+    if profile == "gui-sdl" and not enabled:
+        raise RuntimeError(
+            "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
+            "building SDL3 from source is developer-only. Pass "
+            "--build-sdl3-from-source only for an explicit local development build."
+        )
+
+
 def install_sdl3(env: dict[str, str]) -> None:
     """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
@@ -506,6 +516,11 @@ def main() -> int:
         action="store_true",
         help="developer/CI-only: verify the workspace using the pinned Registry source build",
     )
+    parser.add_argument(
+        "--build-sdl3-from-source",
+        action="store_true",
+        help="developer-only opt-in to build SDL3 from its pinned source archive",
+    )
     args = parser.parse_args()
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
@@ -513,6 +528,8 @@ def main() -> int:
     else:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
+
+    require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
 
     for tool in ("cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
@@ -557,7 +574,7 @@ def main() -> int:
         # Explicit developer mode only: current Catalog still delivers Runtime
         # and Frontend source units. Normal consumer builds never compile them.
         env = pkg_env()
-        if gui_enabled:
+        if args.build_sdl3_from_source:
             install_sdl3(env)
         frontend = DEPS / "frontend"
         frontend_options = [
