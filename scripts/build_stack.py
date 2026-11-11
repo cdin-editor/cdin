@@ -30,16 +30,24 @@ def run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = No
     subprocess.run(command, cwd=cwd, env=env, check=True)
 
 
-def pkg_env() -> dict[str, str]:
+def pkg_env(*, additional_prefixes: tuple[Path, ...] = ()) -> dict[str, str]:
     result = os.environ.copy()
-    entries = [str(PREFIX / "lib" / "pkgconfig"), str(PREFIX / "lib64" / "pkgconfig")]
-    current = result.get("PKG_CONFIG_PATH")
-    if current:
-        entries.append(current)
-    result["PKG_CONFIG_PATH"] = os.pathsep.join(entries)
-    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(
-        [str(PREFIX), result.get("CMAKE_PREFIX_PATH", "")]
-    ).rstrip(os.pathsep)
+    prefixes = [PREFIX, *additional_prefixes]
+    pkgconfig = [
+        str(path)
+        for prefix in prefixes
+        for path in (prefix / "lib" / "pkgconfig", prefix / "lib64" / "pkgconfig")
+    ]
+    current_pkgconfig = result.get("PKG_CONFIG_PATH")
+    if current_pkgconfig:
+        pkgconfig.append(current_pkgconfig)
+    result["PKG_CONFIG_PATH"] = os.pathsep.join(pkgconfig)
+
+    cmake_prefixes = [str(path) for path in prefixes]
+    current_cmake_prefix = result.get("CMAKE_PREFIX_PATH")
+    if current_cmake_prefix:
+        cmake_prefixes.append(current_cmake_prefix)
+    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(cmake_prefixes)
     if os.name == "nt":
         # Windows does not use the executable's RPATH. The Kernel package
         # installs cdin_kernel.dll into PREFIX/bin, while CTest launches the
@@ -189,6 +197,115 @@ def stage_cmake_prefix(package: Path, prefix: Path) -> None:
             "lib/pkgconfig/cdin-protocol.pc",
         ),
     )
+
+
+def stage_frontend_variant_prefix(
+    package: Path,
+    prefix: Path,
+    *,
+    variant: str,
+) -> None:
+    """Stage one immutable Frontend package without merging variant metadata."""
+    required_by_variant = {
+        "core": (
+            "include/cdin/frontend/core/version.h",
+            "lib/libcdin_frontend_core.a",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfig.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfigVersion.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreTargets.cmake",
+            "lib/pkgconfig/cdin-frontend-core.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+        "tui": (
+            "include/cdin/frontend/ui/tui/tui.h",
+            "lib/libcdin_frontend_ui_tui.a",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfig.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfigVersion.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUITargets.cmake",
+            "lib/pkgconfig/cdin-frontend-tui.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+        "gui-sdl": (
+            "include/cdin/frontend/ui/gui_sdl/gui_sdl.h",
+            "lib/libcdin_frontend_ui_gui_sdl.a",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLConfig.cmake",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLConfigVersion.cmake",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLTargets.cmake",
+            "lib/pkgconfig/cdin-frontend-gui-sdl.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+    }
+    if variant not in required_by_variant:
+        raise ValueError(f"unsupported Frontend package variant: {variant}")
+    _stage_install_prefix(
+        package,
+        prefix,
+        component=f"Frontend {variant}",
+        required_files=required_by_variant[variant],
+    )
+
+
+def runtime_module_package_root(manifest: dict) -> Path:
+    """Return the verified Runtime archive root containing its Lua tree."""
+    matches = [
+        item for item in manifest.get("components", [])
+        if item.get("component_id") == "runtime" and item.get("variant") == "default"
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("Resolved Manifest must select exactly one Runtime package")
+    runtime = matches[0]
+    artifact = runtime.get("selected_artifact")
+    if runtime.get("delivery") != "artifact" or not isinstance(artifact, dict):
+        raise RuntimeError("artifact-only product requires a selected Runtime module archive")
+    if artifact.get("kind") != "runtime-module-archive":
+        raise RuntimeError("Runtime artifact is not a Lua module archive")
+    if artifact.get("layout") != "lua-module-tree-v1":
+        raise RuntimeError("Runtime artifact does not declare lua-module-tree-v1")
+    if artifact.get("target") != {"os": "any", "architecture": "any", "abi": "none"}:
+        raise RuntimeError("Runtime module archive must declare the universal any/any/none target")
+    if artifact.get("workspace_path") != "components/runtime/default/package":
+        raise RuntimeError("Runtime package workspace path is not canonical")
+
+    package = WORKSPACE / artifact["workspace_path"]
+    root = package / f"cdin-runtime-{runtime['version']}"
+    for candidate in (package, root, root / "lua", root / "lua" / "cdin" / "runtime.lua"):
+        if candidate.is_symlink():
+            raise RuntimeError(f"Runtime module package contains a symlink: {candidate}")
+    if not root.is_dir() or not (root / "lua" / "cdin" / "runtime.lua").is_file():
+        raise RuntimeError(f"Runtime module archive is incomplete: {root}")
+    return root
+
+
+def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
+    """Fail closed unless the exact target-native, prebuilt SDL3 SDK is staged."""
+    sdk = prefix / "share" / "cdin" / "sdl3-sdk.json"
+    config = prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
+    header = prefix / "include" / "SDL3" / "SDL.h"
+    static_library = prefix / "lib" / ("SDL3-static.lib" if os.name == "nt" else "libSDL3.a")
+    for path in (sdk, config, header, static_library):
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(
+                f"GUI-SDL requires the verified prebuilt SDL3 SDK; missing or unsafe: {path}"
+            )
+    try:
+        metadata = json.loads(sdk.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"SDL3 SDK identity manifest is invalid: {error}") from error
+    expected_target = {
+        "os": "macos" if target["os"] == "darwin" else target["os"],
+        "architecture": target["architecture"],
+        "abi": target["abi"],
+    }
+    if (
+        metadata.get("schema") != "cdin.sdl3-sdk.v1"
+        or metadata.get("version") != "3.4.16"
+        or metadata.get("target") != expected_target
+        or metadata.get("linkage") != "static"
+        or metadata.get("cmake_package") != "SDL3"
+    ):
+        raise RuntimeError(
+            f"SDL3 SDK identity does not match the pinned version/target: {metadata}"
+        )
 
 
 def cmake_component(name: str, source: Path, *, options: list[str], env: dict[str, str]) -> None:
@@ -377,7 +494,6 @@ def main() -> int:
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
     stage_kernel_sdk_prefix(SDK_PREFIX, PREFIX)
-    env = pkg_env()
 
     backend_package = (
         WORKSPACE / "components" / "backend" / "default" / "package"
@@ -385,26 +501,55 @@ def main() -> int:
     stage_cmake_prefix(backend_package, PREFIX)
 
     gui_enabled = PROFILE == "gui-sdl"
-    if gui_enabled:
-        install_sdl3(env)
-    frontend = DEPS / "frontend"
-    frontend_options = [
-        "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
-        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
-        f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
-        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
-        "-DCDIN_FRONTEND_BUILD_APPS=OFF",
-        "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
-    ]
-    cmake_component("frontend", frontend, options=frontend_options, env=env)
+    if args.registry_source_build:
+        # Explicit developer mode only: current Catalog still delivers Runtime
+        # and Frontend source units. Normal consumer builds never compile them.
+        env = pkg_env()
+        if gui_enabled:
+            install_sdl3(env)
+        frontend = DEPS / "frontend"
+        frontend_options = [
+            "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
+            "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
+            f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
+            "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
+            "-DCDIN_FRONTEND_BUILD_APPS=OFF",
+            "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
+        ]
+        cmake_component("frontend", frontend, options=frontend_options, env=env)
+        runtime_root = DEPS / "runtime"
+        frontend_prefixes: tuple[Path, ...] = ()
+    else:
+        runtime_root = runtime_module_package_root(manifest)
+        selected_variants = ("core", "tui", "gui-sdl") if gui_enabled else ("core", "tui")
+        staged_prefixes: list[Path] = []
+        for variant in selected_variants:
+            artifact_package = (
+                WORKSPACE / "components" / "frontend" / variant / "package"
+            )
+            variant_prefix = PREFIX / "frontend" / variant
+            stage_frontend_variant_prefix(
+                artifact_package,
+                variant_prefix,
+                variant=variant,
+            )
+            staged_prefixes.append(variant_prefix)
+        frontend_prefixes = tuple(staged_prefixes)
+        if gui_enabled:
+            # CDIN #124 owns acquisition/verification of this SDK. Until that
+            # path is wired to the published five-target release, fail closed.
+            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+        env = pkg_env(additional_prefixes=frontend_prefixes)
 
     root_build = BUILD / "cdin"
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
-         f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
+         f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
-         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
+         f"-DCDIN_FRONTEND_CORE_PACKAGE_VERSION={pinned_package_version('frontend', 'core') if not args.registry_source_build else pinned_package_version('frontend', 'tui')}",
+         f"-DCDIN_FRONTEND_TUI_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
+         f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl') if gui_enabled else ''}",
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
          "-DBUILD_TESTING=ON",
