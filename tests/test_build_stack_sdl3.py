@@ -22,6 +22,14 @@ def write_archive(path: Path, member_name: str) -> None:
 
 
 class SDL3SourceExtractionTests(unittest.TestCase):
+    def test_gui_source_build_requires_explicit_opt_in(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "developer-only"):
+            build_stack.require_sdl3_source_build_opt_in("gui-sdl", False)
+
+    def test_explicit_gui_source_build_and_tui_profile_are_allowed(self) -> None:
+        build_stack.require_sdl3_source_build_opt_in("gui-sdl", True)
+        build_stack.require_sdl3_source_build_opt_in("tui", False)
+
     def _write_lock(self, root: Path, digest: str) -> Path:
         lock = root / "deps.lock"
         lock.write_text(
