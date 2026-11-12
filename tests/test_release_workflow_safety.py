@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import textwrap
@@ -125,14 +126,18 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("actions: read", self.rolling)
 
     def test_development_tag_creation_shell_has_valid_bash_syntax(self) -> None:
+        # The Windows matrix uses a native UCRT64 Python process. Spawning the
+        # MSYS2/Git Bash compatibility executable from native Python returns
+        # exit code 1 without a parser diagnostic, even for valid -n input.
+        # The Linux and macOS matrix jobs run this exact syntax check.
+        if os.name == "nt":
+            self.skipTest("Bash syntax is validated by the Linux/macOS CI jobs")
         if shutil.which("bash") is None:
             self.skipTest("bash is not installed")
         script = textwrap.dedent(self.source_tag.split("        run: |\n", 1)[1])
-        # Pass the script as the explicit -c command string.  Feeding it
-        # through stdin is unreliable for native Windows Python -> MSYS2 Bash
-        # subprocess pipes (the process exits non-zero without a parser error).
         result = subprocess.run(
-            ["bash", "-n", "-c", script],
+            ["bash", "-n"],
+            input=script,
             capture_output=True,
             text=True,
             check=False,
