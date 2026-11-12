@@ -17,8 +17,10 @@ from pathlib import Path
 
 try:
     from .package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+    from .sdl3_artifact import install_sdl3_sdk
 except ImportError:  # Direct execution: scripts/ is sys.path[0].
     from package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+    from sdl3_artifact import install_sdl3_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
@@ -302,22 +304,28 @@ def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
         )
     try:
         metadata = json.loads(sdk.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"SDL3 SDK identity manifest is invalid: {error}") from error
+        source_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["tooling"]["sdl3"]
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError(f"SDL3 SDK identity/source lock is invalid: {error}") from error
     expected_target = {
         "os": "macos" if target["os"] == "darwin" else target["os"],
         "architecture": target["architecture"],
         "abi": target["abi"],
     }
+    expected_source = {
+        "url": source_pin["archive"],
+        "sha256": source_pin["sha256"],
+    }
     if (
         metadata.get("schema") != "cdin.sdl3-sdk.v1"
-        or metadata.get("version") != "3.4.16"
+        or metadata.get("version") != source_pin["version"]
         or metadata.get("target") != expected_target
+        or metadata.get("source") != expected_source
         or metadata.get("linkage") != "static"
         or metadata.get("cmake_package") != "SDL3"
     ):
         raise RuntimeError(
-            f"SDL3 SDK identity does not match the pinned version/target: {metadata}"
+            f"SDL3 SDK identity does not match the pinned version/source/target: {metadata}"
         )
 
 
@@ -330,19 +338,38 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--install", str(build)], env=env)
 
 
-def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
-    """Prevent GUI-SDL source compilation from becoming an implicit install path."""
-    if profile == "gui-sdl" and not enabled:
-        raise RuntimeError(
-            "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
-            "building SDL3 from source is developer-only. Pass "
-            "--build-sdl3-from-source only for an explicit local development build."
-        )
-
-
 def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
     """Only GUI-SDL developer builds may compile the SDL3 source archive."""
     return profile == "gui-sdl" and enabled
+
+
+def validate_sdl3_source_build_mode(
+    registry_source_build: bool,
+    source_build_enabled: bool,
+) -> None:
+    """Keep source-built SDL3 behind the explicit developer composition mode."""
+    if source_build_enabled and not registry_source_build:
+        raise RuntimeError(
+            "--build-sdl3-from-source is available only with "
+            "--registry-source-build; normal consumers must use immutable SDL3 artifacts"
+        )
+
+
+def prepare_sdl3(
+    prefix: Path,
+    target: dict[str, str],
+    profile: str,
+    source_build_enabled: bool,
+    env: dict[str, str],
+) -> None:
+    """Select explicit developer source-build or immutable consumer SDK delivery."""
+    if profile != "gui-sdl":
+        return
+    if should_build_sdl3_from_source(profile, source_build_enabled):
+        install_sdl3(env)
+        return
+    install_sdl3_sdk(prefix, target)
+    require_sdl3_sdk(prefix, target)
 
 
 def install_sdl3(env: dict[str, str]) -> None:
@@ -527,14 +554,19 @@ def main() -> int:
         help="developer-only opt-in to build SDL3 from its pinned source archive",
     )
     args = parser.parse_args()
+    try:
+        validate_sdl3_source_build_mode(
+            args.registry_source_build, args.build_sdl3_from_source
+        )
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-gui-sdl"
     else:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
-
-    require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
 
     for tool in ("cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
@@ -579,8 +611,10 @@ def main() -> int:
         # Explicit developer mode only: current Catalog still delivers Runtime
         # and Frontend source units. Normal consumer builds never compile them.
         env = pkg_env()
-        if should_build_sdl3_from_source(PROFILE, args.build_sdl3_from_source):
-            install_sdl3(env)
+        prepare_sdl3(
+            PREFIX, manifest["resolution"]["target"], PROFILE,
+            args.build_sdl3_from_source, env,
+        )
         frontend = DEPS / "frontend"
         frontend_options = [
             "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
@@ -609,10 +643,10 @@ def main() -> int:
             )
             staged_prefixes.append(variant_prefix)
         frontend_prefixes = tuple(staged_prefixes)
-        if gui_enabled:
-            # CDIN #124 owns acquisition/verification of this SDK. Until that
-            # path is wired to the published five-target release, fail closed.
-            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+        prepare_sdl3(
+            PREFIX, manifest["resolution"]["target"], PROFILE,
+            args.build_sdl3_from_source, pkg_env(additional_prefixes=frontend_prefixes),
+        )
         env = pkg_env(additional_prefixes=frontend_prefixes)
 
     root_build = BUILD / "cdin"

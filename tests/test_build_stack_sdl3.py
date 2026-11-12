@@ -22,19 +22,60 @@ def write_archive(path: Path, member_name: str) -> None:
 
 
 class SDL3SourceExtractionTests(unittest.TestCase):
-    def test_gui_source_build_requires_explicit_opt_in(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "developer-only"):
-            build_stack.require_sdl3_source_build_opt_in("gui-sdl", False)
-
-    def test_explicit_gui_source_build_and_tui_profile_are_allowed(self) -> None:
-        build_stack.require_sdl3_source_build_opt_in("gui-sdl", True)
-        build_stack.require_sdl3_source_build_opt_in("tui", False)
+    def test_gui_defaults_to_artifact_delivery_and_source_build_is_explicit(self) -> None:
+        self.assertFalse(build_stack.should_build_sdl3_from_source("gui-sdl", False))
+        self.assertTrue(build_stack.should_build_sdl3_from_source("gui-sdl", True))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", False))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", True))
 
     def test_tui_never_acquires_sdl_even_if_pipeline_sets_source_opt_in(self) -> None:
         self.assertFalse(build_stack.should_build_sdl3_from_source("tui", True))
         self.assertFalse(build_stack.should_build_sdl3_from_source("tui", False))
         self.assertTrue(build_stack.should_build_sdl3_from_source("gui-sdl", True))
         self.assertFalse(build_stack.should_build_sdl3_from_source("gui-sdl", False))
+
+    def test_gui_consumer_uses_immutable_artifact_by_default(self) -> None:
+        target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"), target, "gui-sdl", False, {}
+            )
+        acquire.assert_called_once_with(Path(".deps/install"), target)
+        verify.assert_called_once_with(Path(".deps/install"), target)
+        source.assert_not_called()
+
+    def test_source_fallback_is_rejected_without_registry_developer_mode(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "only with --registry-source-build"):
+            build_stack.validate_sdl3_source_build_mode(False, True)
+        build_stack.validate_sdl3_source_build_mode(True, True)
+        build_stack.validate_sdl3_source_build_mode(False, False)
+
+    def test_only_explicit_gui_developer_mode_uses_source_fallback(self) -> None:
+        target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"), target, "gui-sdl", True, {"PATH": ""}
+            )
+        source.assert_called_once_with({"PATH": ""})
+        acquire.assert_not_called()
+        verify.assert_not_called()
+
+    def test_tui_never_invokes_either_sdl_delivery_path(self) -> None:
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"),
+                {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                "tui", True, {},
+            )
+        acquire.assert_not_called()
+        verify.assert_not_called()
+        source.assert_not_called()
 
     def _write_lock(self, root: Path, digest: str) -> Path:
         lock = root / "deps.lock"
