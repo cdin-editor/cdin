@@ -251,25 +251,29 @@ class ArchiveAndPackageTests(unittest.TestCase):
             metadata = json.loads(files["share/cdin/sdl3-sdk.json"])
             metadata["target"]["abi"] = "gnu-glibc-2.40"
             files["share/cdin/sdl3-sdk.json"] = (
-                json.dumps(metadata, sort_keys=True, indent=2) + "\n"
+                json.dumps(metadata, sort_keys=True, indent=2) + "\\n"
             ).encode()
+            for relative, payload in files.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload)
             with self.assertRaisesRegex(sdk.SDL3ArtifactError, "manifest differs"):
                 sdk.verify_package_prefix(root, "3.4.16", TARGET, {
                     "url": SOURCE_URL, "sha256": SOURCE_SHA
                 })
 
+        with tempfile.TemporaryDirectory() as nested:
+            prefix = Path(nested)
             files = package_files()
             files["lib/libSDL3.so"] = b"shared library"
-            with tempfile.TemporaryDirectory() as nested:
-                prefix = Path(nested)
-                for relative, payload in files.items():
-                    path = prefix / relative
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(payload)
-                with self.assertRaisesRegex(sdk.SDL3ArtifactError, "shared SDL3"):
-                    sdk.verify_package_prefix(prefix, "3.4.16", TARGET, {
-                        "url": SOURCE_URL, "sha256": SOURCE_SHA
-                    })
+            for relative, payload in files.items():
+                path = prefix / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(payload)
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "shared SDL3"):
+                sdk.verify_package_prefix(prefix, "3.4.16", TARGET, {
+                    "url": SOURCE_URL, "sha256": SOURCE_SHA
+                })
 
     def test_offline_install_stages_only_the_exact_cached_target_archive(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
