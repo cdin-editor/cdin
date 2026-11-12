@@ -78,8 +78,8 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main', self.workflow)
         verify = self.workflow.split("  verify:", 1)[1].split("  publish:", 1)[0]
         publish = self.workflow.split("  publish:", 1)[1]
-        self.assertIn("needs: [validate-release-credential, verify-tag-on-main]", verify)
-        self.assertIn("needs: [verify, validate-release-credential, verify-tag-on-main]", publish)
+        self.assertIn("needs: [verify-tag-on-main]", verify)
+        self.assertIn("needs: [verify, verify-tag-on-main]", publish)
 
     def test_versioned_release_uses_the_same_immutable_pipeline_workflow_and_helper_pin(self) -> None:
         publish = self.workflow.split("  publish:", 1)[1]
@@ -95,14 +95,14 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
         ).split(":", 1)[1].strip()
         self.assertEqual(workflow_ref, helper_ref)
         self.assertEqual(workflow_ref, "df2ee4acfa5d831c96459f551928b4d85ef29891")
+        self.assertIn("contents: write", publish)
+        self.assertNotIn("CDIN_RELEASE_TOKEN", self.workflow)
+        self.assertNotIn("secrets:", publish)
 
 class RollingProductReleaseWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.workflow = (ROOT / ".github" / "workflows" / "pre-release.yml").read_text(encoding="utf-8")
-        cls.validation = cls.workflow.split("  validate-release-credential:", 1)[1].split(
-            "  create-development-tag:", 1
-        )[0]
         cls.source_tag = cls.workflow.split("  create-development-tag:", 1)[1].split(
             "  publish-development-prerelease:", 1
         )[0]
@@ -113,11 +113,26 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
     def test_channel_workflow_listens_to_ci_for_source_snapshots_and_product_acceptance_for_latest(self) -> None:
         self.assertIn('workflows: ["CI", "Product Acceptance"]', self.workflow)
 
-    def test_release_credential_validation_only_runs_for_release_eligible_workflows(self) -> None:
-        self.assertIn("workflow_run.name == 'CI'", self.validation)
-        self.assertIn("workflow_run.name == 'Product Acceptance'", self.validation)
-        self.assertIn("head_branch == 'main'", self.validation)
-        self.assertIn("CDIN_RELEASE_TOKEN", self.validation)
+    def test_release_jobs_use_job_scoped_github_token_without_manual_secrets(self) -> None:
+        self.assertNotIn("CDIN_RELEASE_TOKEN", self.workflow)
+        self.assertNotIn("secrets:", self.workflow)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", self.source_tag)
+        self.assertIn("contents: write", self.source_tag)
+        self.assertIn("contents: write", self.rolling)
+        self.assertIn("actions: read", self.rolling)
+
+    def test_source_tag_lookup_fails_closed_and_resolves_annotated_tags(self) -> None:
+        self.assertIn('status="$(curl', self.source_tag)
+        self.assertIn("404)", self.source_tag)
+        self.assertIn("Could not inspect development tag", self.source_tag)
+        self.assertIn("resolve_tag_commit()", self.source_tag)
+        self.assertIn('while [[ "$object_type" == "tag" ]]', self.source_tag)
+        self.assertIn('current_sha="$(resolve_tag_commit)"', self.source_tag)
+        self.assertNotIn("2>/dev/null", self.source_tag)
+
+    def test_source_release_uses_the_exact_tag_created_for_the_successful_ci_run(self) -> None:
+        self.assertIn("source-ref: ${{ needs.create-development-tag.outputs.source_ref }}", self.workflow)
+        self.assertIn("SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}", self.source_tag)
 
     def test_every_successful_ci_push_gets_a_unique_source_only_development_tag(self) -> None:
         self.assertIn("workflow_run.name == 'CI'", self.source_tag)
@@ -133,7 +148,9 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("source-run-id: ${{ github.event.workflow_run.id }}", self.rolling)
         self.assertIn("source-sha: ${{ github.event.workflow_run.head_sha }}", self.rolling)
         self.assertIn("artifact-pattern: \"cdin-installed-product-*\"", self.rolling)
-        self.assertIn("release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}", self.rolling)
+        self.assertNotIn("release-token:", self.rolling)
+        self.assertIn("contents: write", self.rolling)
+        self.assertIn("actions: read", self.rolling)
 
 
     def test_normal_ci_on_main_cannot_publish_the_product_rolling_channel(self) -> None:
