@@ -439,6 +439,7 @@ def package_distribution(
         "target": target,
         "profile": profile,
         "registry_manifest_sha256": build_info["registry_manifest_sha256"],
+        "components": components,
         "archive": {
             "name": archive_path.name,
             "size_bytes": archive_path.stat().st_size,
