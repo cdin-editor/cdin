@@ -43,6 +43,8 @@ These archives are **development-build artifacts**, not stable releases, rolling
 - The fixed `latest` product prerelease is gated by a separate successful Product Acceptance workflow on `main`; the current build and version/check extraction smoke are not sufficient to trigger it. That workflow remains intentionally unavailable until the live product acceptance suite is real and green.
 - A pushed SemVer tag creates a tag-backed source Release only when its commit is reachable from `main`; `v0.0.0-dev.*` tags are excluded from this path.
 
+The source-only and versioned source-release workflows use the calling job's scoped GITHUB_TOKEN; the rolling publisher does the same by default, with an optional token override only when an organization policy requires it. No CDIN_RELEASE_TOKEN secret is required for normal same-repository publication.
+
 The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and actual rolling/versioned product release acceptance have passed.
 
 See [integration status](integration-status.md), [installation](../installation.md) and [CDIN #111](https://github.com/cdin-editor/cdin/issues/111).
