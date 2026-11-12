@@ -1,39 +1,42 @@
 # Installed CDIN development distributions
 
-**Status:** the distribution builder and extraction smoke are being integrated in the current CDIN change. A passing exact-head CI matrix is required before treating the generated files as validated.
+**Status:** the installed-prefix distribution builder is an integration/CI artifact path. It is not a user-facing installer or a product release.
 
 ## What is packaged
 
-The distribution is built from the installed product prefix at `.deps/install`, not from the Git source snapshot. Each target/profile bundle contains:
+The archive is created from the actual installed prefix at `.deps/install`, not from the Git source snapshot. Each target/profile bundle contains:
 
-- `bin/cdin` (or `bin/cdin.exe`) and all installed runtime libraries from the selected component packages;
+- `bin/cdin` (or `bin/cdin.exe`) and the files installed by the selected component packages;
 - the Runtime Lua module tree under `share/cdin/lua`;
 - the exact Registry Resolved Manifest under `share/cdin/registry-manifest.json`;
 - `BUILD-INFO.json`, `LICENSE` and `NOTICE`.
 
-Linux and macOS use a `.tar.gz` archive; Windows UCRT64 uses a `.zip` archive. The filename includes the CDIN version, target OS, architecture and profile, for example `cdin-0.2.0-linux-x86_64-tui.tar.gz`.
+Linux and macOS use `.tar.gz`; Windows UCRT64 uses `.zip`. The filename includes the product version, target OS/architecture and profile, for example `cdin-0.2.0-linux-x86_64-tui.tar.gz`.
 
-The adjacent `.sha256` file hashes the archive. The adjacent `.manifest.json` records the archive digest/size, source commit, target and ABI, profile, Registry Manifest digest, selected component package versions and immutable source revisions, and the CI run identity.
+The adjacent `.sha256` file hashes the archive. The adjacent `.manifest.json` binds its exact size and digest to the source commit, target ABI, profile, Registry version, Catalog metadata identities, Registry Manifest digest, component release-metadata and artifact/source provenance, environment contracts, build dependencies and CI run identity.
+
+The build record includes the exact target-specific Kernel SDK v1.2.1 asset identity and its independently versioned logger 0.1.0 SDK. GUI-SDL also records the currently pinned SDL3 3.4.16 source archive and digest. This records reuse of the existing Kernel/logger packages; it does not create a new Kernel or logger packaging workstream.
 
 ## Build and verification
 
-The Pipeline `distribution-tests` task exercises the manifest, archive, checksum, safe-extraction and fail-closed cases. The `distribution` task runs after `stack` has installed the product. It creates the archive and extracts it into a fresh temporary directory outside the repository checkout.
+The Pipeline `distribution-tests` task exercises manifest validation, archive/checksum generation, bounded safe extraction, path collision/traversal rejection, provenance validation and failure cleanup. The `distribution` task runs after the selected stack has been installed.
 
-The extracted executable is then run with `--version` and `--check`. The smoke deliberately does **not** set `CDIN_RUNTIME_ROOT`: CDIN must discover `share/cdin/lua` relative to its own installed `bin/cdin` path. This checks that the package remains usable after it has been moved away from the build prefix.
+The archive is staged in a temporary directory, extracted into a fresh directory outside the checkout, and verified before the archive, checksum and manifest are moved into the CI output directory. A failed extraction or executable smoke leaves no published candidate files.
 
-A TUI bundle rejects SDL3 files. A GUI-SDL bundle requires the pinned SDL3 SDK to be present in the installed prefix. Unsupported target/ABI combinations, symlinks in the installed prefix, archive path traversal, incomplete manifests and attempts to overwrite an existing distribution identity fail closed.
+The extracted executable is run with `--version` and `--check` without setting `CDIN_RUNTIME_ROOT`. This proves the headless Composition Root validation path can discover the bundled Runtime module tree relative to the extracted executable. It does **not** prove interactive TUI terminal startup/restoration or GUI-SDL startup/cleanup; those remain separate product acceptance gates.
 
-Run the pipeline task from a configured developer workspace with:
+A TUI bundle rejects SDL3 files and never acquires the SDL3 source or SDK. A GUI-SDL development bundle requires its pinned SDL3 files in the install prefix. Until CDIN #124 publishes the five target SDK assets, GUI-SDL CI still builds the pinned SDL3 source as an explicit developer/CI fallback.
 
-```sh
-CDIN_FRONTEND_VARIANT=tui pipeline run distribution
-CDIN_FRONTEND_VARIANT=gui-sdl pipeline run distribution
-```
+The CI matrix currently uploads one tested archive/checksum/manifest set per OS/profile for 30 days. These are workflow artifacts, not GitHub Releases.
 
-The normal CI pipeline runs the tests and distribution task as part of its full pre-release verification. Each OS/profile job uploads its generated archive, checksum and manifest as a GitHub Actions artifact for 30 days.
+## Runtime dependency boundary
+
+The current Backend package uses the Lua 5.4 C API supplied by the target build environment. The Lua shared runtime is not copied into the installed prefix by this distribution task. The Registry Manifest's `environment_contracts` records the Lua 5.4 contract, while the target ABI records the platform baseline. The hosted CI extraction smoke runs on runners where Lua 5.4 is installed.
+
+Consequently, these bundles are not yet clean-machine installers. Before a product release, CDIN must either provide a supported OS-native dependency installation strategy or bundle the exact permitted runtime libraries, then verify dynamic dependency closure on clean supported machines. A successful `--check` on a configured CI runner is not evidence that a generic clean machine already has every runtime dependency.
 
 ## Release boundary
 
-These archives are **development-build artifacts**, not stable releases and not a claim that the complete interactive editor is production-ready. CI artifact upload is not GitHub Release publication. The current work does not create the rolling `latest` channel or an immutable SemVer application release.
+These archives are **development-build artifacts**, not stable releases, rolling `latest` updates or immutable SemVer application releases. The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and the separate rolling/SemVer release workflows have passed.
 
-The product remains DEVELOPMENT until the artifact-first component releases, supported product launch/E2E, GUI Unicode and Persian/Arabic presentation, IME and PaneTree product gates, and the separate rolling/SemVer release workflows have passed. See [integration status](integration-status.md) and [CDIN #111](https://github.com/cdin-editor/cdin/issues/111).
+See [integration status](integration-status.md), [installation](../installation.md) and [CDIN #111](https://github.com/cdin-editor/cdin/issues/111).
