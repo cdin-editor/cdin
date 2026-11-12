@@ -166,7 +166,7 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
     )
     if (
         not isinstance(source_version, str)
-        or re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+", source_version) is None
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", source_version) is None
         or version != source_version
         or tag != f"sdl3-sdk-v{version}"
         or not isinstance(revision, str)
