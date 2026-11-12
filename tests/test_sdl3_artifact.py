@@ -251,7 +251,7 @@ class ArchiveAndPackageTests(unittest.TestCase):
             metadata = json.loads(files["share/cdin/sdl3-sdk.json"])
             metadata["target"]["abi"] = "gnu-glibc-2.40"
             files["share/cdin/sdl3-sdk.json"] = (
-                json.dumps(metadata, sort_keys=True, indent=2) + "\\n"
+                json.dumps(metadata, sort_keys=True, indent=2) + "\n"
             ).encode()
             for relative, payload in files.items():
                 path = root / relative
