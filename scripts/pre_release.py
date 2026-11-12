@@ -151,7 +151,10 @@ def main() -> int:
         "profile": profile,
         "verification": {
             "pipeline_task": "pre-release",
-            "required_pipeline_dependencies": [\n                "check", "package", "bootstrap-tests", "registry-artifact-tests",\n                "sdl3-source-tests", "pre-release-tests",\n            ],
+            "required_pipeline_dependencies": [
+                "check", "package", "bootstrap-tests", "registry-artifact-tests",
+                "sdl3-source-tests", "pre-release-tests",
+            ],
             "registry_manifest_sha256": sha256(manifest_bytes).hexdigest(),
             "source_archive_sha256": actual,
         },
