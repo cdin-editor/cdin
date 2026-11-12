@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "pre-release.yml"
 EXPECTED_ALPHA_COMMIT = "e4c5fb26659f9a00cf11163ae132ebe40e7e0157"
-EXPECTED_PIPELINE_REF = "4fc55439656a7b0e4b270ae05049c29b0ddc1d56"
+EXPECTED_PIPELINE_REF = "df2ee4acfa5d831c96459f551928b4d85ef29891"
 
 
 class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
