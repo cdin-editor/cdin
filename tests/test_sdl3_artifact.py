@@ -317,7 +317,12 @@ class ArchiveAndPackageTests(unittest.TestCase):
             prefix = root / "prefix"
             prefix.mkdir()
             (prefix / "include").mkdir()
-            (prefix / "include" / "SDL3").symlink_to(outside, target_is_directory=True)
+            try:
+                (prefix / "include" / "SDL3").symlink_to(
+                    outside, target_is_directory=True
+                )
+            except (OSError, NotImplementedError):
+                self.skipTest("native symlink creation is not permitted on this runner")
             with self.assertRaisesRegex(sdk.SDL3ArtifactError, "contains a symlink"):
                 sdk.verify_package_prefix(prefix, "3.4.16", TARGET, {
                     "url": SOURCE_URL, "sha256": SOURCE_SHA
