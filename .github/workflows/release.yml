@@ -10,27 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  validate-release-credential:
-    name: Validate the release credential
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Require a token that can publish this tagged source
-        env:
-          RELEASE_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error title=Missing CDIN_RELEASE_TOKEN::Create repository secret CDIN_RELEASE_TOKEN using a fine-grained token with Contents: Read and write and Workflows: Read and write."
-            exit 1
-          fi
-          echo "CDIN_RELEASE_TOKEN is configured."
-
   verify-tag-on-main:
     name: Require the version tag to point into main history
-    needs: [validate-release-credential]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,14 +37,14 @@ jobs:
 
   verify:
     name: Verify the exact tagged commit
-    needs: [validate-release-credential, verify-tag-on-main]
+    needs: [verify-tag-on-main]
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
   publish:
     name: Publish the tag-backed GitHub Release
-    needs: [verify, validate-release-credential, verify-tag-on-main]
+    needs: [verify, verify-tag-on-main]
     if: needs.verify.result == 'success'
     permissions:
       contents: write
@@ -77,5 +58,3 @@ jobs:
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
-    secrets:
-      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
