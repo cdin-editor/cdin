@@ -20,27 +20,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - target: linux-x86_64
+            os: ubuntu-latest
             shell: bash
             profile: tui
-          - os: macos-latest
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
             shell: bash
             profile: tui
-          - os: windows-latest
+          - target: macos-arm64
+            os: macos-latest
+            shell: bash
+            profile: tui
+          - target: macos-x86_64
+            os: macos-15-intel
+            shell: bash
+            profile: tui
+          - target: windows-x86_64
+            os: windows-latest
             shell: msys2 {0}
             profile: tui
-          - os: ubuntu-latest
+          - target: linux-x86_64
+            os: ubuntu-latest
             shell: bash
             profile: gui-sdl
-          - os: macos-latest
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
             shell: bash
             profile: gui-sdl
-          - os: windows-latest
+          - target: macos-arm64
+            os: macos-latest
+            shell: bash
+            profile: gui-sdl
+          - target: macos-x86_64
+            os: macos-15-intel
+            shell: bash
+            profile: gui-sdl
+          - target: windows-x86_64
+            os: windows-latest
             shell: msys2 {0}
             profile: gui-sdl
     runs-on: ${{ matrix.os }}
     env:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
       GITHUB_TOKEN: ${{ github.token }}
     defaults:
@@ -90,6 +113,36 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - name: Verify native runner target identity
+        run: |
+          python - <<'PY'
+          import os
+          import platform
+
+          expected = os.environ["CDIN_EXPECTED_TARGET"]
+          operating_system = {
+              "Linux": "linux",
+              "Darwin": "macos",
+              "Windows": "windows",
+          }.get(platform.system())
+          architecture = {
+              "x86_64": "x86_64",
+              "amd64": "x86_64",
+              "aarch64": "arm64",
+              "arm64": "arm64",
+          }.get(platform.machine().lower())
+          actual = f"{operating_system}-{architecture}"
+          if actual != expected:
+              raise SystemExit(
+                  f"native runner mismatch: expected {expected}, detected {actual} "
+                  f"({platform.system()} / {platform.machine()})"
+              )
+          if operating_system == "windows" and os.environ.get("MSYSTEM") != "UCRT64":
+              raise SystemExit(
+                  f"Windows native jobs require MSYS2 UCRT64, got {os.environ.get('MSYSTEM')!r}"
+              )
+          print(f"Verified native target: {expected}")
+          PY
       - name: Run Registry and SDL3 artifact bootstrap tests
         run: |
           python -m unittest discover -s tests -p test_registry_artifact.py
@@ -155,7 +208,7 @@ jobs:
       - name: Upload headless benchmark report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cdin-headless-benchmark-${{ runner.os }}-${{ matrix.profile }}
+          name: cdin-headless-benchmark-${{ matrix.target }}-${{ matrix.profile }}
           path: dist/cdin-headless-benchmark.json
           if-no-files-found: error
           retention-days: 30
@@ -178,7 +231,7 @@ jobs:
       - name: Upload source snapshot and checksum
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cdin-source-snapshot-${{ runner.os }}-${{ matrix.profile }}
+          name: cdin-source-snapshot-${{ matrix.target }}-${{ matrix.profile }}
           path: |
             dist/cdin-composition-root-source.zip
             dist/cdin-composition-root-source.zip.sha256
@@ -189,7 +242,7 @@ jobs:
       - name: Upload extracted-tested installed product distribution
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: cdin-installed-product-${{ runner.os }}-${{ matrix.profile }}
+          name: cdin-installed-product-${{ matrix.target }}-${{ matrix.profile }}
           path: |
             dist/distributions/*.tar.gz
             dist/distributions/*.zip
