@@ -103,9 +103,9 @@ jobs:
     if: needs.create-development-tag.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0f8c5a460932030b95d6f04b089eaf968df8c064
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
     with:
-      pipeline-ref: 0f8c5a460932030b95d6f04b089eaf968df8c064
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: warn
@@ -125,9 +125,9 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@0f8c5a460932030b95d6f04b089eaf968df8c064
+    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
     with:
-      pipeline-ref: 0f8c5a460932030b95d6f04b089eaf968df8c064
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
       repository: ${{ github.repository }}
       source-run-id: ${{ github.event.workflow_run.id }}
       source-workflow-path: .github/workflows/product-acceptance.yml
@@ -221,9 +221,9 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0f8c5a460932030b95d6f04b089eaf968df8c064
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
     with:
-      pipeline-ref: 0f8c5a460932030b95d6f04b089eaf968df8c064
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
       source-ref: refs/tags/v0.3.0-alpha.1
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
