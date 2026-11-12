@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -114,6 +115,27 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
                         f'{{"target":"{target}","profile":"{profile}"}}',
                         self.rolling,
                     )
+
+    def test_rolling_workflow_and_pipeline_helper_use_the_same_immutable_commit(self) -> None:
+        uses = re.search(
+            r"uses: m-mdy-m/pipeline/\\.github/workflows/rolling-release\\.yml@([0-9a-f]{40})",
+            self.rolling,
+        )
+        helper = re.search(r"pipeline-ref: ([0-9a-f]{40})", self.rolling)
+        self.assertIsNotNone(uses)
+        self.assertIsNotNone(helper)
+        self.assertEqual(uses.group(1), helper.group(1))
+        self.assertEqual(uses.group(1), "df2ee4acfa5d831c96459f551928b4d85ef29891")
+
+    def test_rolling_channel_uses_the_explicit_product_acceptance_workflow_path(self) -> None:
+        self.assertIn(
+            "source-workflow-path: .github/workflows/product-acceptance.yml",
+            self.rolling,
+        )
+        self.assertIn(
+            "workflows: [\\"CI\\", \\"Product Acceptance\\"]",
+            self.workflow,
+        )
 
     def test_rolling_release_keeps_fixed_latest_separate_from_semver_tags(self) -> None:
         self.assertIn("rolling-release.yml@", self.rolling)
