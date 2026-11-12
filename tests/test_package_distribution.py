@@ -9,7 +9,6 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from hashlib import sha256
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
