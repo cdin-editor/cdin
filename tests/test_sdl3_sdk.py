@@ -245,5 +245,22 @@ class ReproducibleArchiveTests(unittest.TestCase):
         self.assertTrue(spec["archive"].startswith("https://"))
 
 
+
+class ReleaseWorkflowPermissionTests(unittest.TestCase):
+    def test_sdk_publisher_can_read_its_own_workflow_artifacts(self) -> None:
+        workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sdl3-sdk.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("  publish:\n", workflow)
+        publish = workflow.split("  publish:\n", 1)[1]
+        permissions = publish.split("    steps:\n", 1)[0]
+        self.assertRegex(
+            permissions,
+            r"permissions:\\s*\\n\\s+actions:\\s+read\\s*\\n\\s+contents:\\s+write",
+        )
+        self.assertIn('gh run download "${GITHUB_RUN_ID}"', publish)
+        self.assertIn('gh release create "${GITHUB_REF_NAME}"', publish)
+
+
 if __name__ == "__main__":
     unittest.main()
