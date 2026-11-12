@@ -178,24 +178,31 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
         raise SDL3ArtifactError(
             f"SDL3 SDK lock must pin exactly five targets; missing={missing_targets}, extra={extra_targets}"
         )
-    asset = assets.get(key)
-    if not isinstance(asset, dict):
-        raise SDL3ArtifactError(f"SDL3 SDK lock has no asset object for {key}")
-    expected_name = f"sdl3-sdk-{version}-{key}.tar.gz"
-    filename = asset.get("file_name")
-    size = asset.get("size_bytes")
-    digest = asset.get("sha256")
-    if (
-        filename != expected_name
-        or asset.get("format") != "tar.gz"
-        or isinstance(size, bool)
-        or not isinstance(size, int)
-        or size <= 0
-        or size > MAX_ASSET_BYTES
-        or not isinstance(digest, str)
-        or SHA_RE.fullmatch(digest) is None
-    ):
-        raise SDL3ArtifactError(f"SDL3 SDK asset pin for {key} is malformed")
+    for target_name in sorted(TARGETS):
+        pinned_asset = assets.get(target_name)
+        if not isinstance(pinned_asset, dict):
+            raise SDL3ArtifactError(
+                f"SDL3 SDK lock has no asset object for {target_name}"
+            )
+        expected_name = f"sdl3-sdk-{version}-{target_name}.tar.gz"
+        filename = pinned_asset.get("file_name")
+        size = pinned_asset.get("size_bytes")
+        digest = pinned_asset.get("sha256")
+        if (
+            set(pinned_asset) != {"file_name", "format", "size_bytes", "sha256"}
+            or filename != expected_name
+            or pinned_asset.get("format") != "tar.gz"
+            or isinstance(size, bool)
+            or not isinstance(size, int)
+            or size <= 0
+            or size > MAX_ASSET_BYTES
+            or not isinstance(digest, str)
+            or SHA_RE.fullmatch(digest) is None
+        ):
+            raise SDL3ArtifactError(
+                f"SDL3 SDK asset pin for {target_name} is malformed"
+            )
+    asset = assets[key]
     return pin, asset, {
         "version": version,
         "url": source_url,
