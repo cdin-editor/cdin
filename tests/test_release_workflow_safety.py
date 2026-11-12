@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 import unittest
 
 
@@ -117,15 +116,22 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
                     )
 
     def test_rolling_workflow_and_pipeline_helper_use_the_same_immutable_commit(self) -> None:
-        uses = re.search(
-            r"uses: m-mdy-m/pipeline/\\.github/workflows/rolling-release\\.yml@([0-9a-f]{40})",
-            self.rolling,
+        workflow_line = next(
+            line.strip()
+            for line in self.rolling.splitlines()
+            if line.strip().startswith(
+                "uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@"
+            )
         )
-        helper = re.search(r"pipeline-ref: ([0-9a-f]{40})", self.rolling)
-        self.assertIsNotNone(uses)
-        self.assertIsNotNone(helper)
-        self.assertEqual(uses.group(1), helper.group(1))
-        self.assertEqual(uses.group(1), "df2ee4acfa5d831c96459f551928b4d85ef29891")
+        helper_line = next(
+            line.strip()
+            for line in self.rolling.splitlines()
+            if line.strip().startswith("pipeline-ref:")
+        )
+        workflow_ref = workflow_line.rsplit("@", 1)[1]
+        helper_ref = helper_line.split(":", 1)[1].strip()
+        self.assertEqual(workflow_ref, helper_ref)
+        self.assertEqual(workflow_ref, "df2ee4acfa5d831c96459f551928b4d85ef29891")
 
     def test_rolling_channel_uses_the_explicit_product_acceptance_workflow_path(self) -> None:
         self.assertIn(
@@ -133,7 +139,7 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
             self.rolling,
         )
         self.assertIn(
-            "workflows: [\\"CI\\", \\"Product Acceptance\\"]",
+            'workflows: ["CI", "Product Acceptance"]',
             self.workflow,
         )
 
