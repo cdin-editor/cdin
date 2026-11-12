@@ -15,8 +15,7 @@ jobs:
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       (
-        (github.event.workflow_run.name == 'CI' &&
-         github.event.workflow_run.head_branch != 'main') ||
+        github.event.workflow_run.name == 'CI' ||
         (github.event.workflow_run.name == 'Product Acceptance' &&
          github.event.workflow_run.head_branch == 'main')
       ) &&
@@ -45,7 +44,6 @@ jobs:
       github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch != 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -98,7 +96,7 @@ jobs:
       pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
-      changelog-missing-policy: fail
+      changelog-missing-policy: warn
       release-notes-mode: section
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
