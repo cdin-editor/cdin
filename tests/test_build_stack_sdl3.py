@@ -46,6 +46,12 @@ class SDL3SourceExtractionTests(unittest.TestCase):
         verify.assert_called_once_with(Path(".deps/install"), target)
         source.assert_not_called()
 
+    def test_source_fallback_is_rejected_without_registry_developer_mode(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "only with --registry-source-build"):
+            build_stack.validate_sdl3_source_build_mode(False, True)
+        build_stack.validate_sdl3_source_build_mode(True, True)
+        build_stack.validate_sdl3_source_build_mode(False, False)
+
     def test_only_explicit_gui_developer_mode_uses_source_fallback(self) -> None:
         target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
         with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
