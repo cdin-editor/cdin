@@ -159,14 +159,19 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
     source_version = source.get("version")
     source_url = source.get("archive")
     source_digest = source.get("sha256")
+    expected_source_url = (
+        f"https://github.com/libsdl-org/SDL/releases/download/"
+        f"release-{source_version}/SDL3-{source_version}.tar.gz"
+        if isinstance(source_version, str) else None
+    )
     if (
         not isinstance(source_version, str)
+        or re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+", source_version) is None
         or version != source_version
         or tag != f"sdl3-sdk-v{version}"
         or not isinstance(revision, str)
         or GIT_SHA_RE.fullmatch(revision) is None
-        or not isinstance(source_url, str)
-        or not source_url.startswith("https://github.com/libsdl-org/SDL/releases/download/")
+        or source_url != expected_source_url
         or not isinstance(source_digest, str)
         or SHA_RE.fullmatch(source_digest) is None
     ):
