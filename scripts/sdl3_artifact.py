@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import stat
+import sys
 import tarfile
 import tempfile
 import tomllib
@@ -197,7 +198,7 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
     }
 
 
-class _API redirectHandler(urllib.request.HTTPRedirectHandler):
+class _APIRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, message, headers, new_url):
         parsed = urllib.parse.urlsplit(new_url)
         try:
@@ -239,7 +240,7 @@ def fetch_github_json(path: str) -> dict[str, Any]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(f"https://api.github.com{path}", headers=headers)
-    opener = urllib.request.build_opener(_API redirectHandler())
+    opener = urllib.request.build_opener(_APIRedirectHandler())
     try:
         with opener.open(request, timeout=30) as response:
             final = urllib.parse.urlsplit(response.geturl())
@@ -359,7 +360,7 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         temporary.unlink(missing_ok=True)
 
 
-def download_asset(pin: dict[str, Any], asset: dict[str, Any], release: dict[str, Any],
+def download_asset(pin: dict[str, Any], asset: dict[str, Any],
                    source: dict[str, str], *, cache: Path = CACHE, offline: bool = False) -> Path:
     filename = asset["file_name"]
     cache_name = f"{Path(filename).stem}-{asset['sha256']}.tar.gz"
@@ -389,7 +390,7 @@ def download_asset(pin: dict[str, Any], asset: dict[str, Any], release: dict[str
         raise SDL3ArtifactError("downloaded SDL3 SDK archive SHA-256 mismatch")
     sidecar_url = f"{REPOSITORY}/releases/download/{pin['tag']}/{filename}.sha256"
     sidecar = cache / (cache_name + ".sha256")
-    _download(sidecar_url, sidecar, expected_size=65 + len(filename) + 3, max_size=256)
+    _download(sidecar_url, sidecar, expected_size=67 + len(filename), max_size=256)
     expected_line = f"{asset['sha256']}  {filename}\n"
     if sidecar.read_text(encoding="ascii") != expected_line:
         raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
@@ -488,9 +489,48 @@ def verify_package_prefix(prefix: Path, version: str, target: dict[str, str],
             raise SDL3ArtifactError("SDL3 SDK package must not contain a shared SDL3 library")
 
 
+def _stage_package(package: Path, prefix: Path) -> None:
+    """Merge the verified SDK into a prefix without replacing different bytes."""
+    _ensure_real_directory(prefix)
+    files: list[Path] = []
+    for top in ("include", "lib", "bin", "share"):
+        root = package / top
+        if not root.exists():
+            continue
+        if root.is_symlink() or not root.is_dir():
+            raise SDL3ArtifactError(f"SDL3 package has an unsafe prefix entry: {top}")
+        for current, directories, names in os.walk(root, topdown=True, followlinks=False):
+            current_path = Path(current)
+            for name in directories:
+                directory = current_path / name
+                if directory.is_symlink() or not directory.is_dir():
+                    raise SDL3ArtifactError("SDL3 package contains a symlink/special directory")
+            for name in names:
+                item = current_path / name
+                info = item.lstat()
+                if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+                    raise SDL3ArtifactError("SDL3 package contains a symlink/special file")
+                files.append(item)
+    for source in files:
+        relative = source.relative_to(package)
+        destination = prefix / relative
+        if destination.is_symlink():
+            raise SDL3ArtifactError(f"SDL3 SDK destination is a symlink: {relative}")
+        if destination.exists():
+            if not destination.is_file() or destination.read_bytes() != source.read_bytes():
+                raise SDL3ArtifactError(f"SDL3 SDK would overwrite different staged bytes: {relative}")
+    for source in files:
+        relative = source.relative_to(package)
+        destination = prefix / relative
+        if destination.exists():
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
 def install_sdl3_sdk(prefix: Path, target: dict[str, str], *, lock_path: Path = LOCK,
                      cache: Path = CACHE, offline: bool | None = None) -> Path:
-    """Download, verify, extract and return the exact immutable SDK install prefix."""
+    """Download, verify, safely extract and stage the exact immutable SDK."""
     key = target_key(target)
     try:
         lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
@@ -499,8 +539,7 @@ def install_sdl3_sdk(prefix: Path, target: dict[str, str], *, lock_path: Path = 
     pin, asset, source = validate_pin(lock, key)
     if offline is None:
         offline = os.environ.get("CDIN_OFFLINE", "").strip().lower() in {"1", "true", "yes"}
-    release = None if offline else verify_release(pin, asset)
-    archive = download_asset(pin, asset, release or {}, source, cache=cache, offline=offline)
+    archive = download_asset(pin, asset, source, cache=cache, offline=offline)
     extraction_parent = cache / "packages"
     _ensure_real_directory(extraction_parent)
     install_id = f"{pin['version']}-{key}-{asset['sha256']}"
@@ -511,17 +550,19 @@ def install_sdl3_sdk(prefix: Path, target: dict[str, str], *, lock_path: Path = 
             raise SDL3ArtifactError("SDL3 SDK extracted cache entry is not a real directory")
         try:
             verify_package_prefix(package, pin["version"], target, source)
-            return package
         except SDL3ArtifactError:
             if offline:
                 raise SDL3ArtifactError("offline SDL3 SDK extracted cache is corrupt for the exact pin")
             shutil.rmtree(package)
-    with tempfile.TemporaryDirectory(prefix=".sdl3-extract-", dir=extraction_parent) as temporary:
-        stage = Path(temporary)
-        extracted = safe_extract(archive, stage)
-        verify_package_prefix(extracted, pin["version"], target, source)
-        os.replace(extracted, package)
-    return package
+    if not package.exists():
+        with tempfile.TemporaryDirectory(prefix=".sdl3-extract-", dir=extraction_parent) as temporary:
+            stage = Path(temporary)
+            extracted = safe_extract(archive, stage)
+            verify_package_prefix(extracted, pin["version"], target, source)
+            os.replace(extracted, package)
+    _stage_package(package, prefix)
+    verify_package_prefix(prefix, pin["version"], target, source)
+    return prefix
 
 
 def main() -> int:
