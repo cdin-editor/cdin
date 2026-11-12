@@ -175,18 +175,22 @@ class ReleaseIdentityTests(unittest.TestCase):
     def test_requires_exact_prerelease_tag_commit_digest_and_size(self) -> None:
         lock = make_lock()
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        release_assets = []
+        for pinned in pin["assets"].values():
+            release_assets.append({
+                "name": pinned["file_name"],
+                "size": pinned["size_bytes"],
+                "digest": "sha256:" + pinned["sha256"],
+            })
+            release_assets.append({
+                "name": pinned["file_name"] + ".sha256",
+                "size": 100,
+            })
         release = {
             "tag_name": pin["tag"],
             "draft": False,
             "prerelease": True,
-            "assets": [
-                {
-                    "name": asset["file_name"],
-                    "size": asset["size_bytes"],
-                    "digest": "sha256:" + asset["sha256"],
-                },
-                {"name": asset["file_name"] + ".sha256"},
-            ],
+            "assets": release_assets,
         }
         tag_ref = {"object": {"type": "commit", "sha": REVISION}}
         with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
