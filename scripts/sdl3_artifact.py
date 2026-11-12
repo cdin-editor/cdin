@@ -34,8 +34,8 @@ GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TARGETS: dict[str, tuple[str, str]] = {
     "linux-x86_64": ("linux", "gnu-glibc-2.39"),
     "linux-arm64": ("linux", "gnu-glibc-2.39"),
-    "macos-x86_64": ("macos", "macos-15"),
-    "macos-arm64": ("macos", "macos-15"),
+    "macos-x86_64": ("darwin", "macos-15"),
+    "macos-arm64": ("darwin", "macos-15"),
     "windows-x86_64": ("windows", "windows-ucrt64"),
 }
 
@@ -78,13 +78,14 @@ def target_key(target: dict[str, Any]) -> str:
     abi = target.get("abi")
     if not all(isinstance(item, str) for item in (os_name, architecture, abi)):
         raise SDL3ArtifactError("Registry target must declare OS, architecture and ABI")
+    normalized_os = "macos" if os_name == "darwin" else os_name
+    if set(target) != {"os", "architecture", "abi"}:
+        raise SDL3ArtifactError("Registry target must contain only OS, architecture and ABI")
     candidates = [
         key for key, (expected_os, expected_abi) in TARGETS.items()
-        if target == {
-            "os": expected_os,
-            "architecture": key.rsplit("-", 1)[1],
-            "abi": expected_abi,
-        }
+        if normalized_os == ("macos" if expected_os == "darwin" else expected_os)
+        and architecture == key.rsplit("-", 1)[1]
+        and abi == expected_abi
     ]
     if len(candidates) != 1:
         raise SDL3ArtifactError(
@@ -122,7 +123,11 @@ def current_target_key() -> str:
             raise SDL3ArtifactError("published Windows SDL3 SDK requires x86_64 MSYS2 UCRT64")
         abi = "windows-ucrt64"
     key = f"{os_name}-{architecture}"
-    if TARGETS.get(key) != (os_name, abi):
+    expected_os, expected_abi = TARGETS.get(key, (None, None))
+    if (
+        (("macos" if expected_os == "darwin" else expected_os) != os_name)
+        or expected_abi != abi
+    ):
         raise SDL3ArtifactError(f"unsupported SDL3 SDK ABI for {key}: {abi}")
     return key
 
@@ -514,6 +519,11 @@ def _stage_package(package: Path, prefix: Path) -> None:
     for source in files:
         relative = source.relative_to(package)
         destination = prefix / relative
+        parent = destination.parent
+        while parent != prefix:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise SDL3ArtifactError(f"SDL3 SDK destination has an unsafe parent: {relative}")
+            parent = parent.parent
         if destination.is_symlink():
             raise SDL3ArtifactError(f"SDL3 SDK destination is a symlink: {relative}")
         if destination.exists():
