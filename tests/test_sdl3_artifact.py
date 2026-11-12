@@ -153,6 +153,12 @@ class TargetAndPinTests(unittest.TestCase):
         with self.assertRaisesRegex(sdk.SDL3ArtifactError, "exactly five targets"):
             sdk.validate_pin(lock, "linux-x86_64")
 
+    def test_rejects_malformed_non_selected_target_asset(self) -> None:
+        lock = make_lock()
+        lock["dependencies"]["sdl3_sdk"]["assets"]["windows-x86_64"]["sha256"] = "not-a-sha"
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "windows-x86_64 is malformed"):
+            sdk.validate_pin(lock, "linux-x86_64")
+
     def test_rejects_mutated_tag_revision_and_asset_filename(self) -> None:
         lock = make_lock()
         pin = lock["dependencies"]["sdl3_sdk"]
@@ -207,11 +213,38 @@ class ReleaseIdentityTests(unittest.TestCase):
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
         release = {
             "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": [{"name": asset["file_name"], "size": asset["size_bytes"]}],
+            "assets": [
+                {"name": asset["file_name"], "size": asset["size_bytes"]},
+                {"name": asset["file_name"] + ".sha256", "size": 10},
+            ],
         }
         tag_ref = {"object": {"type": "commit", "sha": REVISION}}
         with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "asset size/digest"):
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "inventory must contain exactly five"):
+                sdk.verify_release(pin, asset)
+
+    def test_rejects_unexpected_release_asset(self) -> None:
+        lock = make_lock()
+        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        release_assets = []
+        for key, pinned in pin["assets"].items():
+            release_assets.append({
+                "name": pinned["file_name"],
+                "size": pinned["size_bytes"],
+                "digest": "sha256:" + pinned["sha256"],
+            })
+            release_assets.append({
+                "name": pinned["file_name"] + ".sha256",
+                "size": 100,
+            })
+        release_assets.append({"name": "source.zip", "size": 10})
+        release = {
+            "tag_name": pin["tag"], "draft": False, "prerelease": True,
+            "assets": release_assets,
+        }
+        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
+        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "unexpected"):
                 sdk.verify_release(pin, asset)
 
 
