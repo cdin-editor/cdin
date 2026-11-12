@@ -343,6 +343,18 @@ def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
     return profile == "gui-sdl" and enabled
 
 
+def validate_sdl3_source_build_mode(
+    registry_source_build: bool,
+    source_build_enabled: bool,
+) -> None:
+    """Keep source-built SDL3 behind the explicit developer composition mode."""
+    if source_build_enabled and not registry_source_build:
+        raise RuntimeError(
+            "--build-sdl3-from-source is available only with "
+            "--registry-source-build; normal consumers must use immutable SDL3 artifacts"
+        )
+
+
 def prepare_sdl3(
     prefix: Path,
     target: dict[str, str],
@@ -542,6 +554,13 @@ def main() -> int:
         help="developer-only opt-in to build SDL3 from its pinned source archive",
     )
     args = parser.parse_args()
+    try:
+        validate_sdl3_source_build_mode(
+            args.registry_source_build, args.build_sdl3_from_source
+        )
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     if args.profile == "gui-sdl":
         PROFILE = "gui-sdl"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-gui-sdl"
