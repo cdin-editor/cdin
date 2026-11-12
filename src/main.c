@@ -1,6 +1,10 @@
 #if !defined(_WIN32)
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
+#endif
 #endif
 /*
  * Implements ARCH-001 and ROOT-001: assemble components without reimplementing
@@ -16,6 +20,8 @@
 #ifdef CDIN_ENABLE_GUI_SDL
 #include "cdin/frontend/ui/gui_sdl/gui_sdl.h"
 #endif
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +53,8 @@ static int resolve_executable_path(
 {
 #ifdef _WIN32
     DWORD length;
-    if (capacity == 0u || capacity > (size_t)UINT32_MAX) return 0;
+    (void)argv0;
+    if (resolved == NULL || capacity == 0u || capacity > (size_t)UINT32_MAX) return 0;
     length = GetModuleFileNameA(NULL, resolved, (DWORD)capacity);
     return length != 0u && (size_t)length < capacity;
 #else
@@ -116,7 +123,8 @@ static const char *discover_bundled_runtime_root(
     struct stat metadata;
     int written;
 
-    if (!resolve_executable_path(argv0, executable, sizeof(executable)))
+    if (storage == NULL || capacity == 0u ||
+        !resolve_executable_path(argv0, executable, sizeof(executable)))
         return NULL;
     separator = last_path_separator(executable);
     if (separator == NULL) return NULL;
