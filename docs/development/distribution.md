@@ -41,9 +41,9 @@ These archives are **development-build artifacts**, not stable releases, rolling
 
 - Every successful pushed CI run (including `main`) may publish a unique source-only `v0.0.0-dev.<run_number>` prerelease from that exact commit. This is contributor/source distribution, not an installable application.
 - The fixed `latest` product prerelease is gated by a separate successful Product Acceptance workflow on `main`; the current build and version/check extraction smoke are not sufficient to trigger it. That workflow remains intentionally unavailable until the live product acceptance suite is real and green.
-- A pushed SemVer tag creates a tag-backed source Release only when its commit is reachable from `main`; `v0.0.0-dev.*` tags are excluded from this path.
+- A pushed SemVer tag is checked for reachability from `main`, then deliberately fails closed at the product-readiness gate. No versioned CDIN product Release is published until artifact-first component installation, a real Product Acceptance workflow, verified target/profile application archives and the exact immutable Registry Resolved Manifest are connected to Pipeline's compiled `release.yml`. `v0.0.0-dev.*` tags are excluded from this path.
 
-The source-only and versioned source-release workflows use the calling job's scoped GITHUB_TOKEN; the rolling publisher does the same by default, with an optional token override only when an organization policy requires it. No CDIN_RELEASE_TOKEN secret is required for normal same-repository publication.
+`source-release.yml` is reserved for explicitly labelled source-only contributor distribution; it is not a versioned product publisher. The current SemVer workflow intentionally grants no write permission and fails at the readiness gate rather than publishing a source ZIP as an application. The source-snapshot and rolling publishers use their calling job's scoped GITHUB_TOKEN; no CDIN_RELEASE_TOKEN secret is required for normal same-repository publication.
 
 The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and actual rolling/versioned product release acceptance have passed.
 
