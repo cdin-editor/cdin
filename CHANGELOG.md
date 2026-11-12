@@ -11,6 +11,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Expand the native CDIN product CI matrix to Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64 for both TUI and GUI-SDL, with host identity checks and target/profile-qualified artifacts.
+
 - Add a pinned Registry release-artifact bootstrap that verifies the exact Git tag, source commit, release descriptor, Catalog snapshot, asset digests and native executable architecture before use.
 - Add initial artifact-consumer paths for Backend native CMake packages, Runtime Lua module archives and separate Frontend Core, TUI and GUI-SDL packages.
 - Add verified exact-pin Registry cache reuse, offline operation and fail-closed handling for incomplete or corrupt cache state.
