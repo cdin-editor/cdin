@@ -128,9 +128,11 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         if shutil.which("bash") is None:
             self.skipTest("bash is not installed")
         script = textwrap.dedent(self.source_tag.split("        run: |\n", 1)[1])
+        # Pass the script as the explicit -c command string.  Feeding it
+        # through stdin is unreliable for native Windows Python -> MSYS2 Bash
+        # subprocess pipes (the process exits non-zero without a parser error).
         result = subprocess.run(
-            ["bash", "-n"],
-            input=script,
+            ["bash", "-n", "-c", script],
             capture_output=True,
             text=True,
             check=False,
