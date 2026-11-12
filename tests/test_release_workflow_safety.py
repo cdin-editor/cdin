@@ -57,5 +57,68 @@ class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
         self.assertIn('echo "repair_required=false" >> "$GITHUB_OUTPUT"', self.legacy_jobs)
 
 
+class RollingProductReleaseWorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = (ROOT / ".github" / "workflows" / "pre-release.yml").read_text(encoding="utf-8")
+        cls.validation = cls.workflow.split("  validate-release-credential:", 1)[1].split(
+            "  create-development-tag:", 1
+        )[0]
+        cls.source_tag = cls.workflow.split("  create-development-tag:", 1)[1].split(
+            "  publish-development-prerelease:", 1
+        )[0]
+        cls.rolling = cls.workflow.split("  publish-rolling-product-release:", 1)[1].split(
+            "  inspect-legacy-alpha-release:", 1
+        )[0]
+
+    def test_channel_workflow_listens_to_ci_for_source_snapshots_and_product_acceptance_for_latest(self) -> None:
+        self.assertIn('workflows: ["CI", "Product Acceptance"]', self.workflow)
+
+    def test_release_credential_validation_only_runs_for_release_eligible_workflows(self) -> None:
+        self.assertIn("workflow_run.name == 'CI'", self.validation)
+        self.assertIn("workflow_run.name == 'Product Acceptance'", self.validation)
+        self.assertIn("head_branch != 'main'", self.validation)
+        self.assertIn("head_branch == 'main'", self.validation)
+        self.assertIn("CDIN_RELEASE_TOKEN", self.validation)
+
+    def test_unique_source_only_development_tags_are_non_main_ci_only(self) -> None:
+        self.assertIn("workflow_run.name == 'CI'", self.source_tag)
+        self.assertIn("head_branch != 'main'", self.source_tag)
+        self.assertIn("v0.0.0-dev.$SOURCE_RUN_NUMBER", self.source_tag)
+
+    def test_main_uses_the_reusable_rolling_product_workflow_only_after_product_acceptance(self) -> None:
+        self.assertIn("workflow_run.name == 'Product Acceptance'", self.rolling)
+        self.assertIn("head_branch == 'main'", self.rolling)
+        self.assertIn("m-mdy-m/pipeline/.github/workflows/rolling-release.yml@", self.rolling)
+        self.assertIn("source-run-id: ${{ github.event.workflow_run.id }}", self.rolling)
+        self.assertIn("source-sha: ${{ github.event.workflow_run.head_sha }}", self.rolling)
+        self.assertIn("artifact-pattern: \"cdin-installed-product-*\"", self.rolling)
+        self.assertIn("release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}", self.rolling)
+
+
+    def test_normal_ci_on_main_cannot_publish_the_product_rolling_channel(self) -> None:
+        self.assertNotIn("workflow_run.name == 'CI'", self.rolling)
+        self.assertIn("workflow_run.name == 'Product Acceptance'", self.rolling)
+
+    def test_rolling_channel_requires_all_five_targets_and_both_profiles(self) -> None:
+        for target in (
+            "linux-x86_64",
+            "linux-arm64",
+            "macos-x86_64",
+            "macos-arm64",
+            "windows-x86_64",
+        ):
+            for profile in ("tui", "gui-sdl"):
+                with self.subTest(target=target, profile=profile):
+                    self.assertIn(
+                        f'{{"target":"{target}","profile":"{profile}"}}',
+                        self.rolling,
+                    )
+
+    def test_rolling_release_keeps_fixed_latest_separate_from_semver_tags(self) -> None:
+        self.assertIn("rolling-release.yml@", self.rolling)
+        self.assertNotIn("v0.0.0-dev", self.rolling)
+
+
 if __name__ == "__main__":
     unittest.main()
