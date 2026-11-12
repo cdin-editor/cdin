@@ -388,8 +388,10 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         if total != expected_size:
             raise SDL3ArtifactError(f"SDL3 SDK download truncated: expected {expected_size}, found {total}")
         temporary.replace(destination)
-    except (OSError, urllib.error.URLError, TimeoutError, ValueError):
+    except SDL3ArtifactError:
         raise
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError) as error:
+        raise SDL3ArtifactError(f"SDL3 SDK download failed: {error}") from error
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -485,6 +487,36 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
     return destination / "sdl3-sdk"
 
 
+def _safe_regular_file(root: Path, relative: str) -> Path:
+    """Resolve a required package file while rejecting symlinked path components."""
+    root = Path(os.path.abspath(root))
+    current = root
+    try:
+        root_info = current.lstat()
+    except FileNotFoundError as error:
+        raise SDL3ArtifactError(f"SDL3 SDK package root does not exist: {root}") from error
+    if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+        raise SDL3ArtifactError("SDL3 SDK package root is not a real directory")
+    parts = PurePosixPath(relative).parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise SDL3ArtifactError(f"invalid SDL3 SDK package path: {relative!r}")
+    for index, part in enumerate(parts):
+        current = current / part
+        try:
+            info = current.lstat()
+        except FileNotFoundError as error:
+            raise SDL3ArtifactError(f"SDL3 SDK package is missing: {relative}") from error
+        is_final = index == len(parts) - 1
+        if stat.S_ISLNK(info.st_mode):
+            raise SDL3ArtifactError(f"SDL3 SDK package path contains a symlink: {relative}")
+        if is_final:
+            if not stat.S_ISREG(info.st_mode):
+                raise SDL3ArtifactError(f"SDL3 SDK package entry is not a regular file: {relative}")
+        elif not stat.S_ISDIR(info.st_mode):
+            raise SDL3ArtifactError(f"SDL3 SDK package parent is not a directory: {relative}")
+    return current
+
+
 def verify_package_prefix(prefix: Path, version: str, target: dict[str, str],
                           source: dict[str, str]) -> None:
     expected_files = (
@@ -494,10 +526,10 @@ def verify_package_prefix(prefix: Path, version: str, target: dict[str, str],
         "share/cdin/sdl3-sdk.json",
         "share/licenses/SDL3/LICENSE.txt",
     )
-    for relative in expected_files:
-        path = prefix / relative
-        if path.is_symlink() or not path.is_file():
-            raise SDL3ArtifactError(f"SDL3 SDK package is missing a safe required file: {relative}")
+    required_paths = {
+        relative: _safe_regular_file(prefix, relative)
+        for relative in expected_files
+    }
     target_os = "macos" if target["os"] == "darwin" else target["os"]
     expected_manifest = {
         "schema": "cdin.sdl3-sdk.v1",
@@ -511,15 +543,24 @@ def verify_package_prefix(prefix: Path, version: str, target: dict[str, str],
         "linkage": "static",
         "cmake_package": "SDL3",
     }
-    metadata = strict_json((prefix / "share/cdin/sdl3-sdk.json").read_bytes(), "SDL3 SDK manifest")
+    metadata = strict_json(required_paths["share/cdin/sdl3-sdk.json"].read_bytes(), "SDL3 SDK manifest")
     if metadata != expected_manifest:
         raise SDL3ArtifactError("SDL3 SDK manifest differs from the exact lock version/source/target/ABI")
-    library_candidates = (prefix / "lib/libSDL3.a", prefix / "lib/SDL3-static.lib")
-    if not any(path.is_file() and not path.is_symlink() for path in library_candidates):
+    library_present = False
+    for relative in ("lib/libSDL3.a", "lib/SDL3-static.lib"):
+        try:
+            _safe_regular_file(prefix, relative)
+            library_present = True
+        except SDL3ArtifactError as error:
+            if "package is missing" not in str(error):
+                raise
+    if not library_present:
         raise SDL3ArtifactError("SDL3 SDK package has no target-native static library")
     for name in ("SDL3.dll", "libSDL3.so", "libSDL3.dylib"):
-        path = prefix / "lib" / name
-        if path.exists() or path.is_symlink():
+        relative = f"lib/{name}"
+        candidate = prefix / relative
+        if candidate.exists() or candidate.is_symlink():
+            _safe_regular_file(prefix, relative)
             raise SDL3ArtifactError("SDL3 SDK package must not contain a shared SDL3 library")
 
 
