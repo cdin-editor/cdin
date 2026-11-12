@@ -27,7 +27,7 @@ The extracted executable is run with `--version` and `--check` without setting `
 
 A TUI bundle rejects SDL3 files and never acquires the SDL3 source or SDK. A GUI-SDL development bundle requires its pinned SDL3 files in the install prefix. Until CDIN #124 publishes the five target SDK assets, GUI-SDL CI still builds the pinned SDL3 source as an explicit developer/CI fallback.
 
-The CI matrix currently uploads one tested archive/checksum/manifest set per OS/profile for 30 days. These are workflow artifacts, not GitHub Releases.
+The merged CI matrix now uploads one tested archive/checksum/manifest set for each of the five native targets × two profiles (ten bundles total), with artifact names keyed by explicit target and profile; retention remains 30 days. These are workflow artifacts, not GitHub Releases.
 
 ## Runtime dependency boundary
 
@@ -37,6 +37,6 @@ Consequently, these bundles are not yet clean-machine installers. Before a produ
 
 ## Release boundary
 
-These archives are **development-build artifacts**, not stable releases, rolling `latest` updates or immutable SemVer application releases. The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and the separate rolling/SemVer release workflows have passed.
+These archives are **development-build artifacts**, not stable releases, rolling `latest` updates or immutable SemVer application releases. The rolling channel is gated by a separate successful Product Acceptance workflow on main; the current version/check extraction smoke alone is not sufficient to trigger it. The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and the separate rolling/SemVer release workflows have passed.
 
 See [integration status](integration-status.md), [installation](../installation.md) and [CDIN #111](https://github.com/cdin-editor/cdin/issues/111).
