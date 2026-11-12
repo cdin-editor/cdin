@@ -56,8 +56,8 @@ release_tag = "v0.1.0-dev"
 # This is not a consumer release pin and must never be used by normal make install.
 [tooling.registry.development]
 repository = "https://github.com/cdin-editor/registry.git"
-revision = "ff317e458a57dd9d8b8a2be8f7439ba860c99f10"
-version = "0.2.0-dev.1"
+revision = "9c5a2960c77985a3fb7c7a535635c3f1b6093baa"
+version = "0.2.0-dev.2"
 
 # Source-built SDL3 remains a developer/GUI CI fallback until CDIN #124's
 # five-target SDK Release and exact asset digests are published.
