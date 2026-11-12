@@ -19,7 +19,7 @@ class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
         marker = "  inspect-legacy-alpha-release:"
         if marker not in cls.workflow:
             raise AssertionError("legacy alpha.1 inspection job is missing")
-        cls.legacy_jobs = cls.workflow[self.workflow.index(marker):]
+        cls.legacy_jobs = cls.workflow[cls.workflow.index(marker):]
 
     def test_recovery_never_deletes_or_replaces_a_release(self) -> None:
         self.assertNotIn("--method DELETE", self.legacy_jobs)
