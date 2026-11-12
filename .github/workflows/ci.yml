@@ -143,6 +143,8 @@ jobs:
               )
           print(f"Verified native target: {expected}")
           PY
+      - name: Verify native product matrix contract
+        run: python -m unittest discover -s tests -p test_ci_matrix.py
       - name: Run Registry and SDL3 artifact bootstrap tests
         run: |
           python -m unittest discover -s tests -p test_registry_artifact.py
