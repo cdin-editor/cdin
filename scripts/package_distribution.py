@@ -293,7 +293,7 @@ def verify_extracted(extracted: Path, expected_version: str, *, timeout: int = 1
     if not executable.is_file() or not runtime_root.is_dir():
         raise DistributionError("extracted distribution is missing cdin executable or Runtime modules")
     environment = os.environ.copy()
-    environment["CDIN_RUNTIME_ROOT"] = str(runtime_root)
+    environment.pop("CDIN_RUNTIME_ROOT", None)
     environment["PATH"] = os.pathsep.join(
         [str(executable.parent), str(extracted / "lib"), environment.get("PATH", "")]
     ).rstrip(os.pathsep)
