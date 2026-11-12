@@ -77,31 +77,20 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('"v*"', tags)
         self.assertIn('"!v0.0.0-dev.*"', tags)
 
-    def test_versioned_tag_must_be_reachable_from_main_before_ci_and_publication(self) -> None:
+    def test_versioned_tag_must_be_reachable_from_main_before_readiness_gate(self) -> None:
         self.assertIn("verify-tag-on-main:", self.workflow)
         self.assertIn('git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main', self.workflow)
-        verify = self.workflow.split("  verify:", 1)[1].split("  publish:", 1)[0]
-        publish = self.workflow.split("  publish:", 1)[1]
-        self.assertIn("needs: [verify-tag-on-main]", verify)
-        self.assertIn("needs: [verify, verify-tag-on-main]", publish)
+        readiness = self.workflow.split("  product-release-readiness:", 1)[1]
+        self.assertIn("needs: [verify-tag-on-main]", readiness)
 
-    def test_versioned_release_uses_the_same_immutable_pipeline_workflow_and_helper_pin(self) -> None:
-        publish = self.workflow.split("  publish:", 1)[1]
-        workflow_ref = next(
-            line.strip()
-            for line in publish.splitlines()
-            if line.strip().startswith("uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@")
-        ).rsplit("@", 1)[1]
-        helper_ref = next(
-            line.strip()
-            for line in publish.splitlines()
-            if line.strip().startswith("pipeline-ref:")
-        ).split(":", 1)[1].strip()
-        self.assertEqual(workflow_ref, helper_ref)
-        self.assertEqual(workflow_ref, "0c2c89c7c64575c6b0f66c78925bdf5638abc5e9")
-        self.assertIn("contents: write", publish)
-        self.assertNotIn("CDIN_RELEASE_TOKEN", self.workflow)
-        self.assertNotIn("secrets:", publish)
+    def test_semver_product_release_fails_closed_without_artifact_first_acceptance(self) -> None:
+        readiness = self.workflow.split("  product-release-readiness:", 1)[1]
+        self.assertNotIn("source-release.yml", self.workflow)
+        self.assertNotIn("contents: write", self.workflow)
+        self.assertIn("artifact-first Product Acceptance", readiness)
+        self.assertIn("source-only contributor releases", readiness)
+        self.assertIn("versioned CDIN product release", readiness)
+        self.assertIn("exit 1", readiness)
 
 class RollingProductReleaseWorkflowTests(unittest.TestCase):
     @classmethod
