@@ -44,7 +44,7 @@ size_bytes = 300986
 sha256 = "cab2b903670cdffec8996a8daf42328c789d69392f7a1c818254af8b23b48a71"
 
 # Consumer Registry release pin. The descriptor digest/size are intentionally
-# absent until Registry #58 publishes and verifies the corrected 0.2.0-dev.1
+# absent until Registry #58 publishes and verifies the corrected 0.2.0-dev.2
 # release. Normal acquisition therefore fails closed rather than using v0.1.0-dev.
 [tooling.registry]
 repository = "https://github.com/cdin-editor/registry.git"
