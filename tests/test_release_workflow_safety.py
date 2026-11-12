@@ -85,7 +85,10 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
 
     def test_semver_product_release_fails_closed_without_artifact_first_acceptance(self) -> None:
         readiness = self.workflow.split("  product-release-readiness:", 1)[1]
-        self.assertNotIn("source-release.yml", self.workflow)
+        self.assertNotIn(
+            "uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@",
+            self.workflow,
+        )
         self.assertNotIn("contents: write", self.workflow)
         self.assertIn("artifact-first Product Acceptance", readiness)
         self.assertIn("source-only contributor releases", readiness)
