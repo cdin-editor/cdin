@@ -1,4 +1,4 @@
-name: Versioned GitHub Release
+name: Versioned Product Release Readiness Gate
 
 on:
   push:
@@ -35,26 +35,17 @@ jobs:
           fi
           echo "Verified version tag commit $tag_commit is reachable from main."
 
-  verify:
-    name: Verify the exact tagged commit
+  product-release-readiness:
+    name: Refuse source-only SemVer publication until product artifacts are verified
     needs: [verify-tag-on-main]
-    uses: ./.github/workflows/ci.yml
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-
-  publish:
-    name: Publish the tag-backed GitHub Release
-    needs: [verify, verify-tag-on-main]
-    if: needs.verify.result == 'success'
-    permissions:
-      contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
-    with:
-      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
-      source-ref: ${{ github.ref }}
-      changelog-path: CHANGELOG.md
-      changelog-missing-policy: fail
-      release-notes-mode: section
-      changelog-asset-mode: archive-only
-      source-archive-name: "cdin-composition-root-{tag}-source.zip"
-      source-submodules: fail-if-present
+    steps:
+      - name: Explain the missing artifact-first Product Acceptance gate
+        shell: bash
+        run: |
+          echo "::error title=Product release blocked::SemVer publication is disabled until artifact-first Product Acceptance produces verified target/profile application archives and a resolved Manifest."
+          echo "source-release.yml is reserved for clearly labelled source-only contributor releases."
+          echo "Do not publish a source snapshot as a versioned CDIN product release."
+          exit 1
