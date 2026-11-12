@@ -28,22 +28,48 @@ jobs:
           fi
           echo "CDIN_RELEASE_TOKEN is configured."
 
+  verify-tag-on-main:
+    name: Require the version tag to point into main history
+    needs: [validate-release-credential]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact tag and fetch main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Verify the tagged commit is reachable from main
+        shell: bash
+        env:
+          TAG_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --no-tags
+          tag_commit="$(git rev-parse "${TAG_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main; then
+            echo "Version tag $TAG_REF resolves to $tag_commit, which is not contained in main." >&2
+            exit 1
+          fi
+          echo "Verified version tag commit $tag_commit is reachable from main."
+
   verify:
     name: Verify the exact tagged commit
-    needs: [validate-release-credential]
+    needs: [validate-release-credential, verify-tag-on-main]
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
   publish:
     name: Publish the tag-backed GitHub Release
-    needs: [verify, validate-release-credential]
+    needs: [verify, validate-release-credential, verify-tag-on-main]
     if: needs.verify.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@df2ee4acfa5d831c96459f551928b4d85ef29891
     with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+      pipeline-ref: df2ee4acfa5d831c96459f551928b4d85ef29891
       source-ref: ${{ github.ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
