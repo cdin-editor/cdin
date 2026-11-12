@@ -56,8 +56,13 @@ description = "Test the source pre-release manifest against Registry artifact/so
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pre_release.py"]
 timeout_seconds = 60
 
+[tasks.release-workflow-tests]
+description = "Verify legacy release repair workflows preserve immutable tags and existing Releases"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_release_workflow_safety.py"]
+timeout_seconds = 60
+
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests", "release-workflow-tests"]
 timeout_seconds = 180
