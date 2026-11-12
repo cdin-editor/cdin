@@ -147,6 +147,13 @@ class TargetAndPinTests(unittest.TestCase):
                 "version": "3.4.16", "archive": SOURCE_URL, "sha256": SOURCE_SHA
             }}}, "linux-x86_64")
 
+    def test_validates_semver_source_version(self) -> None:
+        sdk.validate_pin(make_lock(), "linux-x86_64")
+        lock = make_lock()
+        lock["tooling"]["sdl3"]["version"] = "3.4"
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "version/tag/source provenance"):
+            sdk.validate_pin(lock, "linux-x86_64")
+
     def test_requires_all_five_target_asset_identities(self) -> None:
         lock = make_lock()
         del lock["dependencies"]["sdl3_sdk"]["assets"]["windows-x86_64"]
