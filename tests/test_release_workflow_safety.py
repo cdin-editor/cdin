@@ -57,6 +57,39 @@ class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
         self.assertIn('echo "repair_required=false" >> "$GITHUB_OUTPUT"', self.legacy_jobs)
 
 
+class VersionedReleaseWorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    def test_development_tags_are_excluded_from_the_immutable_semver_release_path(self) -> None:
+        tags = self.workflow.split("    tags:", 1)[1].split("\n\n", 1)[0]
+        self.assertIn('"v*"', tags)
+        self.assertIn('"!v0.0.0-dev.*"', tags)
+
+    def test_versioned_tag_must_be_reachable_from_main_before_ci_and_publication(self) -> None:
+        self.assertIn("verify-tag-on-main:", self.workflow)
+        self.assertIn('git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main', self.workflow)
+        verify = self.workflow.split("  verify:\\n", 1)[1].split("  publish:\\n", 1)[0]
+        publish = self.workflow.split("  publish:\\n", 1)[1]
+        self.assertIn("needs: [validate-release-credential, verify-tag-on-main]", verify)
+        self.assertIn("verify-tag-on-main", publish.splitlines()[2])
+
+    def test_versioned_release_uses_the_same_immutable_pipeline_workflow_and_helper_pin(self) -> None:
+        publish = self.workflow.split("  publish:\\n", 1)[1]
+        workflow_ref = next(
+            line.strip()
+            for line in publish.splitlines()
+            if line.strip().startswith("uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@")
+        ).rsplit("@", 1)[1]
+        helper_ref = next(
+            line.strip()
+            for line in publish.splitlines()
+            if line.strip().startswith("pipeline-ref:")
+        ).split(":", 1)[1].strip()
+        self.assertEqual(workflow_ref, helper_ref)
+        self.assertEqual(workflow_ref, "df2ee4acfa5d831c96459f551928b4d85ef29891")
+
 class RollingProductReleaseWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
