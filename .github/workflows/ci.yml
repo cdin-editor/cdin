@@ -41,6 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      CDIN_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
       GITHUB_TOKEN: ${{ github.token }}
     defaults:
       run:
