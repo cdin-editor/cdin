@@ -23,7 +23,7 @@
 
 ### Current pull requests
 
-- **CDIN [#134](https://github.com/cdin-editor/cdin/pull/134)** — open, exact head `2ae3abbd26c3afce063adb493c006b62c0a409bc`. It grants the SDL3 tag-publisher job `actions: read` as well as `contents: write`, because that job uses `gh run download` to collect its own five target artifacts. A regression test guards the permission contract. The first attempt exposed an over-escaped test regex; that test-only defect was fixed in the current head. Latest exact-head native/SDL3 workflows are queued, so the publisher is not yet verified.
+- **CDIN [#134](https://github.com/cdin-editor/cdin/pull/134)** — open, exact head `45fa2ca85519aea9ee68f766c100037fab87de26`. It grants the SDL3 tag-publisher job `actions: read` as well as `contents: write`, because that job uses `gh run download` to collect its own five target artifacts. A regression test guards the permission contract. Two early attempts exposed a test-only escape/newline assertion mismatch; the current head simplifies the check to direct permission assertions. Fresh exact-head native/SDL3 workflows are queued, so the publisher is not yet verified.
 - **Registry [#60](https://github.com/cdin-editor/registry/pull/60)** — open, exact head `0e93157d78be1ccfa8d26789e8c4ca06b5673fd6`. It preserves the existing dev.1 tag/changelog and bumps the current CLI package to `0.2.0-dev.2`, with release notes for the post-tag ADR-0028 publisher, same-tag Catalog/descriptor generation and target-machine verification. Exact-head CI, documentation/YAML and Code Quality checks are queued.
 - **CDIN [#135](https://github.com/cdin-editor/cdin/pull/135)** — clean, single-file documentation refresh based directly on current `main`; its exact-head checks are pending.
 
