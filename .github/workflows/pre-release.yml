@@ -1,8 +1,8 @@
-name: Pre-release every pushed commit
+name: Development and rolling product release channels
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Product Acceptance"]
     types: [completed]
 
 permissions:
@@ -14,6 +14,12 @@ jobs:
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
+      (
+        (github.event.workflow_run.name == 'CI' &&
+         github.event.workflow_run.head_branch != 'main') ||
+        (github.event.workflow_run.name == 'Product Acceptance' &&
+         github.event.workflow_run.head_branch == 'main')
+      ) &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -36,8 +42,10 @@ jobs:
     needs: [validate-release-credential]
     if: >-
       needs.validate-release-credential.result == 'success' &&
+      github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch != 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -98,11 +106,49 @@ jobs:
     secrets:
       release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
 
+  publish-rolling-product-release:
+    name: Publish the rolling latest product prerelease from verified main
+    needs: [validate-release-credential]
+    if: >-
+      needs.validate-release-credential.result == 'success' &&
+      github.event.workflow_run.name == 'Product Acceptance' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    permissions:
+      actions: read
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@df2ee4acfa5d831c96459f551928b4d85ef29891
+    with:
+      pipeline-ref: df2ee4acfa5d831c96459f551928b4d85ef29891
+      repository: ${{ github.repository }}
+      source-run-id: ${{ github.event.workflow_run.id }}
+      source-workflow-path: .github/workflows/product-acceptance.yml
+      source-branch: ${{ github.event.workflow_run.head_branch }}
+      source-sha: ${{ github.event.workflow_run.head_sha }}
+      artifact-pattern: "cdin-installed-product-*"
+      product-prefix: cdin
+      expected-target-profiles: >-
+        [{"target":"linux-x86_64","profile":"tui"},
+         {"target":"linux-x86_64","profile":"gui-sdl"},
+         {"target":"linux-arm64","profile":"tui"},
+         {"target":"linux-arm64","profile":"gui-sdl"},
+         {"target":"macos-x86_64","profile":"tui"},
+         {"target":"macos-x86_64","profile":"gui-sdl"},
+         {"target":"macos-arm64","profile":"tui"},
+         {"target":"macos-arm64","profile":"gui-sdl"},
+         {"target":"windows-x86_64","profile":"tui"},
+         {"target":"windows-x86_64","profile":"gui-sdl"}]
+    secrets:
+      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
+
   inspect-legacy-alpha-release:
     name: Check the alpha.1 release without mutating existing releases
     needs: [validate-release-credential]
     if: >-
       needs.validate-release-credential.result == 'success' &&
+      github.event.workflow_run.name == 'Product Acceptance' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
