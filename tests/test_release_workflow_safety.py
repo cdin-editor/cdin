@@ -127,7 +127,7 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
     def test_development_tag_creation_shell_has_valid_bash_syntax(self) -> None:
         if shutil.which("bash") is None:
             self.skipTest("bash is not installed")
-        script = textwrap.dedent(self.source_tag.split("        run: |\\n", 1)[1])
+        script = textwrap.dedent(self.source_tag.split("        run: |\n", 1)[1])
         result = subprocess.run(
             ["bash", "-n"],
             input=script,
