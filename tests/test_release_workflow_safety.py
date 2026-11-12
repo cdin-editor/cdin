@@ -77,14 +77,16 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
     def test_release_credential_validation_only_runs_for_release_eligible_workflows(self) -> None:
         self.assertIn("workflow_run.name == 'CI'", self.validation)
         self.assertIn("workflow_run.name == 'Product Acceptance'", self.validation)
-        self.assertIn("head_branch != 'main'", self.validation)
+        self.assertIn("workflow_run.name == 'CI'", self.validation)
         self.assertIn("head_branch == 'main'", self.validation)
         self.assertIn("CDIN_RELEASE_TOKEN", self.validation)
 
-    def test_unique_source_only_development_tags_are_non_main_ci_only(self) -> None:
+    def test_every_successful_ci_push_gets_a_unique_source_only_development_tag(self) -> None:
         self.assertIn("workflow_run.name == 'CI'", self.source_tag)
-        self.assertIn("head_branch != 'main'", self.source_tag)
+        self.assertNotIn("head_branch != 'main'", self.source_tag)
         self.assertIn("v0.0.0-dev.$SOURCE_RUN_NUMBER", self.source_tag)
+        self.assertIn("changelog-missing-policy: warn", self.workflow)
+        self.assertIn("release-notes-mode: section", self.workflow)
 
     def test_main_uses_the_reusable_rolling_product_workflow_only_after_product_acceptance(self) -> None:
         self.assertIn("workflow_run.name == 'Product Acceptance'", self.rolling)
