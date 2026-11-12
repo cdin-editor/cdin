@@ -90,6 +90,7 @@ jobs:
     needs: [build]
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Download all verified target SDK packages
