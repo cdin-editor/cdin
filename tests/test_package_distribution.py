@@ -27,9 +27,14 @@ from package_distribution import (  # noqa: E402
 def host_target() -> dict[str, str]:
     os_name, architecture = detect_host()
     if os_name == "linux":
-        abi = "gnu-glibc-2.39"
+        libc, version = platform.libc_ver()
+        if libc.lower() not in {"glibc", "gnu libc"} or not version:
+            raise RuntimeError(f"tests require a glibc host, got {libc}/{version}")
+        major, minor = version.split(".")[:2]
+        abi = f"gnu-glibc-{major}.{minor}"
     elif os_name == "darwin":
-        abi = "macos-15"
+        major = platform.mac_ver()[0].split(".")[0]
+        abi = f"macos-{major}"
     else:
         abi = "windows-ucrt64"
     return {"os": os_name, "architecture": architecture, "abi": abi}
