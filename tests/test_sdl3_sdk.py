@@ -254,10 +254,8 @@ class ReleaseWorkflowPermissionTests(unittest.TestCase):
         self.assertIn("  publish:\n", workflow)
         publish = workflow.split("  publish:\n", 1)[1]
         permissions = publish.split("    steps:\n", 1)[0]
-        self.assertIn(
-            "permissions:\\n      actions: read\\n      contents: write\\n",
-            permissions,
-        )
+        self.assertIn("actions: read", permissions)
+        self.assertIn("contents: write", permissions)
         self.assertIn('gh run download "${GITHUB_RUN_ID}"', publish)
         self.assertIn('gh release create "${GITHUB_REF_NAME}"', publish)
 
