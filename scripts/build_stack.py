@@ -343,6 +343,23 @@ def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
     return profile == "gui-sdl" and enabled
 
 
+def prepare_sdl3(
+    prefix: Path,
+    target: dict[str, str],
+    profile: str,
+    source_build_enabled: bool,
+    env: dict[str, str],
+) -> None:
+    """Select explicit developer source-build or immutable consumer SDK delivery."""
+    if profile != "gui-sdl":
+        return
+    if should_build_sdl3_from_source(profile, source_build_enabled):
+        install_sdl3(env)
+        return
+    install_sdl3_sdk(prefix, target)
+    require_sdl3_sdk(prefix, target)
+
+
 def install_sdl3(env: dict[str, str]) -> None:
     """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
@@ -575,11 +592,10 @@ def main() -> int:
         # Explicit developer mode only: current Catalog still delivers Runtime
         # and Frontend source units. Normal consumer builds never compile them.
         env = pkg_env()
-        if should_build_sdl3_from_source(PROFILE, args.build_sdl3_from_source):
-            install_sdl3(env)
-        elif gui_enabled:
-            install_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
-            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+        prepare_sdl3(
+            PREFIX, manifest["resolution"]["target"], PROFILE,
+            args.build_sdl3_from_source, env,
+        )
         frontend = DEPS / "frontend"
         frontend_options = [
             "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
@@ -608,9 +624,10 @@ def main() -> int:
             )
             staged_prefixes.append(variant_prefix)
         frontend_prefixes = tuple(staged_prefixes)
-        if gui_enabled:
-            install_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
-            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+        prepare_sdl3(
+            PREFIX, manifest["resolution"]["target"], PROFILE,
+            args.build_sdl3_from_source, pkg_env(additional_prefixes=frontend_prefixes),
+        )
         env = pkg_env(additional_prefixes=frontend_prefixes)
 
     root_build = BUILD / "cdin"
