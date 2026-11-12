@@ -97,6 +97,36 @@ def make_lock(archive: Path | None = None) -> dict:
     }
 
 
+def write_lock(path: Path, lock: dict) -> None:
+    pin = lock["dependencies"]["sdl3_sdk"]
+    lines = [
+        "[dependencies.sdl3_sdk]",
+        'repository = "{}"'.format(pin["repository"]),
+        'tag = "{}"'.format(pin["tag"]),
+        'version = "{}"'.format(pin["version"]),
+        'revision = "{}"'.format(pin["revision"]),
+        "",
+    ]
+    for key, asset in pin["assets"].items():
+        lines.extend([
+            '[dependencies.sdl3_sdk.assets."{}"]'.format(key),
+            'file_name = "{}"'.format(asset["file_name"]),
+            'format = "{}"'.format(asset["format"]),
+            "size_bytes = {}".format(asset["size_bytes"]),
+            'sha256 = "{}"'.format(asset["sha256"]),
+            "",
+        ])
+    source = lock["tooling"]["sdl3"]
+    lines.extend([
+        "[tooling.sdl3]",
+        'version = "{}"'.format(source["version"]),
+        'archive = "{}"'.format(source["archive"]),
+        'sha256 = "{}"'.format(source["sha256"]),
+        "",
+    ])
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 class TargetAndPinTests(unittest.TestCase):
     def test_maps_all_five_exact_target_identities(self) -> None:
         for key, (os_name, abi) in sdk.TARGETS.items():
@@ -249,10 +279,7 @@ class ArchiveAndPackageTests(unittest.TestCase):
             make_archive(archive, source_files)
             lock = make_lock(archive)
             lock_path = root / "deps.lock"
-            lock_path.write_text(
-                __import__("tomllib") and __import__("tomli_w").dumps(lock),
-                encoding="utf-8",
-            )
+            write_lock(lock_path, lock)
             pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
             cache = root / "cache"
             cache.mkdir()
