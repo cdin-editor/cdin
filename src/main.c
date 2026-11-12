@@ -1,3 +1,7 @@
+#if !defined(_WIN32)
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
+#endif
 /*
  * Implements ARCH-001 and ROOT-001: assemble components without reimplementing
  * their editor-domain behavior.
@@ -15,6 +19,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #if CDIN_BACKEND_PROTOCOL_MAJOR != CDIN_FRONTEND_PROTOCOL_VERSION_MAJOR
 #error "Backend and Frontend protocol major versions differ"
@@ -30,7 +40,112 @@
 #define CDIN_DEFAULT_RUNTIME_ROOT "./lua"
 #endif
 
-static int run_check(const cdin_options *options, cdin_log *log)
+#define CDIN_EXECUTABLE_PATH_CAPACITY 4096u
+
+static int resolve_executable_path(
+    const char *argv0, char *resolved, size_t capacity)
+{
+#ifdef _WIN32
+    DWORD length;
+    if (capacity == 0u || capacity > (size_t)UINT32_MAX) return 0;
+    length = GetModuleFileNameA(NULL, resolved, (DWORD)capacity);
+    return length != 0u && (size_t)length < capacity;
+#else
+    const char *path;
+    const char *segment;
+    char candidate[CDIN_EXECUTABLE_PATH_CAPACITY];
+    if (argv0 == NULL || argv0[0] == '\0' || resolved == NULL || capacity == 0u)
+        return 0;
+    if (strchr(argv0, '/') != NULL)
+        return realpath(argv0, resolved) != NULL;
+
+    path = getenv("PATH");
+    if (path == NULL) return realpath(argv0, resolved) != NULL;
+    segment = path;
+    for (;;) {
+        const char *separator = strchr(segment, ':');
+        size_t length = separator != NULL
+            ? (size_t)(separator - segment) : strlen(segment);
+        int written;
+        if (length == 0u) {
+            written = snprintf(candidate, sizeof(candidate), "./%s", argv0);
+        } else if (length < (size_t)INT_MAX) {
+            written = snprintf(candidate, sizeof(candidate), "%.*s/%s",
+                               (int)length, segment, argv0);
+        } else {
+            return 0;
+        }
+        if (written > 0 && (size_t)written < sizeof(candidate) &&
+            access(candidate, X_OK) == 0 &&
+            realpath(candidate, resolved) != NULL) {
+            return 1;
+        }
+        if (separator == NULL) break;
+        segment = separator + 1;
+    }
+    return 0;
+#endif
+}
+
+static char *last_path_separator(char *path)
+{
+    char *separator = strrchr(path, '/');
+#ifdef _WIN32
+    char *backslash = strrchr(path, '\\');
+    if (backslash != NULL && (separator == NULL || backslash > separator))
+        separator = backslash;
+#endif
+    return separator;
+}
+
+/*
+ * A relocatable installation contains:
+ *   bin/cdin
+ *   share/cdin/lua/cdin/runtime.lua
+ *
+ * Resolve that layout relative to the actual executable before falling back
+ * to the build-time CMake prefix. Explicit --runtime-root and CDIN_RUNTIME_ROOT
+ * remain higher-priority overrides.
+ */
+static const char *discover_bundled_runtime_root(
+    const char *argv0, char *storage, size_t capacity)
+{
+    char executable[CDIN_EXECUTABLE_PATH_CAPACITY];
+    char marker[CDIN_EXECUTABLE_PATH_CAPACITY];
+    char *separator;
+    struct stat metadata;
+    int written;
+
+    if (!resolve_executable_path(argv0, executable, sizeof(executable)))
+        return NULL;
+    separator = last_path_separator(executable);
+    if (separator == NULL) return NULL;
+    *separator = '\0';
+    separator = last_path_separator(executable);
+    if (separator == NULL) return NULL;
+#ifdef _WIN32
+    if (_stricmp(separator + 1, "bin") != 0) return NULL;
+#else
+    if (strcmp(separator + 1, "bin") != 0) return NULL;
+#endif
+    *separator = '\0';
+#ifdef _WIN32
+    written = snprintf(storage, capacity, "%s\\share\\cdin\\lua", executable);
+    if (written <= 0 || (size_t)written >= capacity) return NULL;
+    written = snprintf(marker, sizeof(marker), "%s\\cdin\\runtime.lua", storage);
+#else
+    written = snprintf(storage, capacity, "%s/share/cdin/lua", executable);
+    if (written <= 0 || (size_t)written >= capacity) return NULL;
+    written = snprintf(marker, sizeof(marker), "%s/cdin/runtime.lua", storage);
+#endif
+    if (written <= 0 || (size_t)written >= sizeof(marker) ||
+        stat(marker, &metadata) != 0 || !S_ISREG(metadata.st_mode)) {
+        return NULL;
+    }
+    return storage;
+}
+
+static int run_check(const cdin_options *options, cdin_log *log, const char *argv0)
 {
     cdin_backend_config config;
     cdin_backend *backend = NULL;
@@ -38,8 +153,12 @@ static int run_check(const cdin_options *options, cdin_log *log)
     size_t processed = 0u;
     size_t loaded_extensions = 0u;
     int result = EXIT_FAILURE;
+    char bundled_runtime_root[CDIN_EXECUTABLE_PATH_CAPACITY];
     const char *runtime_root = options->runtime_root;
     if (runtime_root == NULL || runtime_root[0] == '\0') runtime_root = getenv("CDIN_RUNTIME_ROOT");
+    if (runtime_root == NULL || runtime_root[0] == '\0')
+        runtime_root = discover_bundled_runtime_root(argv0, bundled_runtime_root,
+                                                     sizeof(bundled_runtime_root));
     if (runtime_root == NULL || runtime_root[0] == '\0') runtime_root = CDIN_DEFAULT_RUNTIME_ROOT;
 
     {
@@ -151,7 +270,7 @@ int main(int argc, char **argv)
     }
     if (strcmp(options.frontend, "headless") == 0) {
         MMLLOG_INFO(log.logger, "Composition Root startup validation begins");
-        result = run_check(&options, &log);
+        result = run_check(&options, &log, argc > 0 ? argv[0] : NULL);
         MMLLOG_INFO(log.logger, "Composition Root startup validation %s",
                     result == EXIT_SUCCESS ? "passed" : "failed");
     } else if (strcmp(options.frontend, "tui") == 0) {
