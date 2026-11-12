@@ -1,4 +1,4 @@
-name: Versioned GitHub Release
+name: Versioned Product Release Readiness Gate
 
 on:
   push:
@@ -10,46 +10,42 @@ permissions:
   contents: read
 
 jobs:
-  validate-release-credential:
-    name: Validate the release credential
+  verify-tag-on-main:
+    name: Require the version tag to point into main history
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - name: Require a token that can publish this tagged source
-        env:
-          RELEASE_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
+      - name: Check out the exact tag and fetch main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - name: Verify the tagged commit is reachable from main
         shell: bash
+        env:
+          TAG_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error title=Missing CDIN_RELEASE_TOKEN::Create repository secret CDIN_RELEASE_TOKEN using a fine-grained token with Contents: Read and write and Workflows: Read and write."
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --no-tags
+          tag_commit="$(git rev-parse "${TAG_REF}^{commit}")"
+          if ! git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main; then
+            echo "Version tag $TAG_REF resolves to $tag_commit, which is not contained in main." >&2
             exit 1
           fi
-          echo "CDIN_RELEASE_TOKEN is configured."
+          echo "Verified version tag commit $tag_commit is reachable from main."
 
-  verify:
-    name: Verify the exact tagged commit
-    needs: [validate-release-credential]
-    uses: ./.github/workflows/ci.yml
+  product-release-readiness:
+    name: Refuse source-only SemVer publication until product artifacts are verified
+    needs: [verify-tag-on-main]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-
-  publish:
-    name: Publish the tag-backed GitHub Release
-    needs: [verify, validate-release-credential]
-    if: needs.verify.result == 'success'
-    permissions:
-      contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
-    with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
-      source-ref: ${{ github.ref }}
-      changelog-path: CHANGELOG.md
-      changelog-missing-policy: fail
-      release-notes-mode: section
-      changelog-asset-mode: archive-only
-      source-archive-name: "cdin-composition-root-{tag}-source.zip"
-      source-submodules: fail-if-present
-    secrets:
-      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
+    steps:
+      - name: Explain the missing artifact-first Product Acceptance gate
+        shell: bash
+        run: |
+          echo "::error title=Product release blocked::SemVer publication is disabled until artifact-first Product Acceptance produces verified target/profile application archives and a resolved Manifest."
+          echo "source-release.yml is reserved for clearly labelled source-only contributor releases."
+          echo "Do not publish a source snapshot as a versioned CDIN product release."
+          exit 1

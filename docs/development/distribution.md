@@ -27,7 +27,7 @@ The extracted executable is run with `--version` and `--check` without setting `
 
 A TUI bundle rejects SDL3 files and never acquires the SDL3 source or SDK. A GUI-SDL development bundle requires its pinned SDL3 files in the install prefix. Until CDIN #124 publishes the five target SDK assets, GUI-SDL CI still builds the pinned SDL3 source as an explicit developer/CI fallback.
 
-The CI matrix currently uploads one tested archive/checksum/manifest set per OS/profile for 30 days. These are workflow artifacts, not GitHub Releases.
+The merged CI matrix now uploads one tested archive/checksum/manifest set for each of the five native targets × two profiles (ten bundles total), with artifact names keyed by explicit target and profile; retention remains 30 days. These are workflow artifacts, not GitHub Releases.
 
 ## Runtime dependency boundary
 
@@ -37,6 +37,14 @@ Consequently, these bundles are not yet clean-machine installers. Before a produ
 
 ## Release boundary
 
-These archives are **development-build artifacts**, not stable releases, rolling `latest` updates or immutable SemVer application releases. The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and the separate rolling/SemVer release workflows have passed.
+These archives are **development-build artifacts**, not stable releases, rolling `latest` updates or immutable SemVer application releases. CDIN has three distinct source/product channels:
+
+- Every successful pushed CI run (including `main`) may publish a unique source-only `v0.0.0-dev.<run_number>` prerelease from that exact commit. This is contributor/source distribution, not an installable application.
+- The fixed `latest` product prerelease is gated by a separate successful Product Acceptance workflow on `main`; the current build and version/check extraction smoke are not sufficient to trigger it. That workflow remains intentionally unavailable until the live product acceptance suite is real and green.
+- A pushed SemVer tag is checked for reachability from `main`, then deliberately fails closed at the product-readiness gate. No versioned CDIN product Release is published until artifact-first component installation, a real Product Acceptance workflow, verified target/profile application archives and the exact immutable Registry Resolved Manifest are connected to Pipeline's compiled `release.yml`. `v0.0.0-dev.*` tags are excluded from this path.
+
+`source-release.yml` is reserved for explicitly labelled source-only contributor distribution; it is not a versioned product publisher. The current SemVer workflow intentionally grants no write permission and fails at the readiness gate rather than publishing a source ZIP as an application. The source-snapshot and rolling publishers use their calling job's scoped GITHUB_TOKEN; no CDIN_RELEASE_TOKEN secret is required for normal same-repository publication.
+
+The product remains DEVELOPMENT until artifact-first component Releases, supported product launch/E2E, Unicode shaping and Persian/Arabic presentation, IME and PaneTree product gates, clean-machine dependency handling, and actual rolling/versioned product release acceptance have passed.
 
 See [integration status](integration-status.md), [installation](../installation.md) and [CDIN #111](https://github.com/cdin-editor/cdin/issues/111).

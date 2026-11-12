@@ -1,41 +1,18 @@
-name: Pre-release every pushed commit
+name: Development and rolling product release channels
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Product Acceptance"]
     types: [completed]
 
 permissions:
   contents: read
 
 jobs:
-  validate-release-credential:
-    name: Validate the release credential
-    if: >-
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Require a token that can create tags and tag-backed releases
-        env:
-          RELEASE_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error title=Missing CDIN_RELEASE_TOKEN::Create repository secret CDIN_RELEASE_TOKEN using a fine-grained token with Contents: Read and write and Workflows: Read and write."
-            exit 1
-          fi
-          echo "CDIN_RELEASE_TOKEN is configured."
-
   create-development-tag:
     name: Create a unique development tag for the verified commit
-    needs: [validate-release-credential]
     if: >-
-      needs.validate-release-credential.result == 'success' &&
+      github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
@@ -54,28 +31,69 @@ jobs:
       - name: Create or verify the unique development tag
         id: tag
         env:
-          GH_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_RUN_NUMBER" =~ ^[0-9]+$ ]]
+          [[ "$SOURCE_RUN_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           tag="v0.0.0-dev.$SOURCE_RUN_NUMBER"
+          api_url="https://api.github.com/repos/$REPOSITORY/git/ref/tags/$tag"
+          tag_ref_json="$RUNNER_TEMP/tag-ref.json"
 
-          if current_sha="$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null)"; then
-            if [[ "$current_sha" != "$SOURCE_SHA" ]]; then
-              echo "Development tag $tag already exists at $current_sha, not $SOURCE_SHA." >&2
+          status="$(curl --silent --show-error --output "$tag_ref_json" --write-out '%{http_code}' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api_url")"
+          case "$status" in
+            200)
+              echo "Development tag $tag already exists; verifying its immutable target."
+              ;;
+            404)
+              gh api --method POST "repos/$REPOSITORY/git/refs" \
+                -f "ref=refs/tags/$tag" \
+                -f "sha=$SOURCE_SHA" >/dev/null
+              gh api "repos/$REPOSITORY/git/ref/tags/$tag" > "$tag_ref_json"
+              echo "Created development tag $tag."
+              ;;
+            *)
+              echo "Could not inspect development tag $tag (HTTP $status)." >&2
+              cat "$tag_ref_json" >&2
               exit 1
+              ;;
+          esac
+
+          resolve_tag_commit() {
+            local object_type object_sha tag_json depth=0
+            object_type="$(jq -r '.object.type' "$tag_ref_json")"
+            object_sha="$(jq -r '.object.sha' "$tag_ref_json")"
+            while [[ "$object_type" == "tag" ]]; do
+              (( depth += 1 ))
+              if (( depth > 8 )); then
+                echo "Development tag $tag has excessive annotated-tag nesting." >&2
+                return 1
+              fi
+              tag_json="$(gh api "repos/$REPOSITORY/git/tags/$object_sha")"
+              object_type="$(jq -r '.object.type' <<< "$tag_json")"
+              object_sha="$(jq -r '.object.sha' <<< "$tag_json")"
+            done
+            if [[ "$object_type" != "commit" || ! "$object_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Development tag $tag does not resolve to a Git commit." >&2
+              return 1
             fi
-            echo "Development tag $tag already points to the verified commit."
-          else
-            gh api --method POST "repos/$REPOSITORY/git/refs" \
-              -f "ref=refs/tags/$tag" \
-              -f "sha=$SOURCE_SHA" >/dev/null
-            echo "Created $tag for $SOURCE_SHA."
+            printf '%s' "$object_sha"
+          }
+
+          current_sha="$(resolve_tag_commit)"
+          if [[ "$current_sha" != "$SOURCE_SHA" ]]; then
+            echo "Development tag $tag resolves to $current_sha, not the exact CI commit $SOURCE_SHA." >&2
+            exit 1
           fi
+          echo "Verified $tag -> $SOURCE_SHA."
 
           printf 'source_ref=refs/tags/%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
@@ -85,24 +103,54 @@ jobs:
     if: needs.create-development-tag.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
     with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
-      changelog-missing-policy: fail
+      changelog-missing-policy: warn
       release-notes-mode: section
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
-    secrets:
-      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
+
+  publish-rolling-product-release:
+    name: Publish the rolling latest product prerelease from verified main
+    if: >-
+      github.event.workflow_run.name == 'Product Acceptance' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    permissions:
+      actions: read
+      contents: write
+    uses: m-mdy-m/pipeline/.github/workflows/rolling-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
+    with:
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
+      repository: ${{ github.repository }}
+      source-run-id: ${{ github.event.workflow_run.id }}
+      source-workflow-path: .github/workflows/product-acceptance.yml
+      source-branch: ${{ github.event.workflow_run.head_branch }}
+      source-sha: ${{ github.event.workflow_run.head_sha }}
+      artifact-pattern: "cdin-installed-product-*"
+      product-prefix: cdin
+      expected-target-profiles: >-
+        [{"target":"linux-x86_64","profile":"tui"},
+         {"target":"linux-x86_64","profile":"gui-sdl"},
+         {"target":"linux-arm64","profile":"tui"},
+         {"target":"linux-arm64","profile":"gui-sdl"},
+         {"target":"macos-x86_64","profile":"tui"},
+         {"target":"macos-x86_64","profile":"gui-sdl"},
+         {"target":"macos-arm64","profile":"tui"},
+         {"target":"macos-arm64","profile":"gui-sdl"},
+         {"target":"windows-x86_64","profile":"tui"},
+         {"target":"windows-x86_64","profile":"gui-sdl"}]
 
   inspect-legacy-alpha-release:
     name: Check the alpha.1 release without mutating existing releases
-    needs: [validate-release-credential]
     if: >-
-      needs.validate-release-credential.result == 'success' &&
+      github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
@@ -116,7 +164,7 @@ jobs:
       - name: Inspect the legacy release record
         id: inspect
         env:
-          GH_TOKEN: ${{ secrets.CDIN_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           TAG_NAME: v0.3.0-alpha.1
         shell: bash
@@ -173,9 +221,9 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
     with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+      pipeline-ref: 0c2c89c7c64575c6b0f66c78925bdf5638abc5e9
       source-ref: refs/tags/v0.3.0-alpha.1
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
@@ -183,5 +231,3 @@ jobs:
       changelog-asset-mode: archive-only
       source-archive-name: "cdin-composition-root-{tag}-source.zip"
       source-submodules: fail-if-present
-    secrets:
-      release-token: ${{ secrets.CDIN_RELEASE_TOKEN }}
