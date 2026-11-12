@@ -70,13 +70,13 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
     def test_versioned_tag_must_be_reachable_from_main_before_ci_and_publication(self) -> None:
         self.assertIn("verify-tag-on-main:", self.workflow)
         self.assertIn('git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main', self.workflow)
-        verify = self.workflow.split("  verify:", 1)[1].split("  publish:\\n", 1)[0]
+        verify = self.workflow.split("  verify:", 1)[1].split("  publish:", 1)[0]
         publish = self.workflow.split("  publish:", 1)[1]
         self.assertIn("needs: [validate-release-credential, verify-tag-on-main]", verify)
         self.assertIn("needs: [verify, validate-release-credential, verify-tag-on-main]", publish)
 
     def test_versioned_release_uses_the_same_immutable_pipeline_workflow_and_helper_pin(self) -> None:
-        publish = self.workflow.split("  publish:\\n", 1)[1]
+        publish = self.workflow.split("  publish:", 1)[1]
         workflow_ref = next(
             line.strip()
             for line in publish.splitlines()
@@ -110,7 +110,6 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
     def test_release_credential_validation_only_runs_for_release_eligible_workflows(self) -> None:
         self.assertIn("workflow_run.name == 'CI'", self.validation)
         self.assertIn("workflow_run.name == 'Product Acceptance'", self.validation)
-        self.assertIn("workflow_run.name == 'CI'", self.validation)
         self.assertIn("head_branch == 'main'", self.validation)
         self.assertIn("CDIN_RELEASE_TOKEN", self.validation)
 
