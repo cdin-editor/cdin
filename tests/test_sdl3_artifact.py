@@ -212,15 +212,46 @@ class ReleaseIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(sdk.SDL3ArtifactError, "tag target mismatch"):
                 sdk.verify_release(pin, asset)
 
-    def test_rejects_missing_release_digest_or_sidecar(self) -> None:
+    def test_rejects_missing_release_asset_digest(self) -> None:
         lock = make_lock()
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        release_assets = []
+        for key, pinned in pin["assets"].items():
+            item = {"name": pinned["file_name"], "size": pinned["size_bytes"]}
+            if key != "linux-x86_64":
+                item["digest"] = "sha256:" + pinned["sha256"]
+            release_assets.append(item)
+            release_assets.append({
+                "name": pinned["file_name"] + ".sha256", "size": 100,
+            })
         release = {
             "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": [
-                {"name": asset["file_name"], "size": asset["size_bytes"]},
-                {"name": asset["file_name"] + ".sha256", "size": 10},
-            ],
+            "assets": release_assets,
+        }
+        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
+        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "size/digest differs"):
+                sdk.verify_release(pin, asset)
+
+    def test_rejects_missing_release_checksum_sidecar(self) -> None:
+        lock = make_lock()
+        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        release_assets = []
+        for pinned in pin["assets"].values():
+            release_assets.append({
+                "name": pinned["file_name"],
+                "size": pinned["size_bytes"],
+                "digest": "sha256:" + pinned["sha256"],
+            })
+            release_assets.append({
+                "name": pinned["file_name"] + ".sha256", "size": 100,
+            })
+        release_assets.remove({
+            "name": asset["file_name"] + ".sha256", "size": 100,
+        })
+        release = {
+            "tag_name": pin["tag"], "draft": False, "prerelease": True,
+            "assets": release_assets,
         }
         tag_ref = {"object": {"type": "commit", "sha": REVISION}}
         with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
@@ -262,6 +293,35 @@ class ArchiveAndPackageTests(unittest.TestCase):
             sdk.verify_package_prefix(extracted, "3.4.16", TARGET, {
                 "url": SOURCE_URL, "sha256": SOURCE_SHA
             })
+
+    def test_extraction_requires_an_empty_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "sdk.tar.gz"
+            make_archive(archive, package_files())
+            destination = root / "extract"
+            destination.mkdir()
+            (destination / "untrusted").write_text("keep", encoding="utf-8")
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "destination must be empty"):
+                sdk.safe_extract(archive, destination)
+            self.assertEqual(
+                (destination / "untrusted").read_text(encoding="utf-8"), "keep"
+            )
+
+    def test_rejects_symlinked_parent_in_cached_package(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "SDL.h").write_text("untrusted", encoding="utf-8")
+            prefix = root / "prefix"
+            prefix.mkdir()
+            (prefix / "include").mkdir()
+            (prefix / "include" / "SDL3").symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "contains a symlink"):
+                sdk.verify_package_prefix(prefix, "3.4.16", TARGET, {
+                    "url": SOURCE_URL, "sha256": SOURCE_SHA
+                })
 
     def test_rejects_path_traversal_and_symlink_members(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
