@@ -21,6 +21,12 @@ class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
             raise AssertionError("legacy alpha.1 inspection job is missing")
         cls.legacy_jobs = cls.workflow[cls.workflow.index(marker):]
 
+    def test_legacy_alpha_recovery_runs_after_successful_main_ci_not_product_acceptance(self) -> None:
+        inspection = self.legacy_jobs.split("  repair-legacy-alpha-release:", 1)[0]
+        self.assertIn("workflow_run.name == 'CI'", inspection)
+        self.assertIn("head_branch == 'main'", inspection)
+        self.assertNotIn("workflow_run.name == 'Product Acceptance'", inspection)
+
     def test_recovery_never_deletes_or_replaces_a_release(self) -> None:
         self.assertNotIn("--method DELETE", self.legacy_jobs)
         self.assertNotIn("DELETE /releases", self.legacy_jobs)
