@@ -1,3 +1,42 @@
+## Current integration update — 2026-11-12 (after Pipeline rolling-release merge)
+
+**Authoritative product status: DEVELOPMENT — not PRODUCT READY.** The native target/profile CI matrix is complete, and the reusable rolling-release infrastructure is merged, but the complete package startup/cleanup and interactive product acceptance gates remain incomplete. No rolling latest or new immutable product/component/SDK Release has been published by this work.
+
+### Current main heads and merged work
+
+| Repository | Current main SHA | Evidence |
+|---|---|---|
+| Spec | 274f84f0ca08378db9c4a5cf6820065256f31d5a | Spec v1.4.0, ADR-0028 and Registry Data Contract 1.4.0 remain authoritative. |
+| Kernel | 36ad2f0e30ef962d230b3f2ddc85065e8a513bbd | Reuse the previously published Kernel SDK 1.2.1/logger 0.1.0 identities. |
+| Runtime | e7655862fc6d15fa8546e2bc6d6c792ce742903c | RC3 package preparation is merged; immutable v1.0.0-rc.3 Release assets remain absent. Runtime #16 remains open. |
+| Backend | 1b07e4ebf1bbb1870167327b03ff18891490d1d7 | Backend 1.2.2 preparation is merged; immutable v1.2.2 Release assets remain absent. Backend #35 remains open. |
+| Frontend | 6eba87329d988b61dafbfa8dd63cf9687315836e | PR #50 is merged; Core/TUI/GUI-SDL metadata is staged under the release-build tree so Pipeline includes all three canonical Metadata assets. Frontend #40 remains open pending its 15 immutable packages and consumer verification. |
+| Registry | 9c5a2960c77985a3fb7c7a535635c3f1b6093baa | Registry 0.2.0-dev.2 publisher preparation is merged; its immutable tag/Release and descriptor/Catalog inventory remain absent. Registry #58 remains open. |
+| CDIN | bb49dc9939477d892cfd3d9d6d9c2c6c2d889998 | PR #138 merged the five-target × two-profile matrix. Exact tested head cfeac2dfe890d8ebe721e2e38fe39c4db3473548; run 43246685141, attempt 2 passed all ten jobs and ASan/UBSan/leak detection. |
+| Pipeline | df2ee4acfa5d831c96459f551928b4d85ef29891 | PR #33 merged shared root-asset assembly/checksum handling. PR #34 merged the generic rolling prerelease workflow, commit-qualified inventory preparation, remote digest verification, retry-safe uploads and guarded tag promotion. |
+| cdin-x | bac35ff6ae25acad74875470a6feb24e7605cd0e | No cdin-x release change was required by this update. |
+
+### Relevant PRs and release workflow state
+
+- CDIN #138 is merged: Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64, for both TUI and GUI-SDL. Jobs validate actual runner architecture/ABI and upload target/profile-qualified archives.
+- Frontend #50 is merged: fixes canonical Core/TUI/GUI-SDL metadata placement so the release assembler includes all three documents.
+- Pipeline #33 is merged: shared root-level assets are now included beside target artifacts and enter the common checksum inventory.
+- Pipeline #34 is merged: rolling-release.yml provides a separate rolling channel with serialized promotion, exact source workflow/commit identity, ten-pair inventory validation, commit-qualified immutable names, remote digest/size checks, draft retry by Release ID, and cleanup only after publication verification.
+- CDIN #139 remains open: integrates CDIN with Pipeline rolling publication. Its rolling job listens only for a successful Product Acceptance run on main; ordinary build/CLI-smoke CI cannot publish a product. The dedicated Product Acceptance workflow does not yet exist, so the rolling job remains intentionally dormant.
+- The repository secret CDIN_RELEASE_TOKEN remains unavailable. Prior attempts failed at credential validation before creating any tag or Release. The secret needs least-privilege write access for Release/tag operations and the required workflow permission; no credential is embedded in source.
+
+### Remaining product gates — do not close yet
+
+- CDIN #111: the ten-job native matrix is closed as a CI coverage gap only. Windows Console TUI startup/input/resize/restore, GUI-SDL launch/render/input and cleanup, extension lifecycle, disconnect/reconnect and process-failure recovery, longer soak/performance baselines, clean-machine install/upgrade/uninstall, signing and immutable product releases remain incomplete.
+- CDIN #118: live IME composition and PaneTree splitter resize through Frontend → Protocol → Backend → Runtime → Kernel remain unproven with the exact selected component stack. Keep OPEN.
+- CDIN #121: Registry executable/Catalog/descriptor 0.2.0-dev.2 immutable Release is absent. Keep OPEN.
+- CDIN #122: Runtime RC3, Backend 1.2.2, Frontend 1.1.1 and Registry dev.2 artifacts are not all published; five-target SDL3 SDK assets and clean-cache/warm-cache/offline installs across all five targets and both profiles are not proven. Keep OPEN.
+- CDIN #124: producer CI is not equivalent to consuming a published immutable SDL3 SDK. Keep OPEN.
+- Runtime #16, Backend #35, Frontend #40 and Registry #58: package/release metadata preparation exists, but immutable Release assets, metadata digest checks and CDIN artifact-first consumption remain outstanding. Keep each OPEN.
+
+**Status rule:** the ten-target/profile CI result is real native build/integration evidence. It is not proof of a runnable downloaded GUI-SDL/Windows TUI package, full interactive editor acceptance, or artifact-first installation. No P0 issue is marked complete by this update.
+
+---
 ## Current integration update — 2026-11-12 (post-merge release audit)
 
 **Authoritative product status: DEVELOPMENT.** CDIN `main` is `442f8c47aa13dad3b7d53c86775c44aecf2acaa4`; Registry `main` is `9c5a2960c77985a3fb7c7a535635c3f1b6093baa`. CDIN PRs #131–#134 and Registry PR #60 are merged. Exact PR-head matrices and review/quality checks passed for #134 and #60; the post-merge CDIN and Registry workflows are still queued/in progress and are not counted as passing evidence. The merges advance Registry bootstrap, immutable-release recovery safety, installed-prefix development packaging and the SDL3 publisher permission contract. They do not publish the missing immutable component/SDK Releases or complete live editor acceptance. CDIN #111, #118, #121, #122 and #124 remain open.
