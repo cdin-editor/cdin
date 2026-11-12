@@ -301,16 +301,38 @@ def verify_release(pin: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]
     api_assets = release.get("assets")
     if not isinstance(api_assets, list):
         raise SDL3ArtifactError("SDL3 SDK Release has no asset inventory")
-    filename = asset["file_name"]
-    matches = [item for item in api_assets if isinstance(item, dict) and item.get("name") == filename]
-    if len(matches) != 1:
-        raise SDL3ArtifactError(f"SDL3 SDK Release must contain exactly one asset named {filename}")
-    api_asset = matches[0]
-    if api_asset.get("size") != asset["size_bytes"] or api_asset.get("digest") != f"sha256:{asset['sha256']}":
-        raise SDL3ArtifactError("SDL3 SDK Release Asset size/digest differs from deps.lock")
-    sidecar_name = filename + ".sha256"
-    if sum(isinstance(item, dict) and item.get("name") == sidecar_name for item in api_assets) != 1:
-        raise SDL3ArtifactError(f"SDL3 SDK Release is missing exactly one checksum sidecar {sidecar_name}")
+    expected_names: set[str] = set()
+    indexed: dict[str, dict[str, Any]] = {}
+    for key, pinned_asset in pin["assets"].items():
+        filename = pinned_asset["file_name"]
+        sidecar = filename + ".sha256"
+        expected_names.update((filename, sidecar))
+    for item in api_assets:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise SDL3ArtifactError("SDL3 SDK Release contains a malformed asset record")
+        name = item["name"]
+        if name in indexed:
+            raise SDL3ArtifactError(f"SDL3 SDK Release contains duplicate asset {name}")
+        indexed[name] = item
+    if set(indexed) != expected_names:
+        missing = sorted(expected_names - set(indexed))
+        unexpected = sorted(set(indexed) - expected_names)
+        raise SDL3ArtifactError(
+            f"SDL3 SDK Release inventory must contain exactly five archive/checksum pairs; "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+    for key, pinned_asset in pin["assets"].items():
+        filename = pinned_asset["file_name"]
+        item = indexed[filename]
+        if (
+            item.get("size") != pinned_asset["size_bytes"]
+            or item.get("digest") != f"sha256:{pinned_asset['sha256']}"
+        ):
+            raise SDL3ArtifactError(
+                f"SDL3 SDK Release Asset size/digest differs from deps.lock for {key}"
+            )
+        if indexed[filename + ".sha256"].get("size", 0) <= 0:
+            raise SDL3ArtifactError(f"SDL3 SDK Release checksum sidecar is empty for {key}")
     return release
 
 
