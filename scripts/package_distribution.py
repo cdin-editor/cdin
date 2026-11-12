@@ -91,7 +91,7 @@ def validate_target(target: Any) -> dict[str, str]:
             raise DistributionError(f"runner glibc {version} is older than package baseline {abi}")
     elif host_os == "darwin":
         match = re.match(r"^macos-(\d+)$", abi)
-        actual = re.match(r"^(\\d+)", platform.mac_ver()[0])
+        actual = re.match(r"^(\d+)", platform.mac_ver()[0])
         if not match or not actual or int(actual.group(1)) < int(match.group(1)):
             raise DistributionError(f"runner macOS version does not satisfy package ABI {abi}")
     elif host_os == "windows":
@@ -205,8 +205,8 @@ def write_zip(root: Path, archive: Path, arc_root: str) -> None:
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | stat.S_IMODE(path.stat().st_mode)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
-            with path.open("rb") as stream:
-                output.writestr(info, stream.read())
+            with path.open("rb") as stream, output.open(info, "w", force_zip64=True) as writer:
+                shutil.copyfileobj(stream, writer, length=1024 * 1024)
 
 
 def _member_path(root: Path, name: str) -> Path:
