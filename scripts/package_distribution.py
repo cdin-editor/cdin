@@ -14,7 +14,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import tomllib
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
@@ -23,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PREFIX = ROOT / ".deps" / "install"
 DEFAULT_OUTPUT = ROOT / "dist" / "distributions"
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-VERSION = re.compile(r"^project\\(cdin\\s+VERSION\\s+([0-9]+\\.[0-9]+\\.[0-9]+)\\s+LANGUAGES\\s+C\\)", re.MULTILINE)
+VERSION = re.compile(r"^project\(cdin\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)\s+LANGUAGES\s+C\)", re.MULTILINE)
 MAX_MEMBER_BYTES = 1024 * 1024 * 1024
 
 
@@ -84,19 +83,19 @@ def validate_target(target: Any) -> dict[str, str]:
     abi = values["abi"]
     if host_os == "linux":
         libc, version = platform.libc_ver()
-        match = re.match(r"^gnu-glibc-(\\d+)\\.(\\d+)$", abi)
-        actual = re.match(r"^(\\d+)\\.(\\d+)", version)
+        match = re.match(r"^gnu-glibc-(\d+)\.(\d+)$", abi)
+        actual = re.match(r"^(\d+)\.(\d+)", version)
         if not match or libc.lower() not in {"glibc", "gnu libc"} or not actual:
             raise DistributionError(f"unsupported Linux ABI for distribution: {libc}/{version}/{abi}")
         if tuple(map(int, actual.groups())) < tuple(map(int, match.groups())):
             raise DistributionError(f"runner glibc {version} is older than package baseline {abi}")
     elif host_os == "darwin":
-        match = re.match(r"^macos-(\\d+)$", abi)
+        match = re.match(r"^macos-(\d+)$", abi)
         actual = re.match(r"^(\\d+)", platform.mac_ver()[0])
         if not match or not actual or int(actual.group(1)) < int(match.group(1)):
             raise DistributionError(f"runner macOS version does not satisfy package ABI {abi}")
     elif host_os == "windows":
-        if arch != "x86_64" or abi != "windows-ucrt64" or os.environ.get("MSYSTEM") != "UCRT64":
+        if host_arch != "x86_64" or abi != "windows-ucrt64" or os.environ.get("MSYSTEM") != "UCRT64":
             raise DistributionError("Windows application distributions require x86_64 MSYS2 UCRT64")
     return values
 
@@ -149,9 +148,9 @@ def component_summary(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def safe_copy_prefix(prefix: Path, destination: Path) -> None:
-    prefix = prefix.resolve()
-    if not prefix.is_dir() or prefix.is_symlink():
+    if prefix.is_symlink() or not prefix.is_dir():
         raise DistributionError(f"installed product prefix is missing or unsafe: {prefix}")
+    prefix = prefix.resolve()
     for source in sorted(prefix.rglob("*"), key=lambda path: path.relative_to(prefix).as_posix()):
         relative = source.relative_to(prefix)
         if any(part in {"..", ".git", ".deps", "build"} for part in relative.parts):
@@ -330,6 +329,11 @@ def package_distribution(
         raise DistributionError(f"unsupported product profile: {profile}")
     if not FULL_SHA.fullmatch(source_revision):
         raise DistributionError("source revision must be a full 40-character commit SHA")
+    if prefix.is_symlink() or not prefix.is_dir():
+        raise DistributionError(f"installed product prefix is missing or unsafe: {prefix}")
+    prefix = prefix.resolve()
+    if output_directory.is_symlink():
+        raise DistributionError("distribution output directory must not be a symlink")
     if not workspace.is_dir():
         raise DistributionError(f"Registry workspace is missing: {workspace}")
     registry_manifest_path = workspace / "registry-manifest.json"
@@ -360,8 +364,6 @@ def package_distribution(
         raise DistributionError("GUI-SDL distribution does not contain its pinned SDL3 SDK")
 
     output_directory.mkdir(parents=True, exist_ok=True)
-    if output_directory.is_symlink():
-        raise DistributionError("distribution output directory must not be a symlink")
     slug = f"{target['os']}-{target['architecture']}-{profile}"
     archive_root = f"cdin-{version}-{slug}"
     suffix = ".zip" if target["os"] == "windows" else ".tar.gz"
@@ -460,9 +462,9 @@ def main() -> int:
             return 2
     try:
         result = package_distribution(
-            prefix=args.prefix.resolve(),
+            prefix=args.prefix.absolute(),
             workspace=workspace.resolve(),
-            output_directory=args.output_directory.resolve(),
+            output_directory=args.output_directory.absolute(),
             profile=args.profile,
             source_revision=source_revision,
             run_smoke=not args.skip_extracted_smoke,
