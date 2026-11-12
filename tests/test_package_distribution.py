@@ -41,6 +41,7 @@ def host_target() -> dict[str, str]:
 
 class InstalledDistributionTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.previous_msystem = os.environ.get("MSYSTEM")
         self.temporary = tempfile.TemporaryDirectory(prefix="cdin-package-test-")
         self.root = Path(self.temporary.name)
         self.prefix = self.root / "prefix"
@@ -73,32 +74,68 @@ class InstalledDistributionTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+        if self.previous_msystem is None:
+            os.environ.pop("MSYSTEM", None)
+        else:
+            os.environ["MSYSTEM"] = self.previous_msystem
 
     def write_manifest(self, profile: str) -> Path:
         components = [
             {"component_id": "backend", "variant": "default", "version": "1.2.1",
-             "delivery": "artifact", "selected_artifact": {"artifact_id": "backend-native",
-             "sha256": "a" * 64, "source_provenance": [{"revision": "b" * 40}]}},
+             "delivery": "artifact", "release_metadata_sha256": "9" * 64,
+             "release_metadata_uri": "https://raw.githubusercontent.com/cdin-editor/backend/backend-1.2.1/metadata.json",
+             "selected_artifact": {"artifact_id": "backend-native", "file_name": "backend.tar.gz",
+             "uri": "https://github.com/cdin-editor/backend/releases/download/v1.2.1/backend.tar.gz",
+             "size_bytes": 1024, "sha256": "a" * 64,
+             "source_provenance": [{"repository_uri": "https://github.com/cdin-editor/backend",
+             "revision": "b" * 40, "source_unit_id": "backend-source"}]}},
             {"component_id": "frontend", "variant": "core", "version": "1.1.1",
-             "delivery": "artifact", "selected_artifact": {"artifact_id": "frontend-core",
-             "sha256": "c" * 64, "source_provenance": [{"revision": "d" * 40}]}},
+             "delivery": "artifact", "release_metadata_sha256": "8" * 64,
+             "release_metadata_uri": "https://raw.githubusercontent.com/cdin-editor/frontend/frontend-1.1.1/metadata.json",
+             "selected_artifact": {"artifact_id": "frontend-core", "file_name": "frontend-core.tar.gz",
+             "uri": "https://github.com/cdin-editor/frontend/releases/download/v1.1.1/frontend-core.tar.gz",
+             "size_bytes": 1024, "sha256": "c" * 64,
+             "source_provenance": [{"repository_uri": "https://github.com/cdin-editor/frontend",
+             "revision": "d" * 40, "source_unit_id": "frontend-source"}]}},
             {"component_id": "frontend", "variant": "tui", "version": "1.1.1",
-             "delivery": "artifact", "selected_artifact": {"artifact_id": "frontend-tui",
-             "sha256": "e" * 64, "source_provenance": [{"revision": "f" * 40}]}},
+             "delivery": "artifact", "release_metadata_sha256": "7" * 64,
+             "release_metadata_uri": "https://raw.githubusercontent.com/cdin-editor/frontend/frontend-1.1.1/metadata.json",
+             "selected_artifact": {"artifact_id": "frontend-tui", "file_name": "frontend-tui.tar.gz",
+             "uri": "https://github.com/cdin-editor/frontend/releases/download/v1.1.1/frontend-tui.tar.gz",
+             "size_bytes": 1024, "sha256": "e" * 64,
+             "source_provenance": [{"repository_uri": "https://github.com/cdin-editor/frontend",
+             "revision": "f" * 40, "source_unit_id": "frontend-source"}]}},
             {"component_id": "runtime", "variant": "default", "version": "1.0.0-rc.3",
-             "delivery": "artifact", "selected_artifact": {"artifact_id": "runtime-modules",
-             "sha256": "1" * 64, "source_provenance": [{"revision": "2" * 40}]}},
+             "delivery": "artifact", "release_metadata_sha256": "6" * 64,
+             "release_metadata_uri": "https://raw.githubusercontent.com/cdin-editor/runtime/runtime-1.0.0-rc.3/metadata.json",
+             "selected_artifact": {"artifact_id": "runtime-modules", "file_name": "runtime.tar.gz",
+             "uri": "https://github.com/cdin-editor/runtime/releases/download/v1.0.0-rc.3/runtime.tar.gz",
+             "size_bytes": 1024, "sha256": "1" * 64,
+             "source_provenance": [{"repository_uri": "https://github.com/cdin-editor/runtime",
+             "revision": "2" * 40, "source_unit_id": "runtime-source"}]}},
         ]
         if profile == "gui-sdl":
             components.append({
                 "component_id": "frontend", "variant": "gui-sdl", "version": "1.1.1",
-                "delivery": "artifact", "selected_artifact": {"artifact_id": "frontend-gui-sdl",
-                "sha256": "3" * 64, "source_provenance": [{"revision": "4" * 40}]},
+                "delivery": "artifact", "release_metadata_sha256": "5" * 64,
+                "release_metadata_uri": "https://raw.githubusercontent.com/cdin-editor/frontend/frontend-1.1.1/metadata.json",
+                "selected_artifact": {"artifact_id": "frontend-gui-sdl", "file_name": "frontend-gui-sdl.tar.gz",
+                "uri": "https://github.com/cdin-editor/frontend/releases/download/v1.1.1/frontend-gui-sdl.tar.gz",
+                "size_bytes": 1024, "sha256": "3" * 64,
+                "source_provenance": [{"repository_uri": "https://github.com/cdin-editor/frontend",
+                "revision": "4" * 40, "source_unit_id": "frontend-source"}]},
             })
         manifest = {
             "schema_version": "1.1.0",
             "registry_version": "0.2.0-dev.1",
             "resolution": {"target": self.target, "delivery_mode": "artifact"},
+            "catalogs": [{"catalog_id": "cdin-components", "metadata_sha256": "5" * 64,
+                          "metadata_uri": "file:///registry/catalog-index.json"}],
+            "environment_contracts": [
+                {"contract_id": "org.cdin.kernel-abi", "version": "1.1.0"},
+                {"contract_id": "org.lua.puc-lua-c-api", "version": "5.4.0"},
+                {"contract_id": "org.m-mdy-m.log-c-api", "version": "0.1.0"},
+            ],
             "components": components,
         }
         path = self.workspace / "registry-manifest.json"
@@ -174,6 +211,100 @@ class InstalledDistributionTests(unittest.TestCase):
         link.symlink_to(self.runtime / "cdin", target_is_directory=True)
         with self.assertRaisesRegex(DistributionError, "symlink"):
             self.package(run_smoke=False)
+
+
+    def test_build_info_records_pinned_kernel_logger_and_environment_contracts(self) -> None:
+        result = self.package(run_smoke=False)
+        with tempfile.TemporaryDirectory(prefix="cdin-package-info-") as temporary:
+            extracted = safe_extract(Path(result["archive"]), Path(temporary))
+            build_info = json.loads((extracted / "BUILD-INFO.json").read_text(encoding="utf-8"))
+        kernel = build_info["build_dependencies"]["kernel_sdk"]
+        self.assertEqual(kernel["version"], "1.2.1")
+        self.assertEqual(kernel["logger_version"], "0.1.0")
+        self.assertEqual(kernel["source_revision"], "f4875b6eb59bd76878e7ff486b6114abd9bb1329")
+        self.assertEqual(len(kernel["asset"]["sha256"]), 64)
+        self.assertEqual(
+            {item["contract_id"] for item in build_info["environment_contracts"]},
+            {"org.cdin.kernel-abi", "org.lua.puc-lua-c-api", "org.m-mdy-m.log-c-api"},
+        )
+
+    def test_gui_sdl_build_info_records_pinned_sdl3_source_identity(self) -> None:
+        self.write_manifest("gui-sdl")
+        library = self.prefix / "lib" / "libSDL3.a"
+        library.parent.mkdir(parents=True)
+        library.write_bytes(b"pinned SDL3 SDK fixture")
+        result = self.package(profile="gui-sdl", run_smoke=False)
+        with tempfile.TemporaryDirectory(prefix="cdin-package-sdl-info-") as temporary:
+            extracted = safe_extract(Path(result["archive"]), Path(temporary))
+            build_info = json.loads((extracted / "BUILD-INFO.json").read_text(encoding="utf-8"))
+        sdl = build_info["build_dependencies"]["sdl3"]
+        self.assertEqual(sdl["version"], "3.4.16")
+        self.assertEqual(sdl["delivery"], "pinned-source-build")
+        self.assertEqual(len(sdl["source_archive_sha256"]), 64)
+
+    def test_rejects_missing_immutable_artifact_provenance(self) -> None:
+        manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))
+        manifest["components"][0]["selected_artifact"]["source_provenance"] = []
+        (self.workspace / "registry-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(DistributionError, "immutable source provenance"):
+            self.package(run_smoke=False)
+
+    def test_rejects_missing_release_metadata_digest(self) -> None:
+        manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))
+        del manifest["components"][0]["release_metadata_sha256"]
+        (self.workspace / "registry-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(DistributionError, "immutable release metadata identity"):
+            self.package(run_smoke=False)
+
+    def test_smoke_failure_does_not_publish_partial_distribution(self) -> None:
+        if os.name == "nt":
+            self.skipTest("the fixture executable is not a Windows PE binary")
+        self.executable.write_text(
+            "#!/bin/sh\n"
+            "case \"$1\" in\n"
+            "  --version) echo 'cdin 0.2.0'; exit 0 ;;\n"
+            "  --check) exit 9 ;;\n"
+            "  *) exit 2 ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        self.executable.chmod(0o755)
+        with self.assertRaisesRegex(DistributionError, "lifecycle check failed"):
+            self.package(run_smoke=True)
+        self.assertEqual(list(self.output.iterdir()) if self.output.exists() else [], [])
+
+    def test_safe_extractor_requires_an_empty_destination(self) -> None:
+        archive = self.root / "simple.zip"
+        with zipfile.ZipFile(archive, "w") as output:
+            output.writestr("cdin-test/README", "ok")
+        destination = self.root / "existing"
+        destination.mkdir()
+        (destination / "unexpected").write_text("preserve", encoding="utf-8")
+        with self.assertRaisesRegex(DistributionError, "empty directory"):
+            safe_extract(archive, destination)
+        self.assertEqual((destination / "unexpected").read_text(encoding="utf-8"), "preserve")
+
+    def test_safe_extractor_rejects_windows_drive_paths(self) -> None:
+        archive = self.root / "drive.zip"
+        with zipfile.ZipFile(archive, "w") as output:
+            output.writestr("C:/outside.txt", "outside")
+        with self.assertRaisesRegex(DistributionError, "unsafe archive member"):
+            safe_extract(archive, self.root / "drive-extract")
+
+    def test_safe_extractor_rejects_multiple_roots_and_case_collisions(self) -> None:
+        multiple = self.root / "multiple.zip"
+        with zipfile.ZipFile(multiple, "w") as output:
+            output.writestr("one/file", "1")
+            output.writestr("two/file", "2")
+        with self.assertRaisesRegex(DistributionError, "exactly one application root"):
+            safe_extract(multiple, self.root / "multiple-extract")
+
+        collision = self.root / "collision.zip"
+        with zipfile.ZipFile(collision, "w") as output:
+            output.writestr("root/Name", "1")
+            output.writestr("root/name", "2")
+        with self.assertRaisesRegex(DistributionError, "duplicate normalized paths"):
+            safe_extract(collision, self.root / "collision-extract")
 
     def test_safe_extractor_rejects_path_traversal(self) -> None:
         malicious = self.root / "malicious.zip"
