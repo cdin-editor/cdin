@@ -59,8 +59,11 @@ repository = "https://github.com/cdin-editor/registry.git"
 revision = "9c5a2960c77985a3fb7c7a535635c3f1b6093baa"
 version = "0.2.0-dev.2"
 
-# Source-built SDL3 remains a developer/GUI CI fallback until CDIN #124's
-# five-target SDK Release and exact asset digests are published.
+# This source archive is for explicit developer/CI fallback only.
+# Normal GUI-SDL consumers use scripts/sdl3_artifact.py and require a complete
+# [dependencies.sdl3_sdk] five-target immutable Release pin. That table is
+# intentionally absent until CDIN #124 publishes and verifies every asset;
+# do not invent tag commits, sizes or digests.
 [tooling.sdl3]
 version = "3.4.16"
 archive = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz"
