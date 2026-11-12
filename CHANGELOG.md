@@ -9,8 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add a pinned Registry release-artifact bootstrap that verifies the exact Git tag, source commit, release descriptor, Catalog snapshot, asset digests and native executable architecture before use.
+- Add initial artifact-consumer paths for Backend native CMake packages, Runtime Lua module archives and separate Frontend Core, TUI and GUI-SDL packages.
+- Add verified exact-pin Registry cache reuse, offline operation and fail-closed handling for incomplete or corrupt cache state.
+
 ### Changed
 
+- Keep component source builds behind explicit contributor/developer targets; the normal artifact consumer path does not silently fall back to cloning or compiling a component.
+- Keep SDL3 source compilation restricted to the explicit GUI-SDL developer opt-in; TUI must never acquire SDL3.
+- Validate pre-release reports against Registry's exact component/variant graph and environment-provider contracts, preserving immutable artifact descriptors, source provenance, Catalog identities and release metadata digests; reject duplicate component identities.
+- Make the one-time `v0.3.0-alpha.1` release recovery forward-only: verify the existing immutable tag, create a Release only when absent, and fail without deleting or replacing any existing Release.
 - Publish a unique source-only development pre-release for each successful pushed-branch commit, tied to the exact commit that passed CI.
 - Publish pushed version tags as tag-backed GitHub Releases using the matching changelog section and verified source assets.
 

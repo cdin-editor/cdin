@@ -30,6 +30,12 @@ class SDL3SourceExtractionTests(unittest.TestCase):
         build_stack.require_sdl3_source_build_opt_in("gui-sdl", True)
         build_stack.require_sdl3_source_build_opt_in("tui", False)
 
+    def test_tui_never_acquires_sdl_even_if_pipeline_sets_source_opt_in(self) -> None:
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", True))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", False))
+        self.assertTrue(build_stack.should_build_sdl3_from_source("gui-sdl", True))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("gui-sdl", False))
+
     def _write_lock(self, root: Path, digest: str) -> Path:
         lock = root / "deps.lock"
         lock.write_text(

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import hashlib
 import json
+import stat
 import urllib.request
 import tomllib
 from pathlib import Path
@@ -24,6 +25,7 @@ DEPS = ROOT / ".deps" / "src"
 PROFILE = "tui"
 WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 PREFIX = ROOT / ".deps" / "install"
+SDK_PREFIX = ROOT / ".deps" / "sdk"
 BUILD = ROOT / "build" / "stack"
 LOCK = ROOT / "deps.lock"
 
@@ -33,16 +35,24 @@ def run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = No
     subprocess.run(command, cwd=cwd, env=env, check=True)
 
 
-def pkg_env() -> dict[str, str]:
+def pkg_env(*, additional_prefixes: tuple[Path, ...] = ()) -> dict[str, str]:
     result = os.environ.copy()
-    entries = [str(PREFIX / "lib" / "pkgconfig"), str(PREFIX / "lib64" / "pkgconfig")]
-    current = result.get("PKG_CONFIG_PATH")
-    if current:
-        entries.append(current)
-    result["PKG_CONFIG_PATH"] = os.pathsep.join(entries)
-    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(
-        [str(PREFIX), result.get("CMAKE_PREFIX_PATH", "")]
-    ).rstrip(os.pathsep)
+    prefixes = [PREFIX, *additional_prefixes]
+    pkgconfig = [
+        str(path)
+        for prefix in prefixes
+        for path in (prefix / "lib" / "pkgconfig", prefix / "lib64" / "pkgconfig")
+    ]
+    current_pkgconfig = result.get("PKG_CONFIG_PATH")
+    if current_pkgconfig:
+        pkgconfig.append(current_pkgconfig)
+    result["PKG_CONFIG_PATH"] = os.pathsep.join(pkgconfig)
+
+    cmake_prefixes = [str(path) for path in prefixes]
+    current_cmake_prefix = result.get("CMAKE_PREFIX_PATH")
+    if current_cmake_prefix:
+        cmake_prefixes.append(current_cmake_prefix)
+    result["CMAKE_PREFIX_PATH"] = os.pathsep.join(cmake_prefixes)
     if os.name == "nt":
         # Windows does not use the executable's RPATH. The Kernel package
         # installs cdin_kernel.dll into PREFIX/bin, while CTest launches the
@@ -56,6 +66,261 @@ def pkg_env() -> dict[str, str]:
     return result
 
 
+def _stage_install_prefix(
+    package: Path,
+    prefix: Path,
+    *,
+    component: str,
+    required_files: tuple[str, ...],
+) -> None:
+    """Merge one verified CMake install prefix without overwriting other SDKs."""
+    try:
+        info = package.lstat()
+    except OSError as error:
+        raise RuntimeError(f"{component} package is unavailable: {package}") from error
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+        raise RuntimeError(f"{component} package root must be a real directory")
+
+    for relative in required_files:
+        path = package / relative
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f"{component} package is missing a regular required file: {relative}")
+
+    prefix = Path(os.path.abspath(prefix))
+    ancestor = prefix
+    while ancestor != ancestor.parent:
+        if ancestor.is_symlink():
+            raise RuntimeError(f"{component} destination contains a symlink ancestor: {ancestor}")
+        ancestor = ancestor.parent
+    if prefix.exists() or prefix.is_symlink():
+        prefix_info = prefix.lstat()
+        if stat.S_ISLNK(prefix_info.st_mode) or not stat.S_ISDIR(prefix_info.st_mode):
+            raise RuntimeError(f"{component} destination must be a real directory")
+    else:
+        prefix.mkdir(parents=True, exist_ok=False)
+
+    package = Path(os.path.abspath(package))
+    ancestor = package
+    while ancestor != ancestor.parent:
+        if ancestor.is_symlink():
+            raise RuntimeError(f"{component} package contains a symlink ancestor: {ancestor}")
+        ancestor = ancestor.parent
+
+    source_files: list[Path] = []
+    for top in ("include", "lib", "bin", "share"):
+        source_root = package / top
+        if not source_root.exists():
+            continue
+        if source_root.is_symlink() or not source_root.is_dir():
+            raise RuntimeError(f"{component} package contains an unsafe prefix entry: {top}")
+        for current, directories, files in os.walk(source_root, topdown=True, followlinks=False):
+            current_path = Path(current)
+            for name in list(directories):
+                source_dir = current_path / name
+                if source_dir.is_symlink() or not source_dir.is_dir():
+                    raise RuntimeError(
+                        f"{component} package contains a symlink/special directory: "
+                        f"{source_dir.relative_to(package)}"
+                    )
+            for name in files:
+                source_file = current_path / name
+                file_info = source_file.lstat()
+                if stat.S_ISLNK(file_info.st_mode) or not stat.S_ISREG(file_info.st_mode):
+                    raise RuntimeError(
+                        f"{component} package contains a symlink/special file: "
+                        f"{source_file.relative_to(package)}"
+                    )
+                source_files.append(source_file)
+
+    # Preflight the entire file set. Identical existing SDK files are reusable;
+    # different bytes at the same path are never silently replaced.
+    existing_identical: set[Path] = set()
+    for source_file in source_files:
+        relative = source_file.relative_to(package)
+        destination = prefix / relative
+        if destination.is_symlink():
+            raise RuntimeError(f"{component} destination is a symlink: {relative}")
+        if destination.exists():
+            if not destination.is_file():
+                raise RuntimeError(f"{component} destination is not a regular file: {relative}")
+            if destination.read_bytes() != source_file.read_bytes():
+                raise RuntimeError(f"{component} package would overwrite a different staged file: {relative}")
+            existing_identical.add(relative)
+        parent = destination.parent
+        while parent != prefix and parent != parent.parent:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                raise RuntimeError(f"{component} package has an unsafe destination parent: {parent}")
+            parent = parent.parent
+
+    for source_file in source_files:
+        relative = source_file.relative_to(package)
+        if relative in existing_identical:
+            continue
+        destination = prefix / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() or destination.is_symlink():
+            raise RuntimeError(f"{component} destination changed during staging: {relative}")
+        shutil.copy2(source_file, destination)
+
+    print(f"Staged {component} install prefix from {package}", flush=True)
+
+
+def stage_kernel_sdk_prefix(package: Path, prefix: Path) -> None:
+    """Stage the pinned Kernel 1.2.1 + logger 0.1.0 SDK into CDIN's private prefix."""
+    _stage_install_prefix(
+        package,
+        prefix,
+        component="Kernel/logger SDK",
+        required_files=(
+            "include/cdin/kernel.h",
+            "include/m-mdy-m/log.h",
+            "lib/libcdin_kernel.a",
+            "lib/libm-mdy-m-log.a",
+            "lib/pkgconfig/cdin-kernel.pc",
+            "lib/pkgconfig/m-mdy-m-log.pc",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-config.cmake",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-config-version.cmake",
+            "lib/cmake/m-mdy-m-log/m-mdy-m-log-targets.cmake",
+        ),
+    )
+
+
+def stage_cmake_prefix(package: Path, prefix: Path) -> None:
+    """Stage a Registry-verified cmake-prefix-v1 component without collisions."""
+    _stage_install_prefix(
+        package,
+        prefix,
+        component="Backend",
+        required_files=(
+            "include/cdin/backend.h",
+            "lib/libcdin_backend.a",
+            "lib/libcdin_backend_services.a",
+            "lib/libcdin_protocol.a",
+            "lib/cmake/cdinBackend/cdinBackendConfig.cmake",
+            "lib/pkgconfig/cdin-backend.pc",
+            "lib/pkgconfig/cdin-backend-services.pc",
+            "lib/pkgconfig/cdin-protocol.pc",
+        ),
+    )
+
+
+def stage_frontend_variant_prefix(
+    package: Path,
+    prefix: Path,
+    *,
+    variant: str,
+) -> None:
+    """Stage one immutable Frontend package without merging variant metadata."""
+    required_by_variant = {
+        "core": (
+            "include/cdin/frontend/core/version.h",
+            "lib/libcdin_frontend_core.a",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfig.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreConfigVersion.cmake",
+            "lib/cmake/cdinFrontendCore/cdinFrontendCoreTargets.cmake",
+            "lib/pkgconfig/cdin-frontend-core.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+        "tui": (
+            "include/cdin/frontend/ui/tui/tui.h",
+            "lib/libcdin_frontend_ui_tui.a",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfig.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUIConfigVersion.cmake",
+            "lib/cmake/cdinFrontendTUI/cdinFrontendTUITargets.cmake",
+            "lib/pkgconfig/cdin-frontend-tui.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+        "gui-sdl": (
+            "include/cdin/frontend/ui/gui_sdl/gui_sdl.h",
+            "lib/libcdin_frontend_ui_gui_sdl.a",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLConfig.cmake",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLConfigVersion.cmake",
+            "lib/cmake/cdinFrontendGUISDL/cdinFrontendGUISDLTargets.cmake",
+            "lib/pkgconfig/cdin-frontend-gui-sdl.pc",
+            "share/cdin-frontend/BUILD-INFO.txt",
+        ),
+    }
+    if variant not in required_by_variant:
+        raise ValueError(f"unsupported Frontend package variant: {variant}")
+    _stage_install_prefix(
+        package,
+        prefix,
+        component=f"Frontend {variant}",
+        required_files=required_by_variant[variant],
+    )
+
+
+def runtime_module_package_root(manifest: dict) -> Path:
+    """Return the verified Runtime archive root containing its Lua tree."""
+    matches = [
+        item for item in manifest.get("components", [])
+        if item.get("component_id") == "runtime" and item.get("variant") == "default"
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("Resolved Manifest must select exactly one Runtime package")
+    runtime = matches[0]
+    artifact = runtime.get("selected_artifact")
+    if runtime.get("delivery") != "artifact" or not isinstance(artifact, dict):
+        raise RuntimeError("artifact-only product requires a selected Runtime module archive")
+    if artifact.get("kind") != "runtime-module-archive":
+        raise RuntimeError("Runtime artifact is not a Lua module archive")
+    if artifact.get("layout") != "lua-module-tree-v1":
+        raise RuntimeError("Runtime artifact does not declare lua-module-tree-v1")
+    if artifact.get("target") != {"os": "any", "architecture": "any", "abi": "none"}:
+        raise RuntimeError("Runtime module archive must declare the universal any/any/none target")
+    if artifact.get("workspace_path") != "components/runtime/default/package":
+        raise RuntimeError("Runtime package workspace path is not canonical")
+
+    package = WORKSPACE / artifact["workspace_path"]
+    root = package / f"cdin-runtime-{runtime['version']}"
+    for candidate in (package, root, root / "lua", root / "lua" / "cdin" / "runtime.lua"):
+        if candidate.is_symlink():
+            raise RuntimeError(f"Runtime module package contains a symlink: {candidate}")
+    if not root.is_dir() or not (root / "lua" / "cdin" / "runtime.lua").is_file():
+        raise RuntimeError(f"Runtime module archive is incomplete: {root}")
+    return root
+
+
+def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
+    """Fail closed unless the exact target-native, prebuilt SDL3 SDK is staged."""
+    sdk = prefix / "share" / "cdin" / "sdl3-sdk.json"
+    config = prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
+    header = prefix / "include" / "SDL3" / "SDL.h"
+    static_libraries = (
+        prefix / "lib" / "libSDL3.a",
+        prefix / "lib" / "SDL3-static.lib",
+    )
+    for path in (sdk, config, header):
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(
+                f"GUI-SDL requires the verified prebuilt SDL3 SDK; missing or unsafe: {path}"
+            )
+    if not any(path.is_file() and not path.is_symlink() for path in static_libraries):
+        raise RuntimeError(
+            "GUI-SDL SDK is missing its target-native static SDL3 library "
+            "(expected libSDL3.a or SDL3-static.lib)"
+        )
+    try:
+        metadata = json.loads(sdk.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"SDL3 SDK identity manifest is invalid: {error}") from error
+    expected_target = {
+        "os": "macos" if target["os"] == "darwin" else target["os"],
+        "architecture": target["architecture"],
+        "abi": target["abi"],
+    }
+    if (
+        metadata.get("schema") != "cdin.sdl3-sdk.v1"
+        or metadata.get("version") != "3.4.16"
+        or metadata.get("target") != expected_target
+        or metadata.get("linkage") != "static"
+        or metadata.get("cmake_package") != "SDL3"
+    ):
+        raise RuntimeError(
+            f"SDL3 SDK identity does not match the pinned version/target: {metadata}"
+        )
+
+
 def cmake_component(name: str, source: Path, *, options: list[str], env: dict[str, str]) -> None:
     build = BUILD / name
     run(["cmake", "-S", str(source), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release",
@@ -66,7 +331,7 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
 
 
 def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
-    """Prevent the GUI-SDL source build from becoming an implicit consumer path."""
+    """Prevent GUI-SDL source compilation from becoming an implicit install path."""
     if profile == "gui-sdl" and not enabled:
         raise RuntimeError(
             "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
@@ -75,8 +340,13 @@ def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
         )
 
 
+def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
+    """Only GUI-SDL developer builds may compile the SDL3 source archive."""
+    return profile == "gui-sdl" and enabled
+
+
 def install_sdl3(env: dict[str, str]) -> None:
-    """Build the checksum-pinned SDL3 source archive for developer builds only."""
+    """Build the checksum-pinned SDL3 needed by the optional GUI peer."""
     lock = tomllib.loads(LOCK.read_text(encoding="utf-8"))
     spec = lock["tooling"]["sdl3"]
     version = spec["version"]
@@ -86,9 +356,6 @@ def install_sdl3(env: dict[str, str]) -> None:
     source_root.parent.mkdir(parents=True, exist_ok=True)
     if source_root.is_symlink() or (source_root.exists() and not source_root.is_dir()):
         raise RuntimeError("SDL3 source root is not a real directory")
-    # The final os.replace() installs a versioned directory beneath this path.
-    # Create and validate the parent first; otherwise fresh Windows/macOS/Linux
-    # workspaces fail when the staged tree is atomically moved into place.
     source_root.mkdir(parents=True, exist_ok=True)
     if not archive.is_file():
         print(f"Downloading SDL3 {version}", flush=True)
@@ -106,18 +373,16 @@ def install_sdl3(env: dict[str, str]) -> None:
     if marker.exists() and not marker.is_file():
         raise RuntimeError("SDL3 source cache marker is not a regular file")
     if not marker.is_file():
-        # Never extract into the reusable source path. A late extraction error
-        # must not leave a CMakeLists.txt marker that makes a later invocation
-        # trust and execute a partially extracted tree.
+        # Extract to a fresh sibling directory. Never publish a partially
+        # extracted source tree into the reusable source cache.
         with tempfile.TemporaryDirectory(
             prefix=".sdl3-extract-", dir=source_root.parent
         ) as temporary:
             staging_root = Path(temporary)
-            staged_source = safe_extract_sdl3_source(archive, staging_root)
-            staged_source = Path(staged_source)
-            if staged_source.parent.resolve() != staging_root.resolve():
+            staged_source = Path(safe_extract_sdl3_source(archive, staging_root))
+            if staged_source.resolve().parent != staging_root.resolve():
                 raise RuntimeError(
-                    f"SDL3 extractor returned a source tree outside its staging directory: {staged_source}"
+                    f"SDL3 extractor returned a source tree outside staging: {staged_source}"
                 )
             staged_marker = staged_source / "CMakeLists.txt"
             if (
@@ -129,11 +394,10 @@ def install_sdl3(env: dict[str, str]) -> None:
                     f"SDL3 source archive did not produce a valid staged tree: {staged_source}"
                 )
 
-            # Preserve any pre-existing incomplete tree until the replacement
-            # has been fully extracted and its CMake entry point is validated.
-            backup = staging_root / "previous-source"
+            backup_root = Path(tempfile.mkdtemp(prefix=".sdl3-rollback-", dir=staging_root))
+            backup = backup_root / "previous-source"
             had_previous = source.exists()
-            if had_previous and not source.is_dir():
+            if had_previous and (source.is_symlink() or not source.is_dir()):
                 raise RuntimeError("SDL3 source cache is not a real directory")
             if had_previous:
                 os.replace(source, backup)
@@ -189,6 +453,37 @@ def pinned_package_version(name: str, variant: str = "default") -> str:
     return matches[0]
 
 
+def verify_environment_sdk_contract(manifest: dict, sdk_pin: dict) -> None:
+    """Bind externally staged SDKs and Lua to the Product Definition environment providers."""
+    declarations = manifest.get("environment_contracts", [])
+    providers = {
+        (item.get("contract_id"), item.get("version"))
+        for item in declarations
+    }
+    expected = {
+        ("org.cdin.kernel-abi", sdk_pin.get("kernel_abi")),
+        ("org.m-mdy-m.log-c-api", sdk_pin.get("logger_version")),
+        ("org.lua.puc-lua-c-api", "5.4.0"),
+    }
+    missing = sorted(expected - providers)
+    unexpected = sorted(
+        (contract_id, version)
+        for contract_id, version in providers
+        if contract_id in {
+            "org.cdin.kernel-abi",
+            "org.m-mdy-m.log-c-api",
+            "org.lua.puc-lua-c-api",
+        }
+        and (contract_id, version) not in expected
+    )
+    if missing or unexpected:
+        raise RuntimeError(
+            f"SDK environment contracts do not match deps.lock; missing={missing}, unexpected={unexpected}"
+        )
+
+
+
+
 def verify_runtime_version(executable: Path, env: dict[str, str]) -> None:
     expected = pinned_package_version("runtime")
     print("+", str(executable), "--check", flush=True)
@@ -222,6 +517,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=("tui", "gui-sdl"), default=default_profile)
     parser.add_argument(
+        "--registry-source-build",
+        action="store_true",
+        help="developer/CI-only: verify the workspace using the pinned Registry source build",
+    )
+    parser.add_argument(
         "--build-sdl3-from-source",
         action="store_true",
         help="developer-only opt-in to build SDL3 from its pinned source archive",
@@ -236,78 +536,109 @@ def main() -> int:
 
     require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
 
-    for tool in ("git", "cmake", "make", "pkg-config"):
+    for tool in ("cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
             return 2
+    if args.registry_source_build and shutil.which("git") is None:
+        print("missing developer-only Registry source build tool: git", file=sys.stderr)
+        return 2
 
     # Registry owns component discovery and immutable source collection.
     # The manifest, not deps.lock, is the authoritative component selection.
-    run([sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"])
+    registry_command = [
+        sys.executable, "scripts/registry.py", "--profile", PROFILE, "--verify-workspace"
+    ]
+    if args.registry_source_build:
+        registry_command.extend(("--source-build", "--developer-source-components"))
+    run(registry_command)
+    e2e_command = [
+        sys.executable,
+        "tests/e2e/test_registry_workspace.py",
+        "--workspace", str(WORKSPACE),
+        "--profile", PROFILE,
+    ]
+    if args.registry_source_build:
+        e2e_command.append("--developer-source-components")
+    run(e2e_command)
     run([sys.executable, "scripts/deps.py", "--verify"])
+    manifest = json.loads((WORKSPACE / "registry-manifest.json").read_text(encoding="utf-8"))
+    sdk_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["dependencies"]["kernel_sdk"]
+    verify_environment_sdk_contract(manifest, sdk_pin)
     PREFIX.mkdir(parents=True, exist_ok=True)
     BUILD.mkdir(parents=True, exist_ok=True)
-    env = pkg_env()
-    lua_options: list[str] = []
-    if os.name == "nt":
-        lua_include = os.environ.get("CDIN_LUA_INCLUDE_DIR")
-        lua_library = os.environ.get("CDIN_LUA_LIBRARY")
-        if not lua_include or not lua_library:
-            print("Windows builds require the explicit Lua 5.4 UCRT64 include and library paths", file=sys.stderr)
-            return 2
-        lua_options = [f"-DLUA_INCLUDE_DIR={lua_include}", f"-DLUA_LIBRARY={lua_library}"]
+    stage_kernel_sdk_prefix(SDK_PREFIX, PREFIX)
 
-    logger = DEPS / "logger"
-    logger_build = BUILD / "logger"
-    run(["cmake", "-S", str(logger), "-B", str(logger_build),
-         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
-         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DBUILD_SHARED_LIBS=OFF",
-         "-DBUILD_TESTING=OFF", "-DM_MDY_M_LOG_BUILD_TESTS=OFF",
-         "-DM_MDY_M_LOG_BUILD_EXAMPLES=OFF"], env=env)
-    run(["cmake", "--build", str(logger_build), "--parallel"], env=env)
-    run(["cmake", "--install", str(logger_build)], env=env)
-
-    kernel = DEPS / "kernel"
-    kernel_package_version = pinned_package_version("kernel")
-    logger_args = [f"DEPS_PREFIX={PREFIX}", f"LOG_SOURCE_DIR={logger}",
-                   f"LOG_BUILD_DIR={logger_build}"]
-    run(["make", "all", "shared", *logger_args], cwd=kernel, env=env)
-    run(["make", "check", *logger_args], cwd=kernel, env=env)
-    # Kernel distinguishes the published package version from its C ABI version.
-    # Its release workflow supplies PACKAGE_VERSION when installing the .pc file;
-    # use the same rule so Backend's pkg-config >=1.2.1 check validates the
-    # package release, while ABI 1.1.0 remains recorded in kernel.h.
-    run(["make", "install", f"PREFIX={PREFIX}",
-         f"PACKAGE_VERSION={kernel_package_version}", *logger_args], cwd=kernel, env=env)
-
-    backend = DEPS / "backend"
-    cmake_component("backend", backend, options=["-DCDIN_WITH_LUA=ON",
-        "-DCDIN_BUILD_BACKEND=ON", "-DCDIN_BUILD_INTEGRATION_TESTS=ON",
-        "-DCDIN_BUILD_EXAMPLES=OFF", "-DBUILD_TESTING=ON", *lua_options], env=env)
+    backend_package = (
+        WORKSPACE / "components" / "backend" / "default" / "package"
+    )
+    stage_cmake_prefix(backend_package, PREFIX)
 
     gui_enabled = PROFILE == "gui-sdl"
-    if gui_enabled:
-        install_sdl3(env)
-    frontend = DEPS / "frontend"
-    frontend_options = [
-        "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
-        "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
-        f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
-        "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
-        "-DCDIN_FRONTEND_BUILD_APPS=OFF",
-        "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
-    ]
-    cmake_component("frontend", frontend, options=frontend_options, env=env)
+    if args.registry_source_build:
+        # Explicit developer mode only: current Catalog still delivers Runtime
+        # and Frontend source units. Normal consumer builds never compile them.
+        env = pkg_env()
+        if should_build_sdl3_from_source(PROFILE, args.build_sdl3_from_source):
+            install_sdl3(env)
+        frontend = DEPS / "frontend"
+        frontend_options = [
+            "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
+            "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
+            f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
+            "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
+            "-DCDIN_FRONTEND_BUILD_APPS=OFF",
+            "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
+        ]
+        cmake_component("frontend", frontend, options=frontend_options, env=env)
+        runtime_root = DEPS / "runtime"
+        frontend_prefixes: tuple[Path, ...] = ()
+    else:
+        runtime_root = runtime_module_package_root(manifest)
+        selected_variants = ("core", "tui", "gui-sdl") if gui_enabled else ("core", "tui")
+        staged_prefixes: list[Path] = []
+        for variant in selected_variants:
+            artifact_package = (
+                WORKSPACE / "components" / "frontend" / variant / "package"
+            )
+            variant_prefix = PREFIX / "frontend" / variant
+            stage_frontend_variant_prefix(
+                artifact_package,
+                variant_prefix,
+                variant=variant,
+            )
+            staged_prefixes.append(variant_prefix)
+        frontend_prefixes = tuple(staged_prefixes)
+        if gui_enabled:
+            # CDIN #124 owns acquisition/verification of this SDK. Until that
+            # path is wired to the published five-target release, fail closed.
+            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+        env = pkg_env(additional_prefixes=frontend_prefixes)
 
     root_build = BUILD / "cdin"
+    frontend_cmake_options = [
+        f"-DCDIN_FRONTEND_SPLIT_PACKAGES={'OFF' if args.registry_source_build else 'ON'}",
+        f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
+    ]
+    if not args.registry_source_build:
+        frontend_cmake_options.extend((
+            f"-DCDIN_FRONTEND_CORE_PACKAGE_VERSION={pinned_package_version('frontend', 'core')}",
+            f"-DCDIN_FRONTEND_TUI_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
+        ))
+        if gui_enabled:
+            frontend_cmake_options.append(
+                f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl')}"
+            )
+
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
-         f"-DCDIN_RUNTIME_SOURCE_DIR={DEPS / 'runtime'}",
+         f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
-         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
+         *frontend_cmake_options,
          "-DCDIN_INSTALL_RUNTIME=ON",
          f"-DCDIN_ENABLE_GUI_SDL={'ON' if gui_enabled else 'OFF'}",
+         f"-DCDIN_DEVELOPER_SOURCE_COMPONENTS={'ON' if args.registry_source_build else 'OFF'}",
          "-DBUILD_TESTING=ON",
          "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"], env=env)
     run(["cmake", "--build", str(root_build), "--parallel"], env=env)

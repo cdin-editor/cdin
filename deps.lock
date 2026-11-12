@@ -1,29 +1,66 @@
-schema_version = 1
+# Pinned SDK packages for contracts provided by the CDIN build environment.
+# Kernel 1.2.1's published native packages contain both cdin-kernel and the
+# independently versioned m-mdy-m/log.c 0.1.0 SDK. The package source commit,
+# tag, per-target asset size and GitHub-published SHA-256 are immutable inputs.
 
-[dependencies.logger]
-repository = "https://github.com/m-mdy-m/log.c.git"
-revision = "c9b53e9901dc7103eb50be282ae055fe16e98f9a"
-version = "0.1.0"
-role = "CDIN-owned diagnostics"
+[dependencies]
 
-[tooling.pipeline]
-repository = "https://github.com/m-mdy-m/pipeline.git"
-revision = "79169afc4f9f74ee46c52be2bf6974f8544c7db1"
+[dependencies.kernel_sdk]
+repository = "https://github.com/cdin-editor/kernel"
+tag = "v1.2.1"
+version = "1.2.1"
+revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
+kernel_abi = "1.1.0"
+logger_version = "0.1.0"
 
-[tooling.psx]
-repository = "https://github.com/m-mdy-m/psx.git"
-revision = "e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df"
+[dependencies.kernel_sdk.assets."linux-x86_64"]
+file_name = "cdin-kernel-1.2.1-linux-x86_64.tar.gz"
+format = "tar.gz"
+size_bytes = 268126
+sha256 = "05779c5a23a24b3a5cb4e978d803f8e4bd81c73dbf5ba2b47e36b34ed0ddda21"
 
-[tooling.gix]
-repository = "https://github.com/m-mdy-m/gix.git"
-revision = "9f0867923177cef3cd36d980cc2b356a35bee507"
+[dependencies.kernel_sdk.assets."linux-arm64"]
+file_name = "cdin-kernel-1.2.1-linux-arm64.tar.gz"
+format = "tar.gz"
+size_bytes = 274198
+sha256 = "2b8a081343b31772701c0fcbe287860b8c4f19efe8e852edbcf282c2428365e8"
 
+[dependencies.kernel_sdk.assets."macos-x86_64"]
+file_name = "cdin-kernel-1.2.1-macos-x86_64.tar.gz"
+format = "tar.gz"
+size_bytes = 254606
+sha256 = "0a1dbb4bfb9c61ec82ff1636d5042b8291be848a9042ea201869dc1a7bc383e4"
 
+[dependencies.kernel_sdk.assets."macos-arm64"]
+file_name = "cdin-kernel-1.2.1-macos-arm64.tar.gz"
+format = "tar.gz"
+size_bytes = 252064
+sha256 = "d61e1314b7864fd8ebdac850242d101778588e38c11bbb8b0dc4abbcbcf872d9"
+
+[dependencies.kernel_sdk.assets."windows-x86_64"]
+file_name = "cdin-kernel-1.2.1-windows-x86_64.zip"
+format = "zip"
+size_bytes = 300986
+sha256 = "cab2b903670cdffec8996a8daf42328c789d69392f7a1c818254af8b23b48a71"
+
+# Consumer Registry release pin. The descriptor digest/size are intentionally
+# absent until Registry #58 publishes and verifies the corrected 0.2.0-dev.1
+# release. Normal acquisition therefore fails closed rather than using v0.1.0-dev.
 [tooling.registry]
 repository = "https://github.com/cdin-editor/registry.git"
 revision = "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"
 version = "0.1.0-dev"
+release_tag = "v0.1.0-dev"
 
+# Exact source pin used only by explicit contributor/CI source-build targets.
+# This is not a consumer release pin and must never be used by normal make install.
+[tooling.registry.development]
+repository = "https://github.com/cdin-editor/registry.git"
+revision = "ff317e458a57dd9d8b8a2be8f7439ba860c99f10"
+version = "0.2.0-dev.1"
+
+# Source-built SDL3 remains a developer/GUI CI fallback until CDIN #124's
+# five-target SDK Release and exact asset digests are published.
 [tooling.sdl3]
 version = "3.4.16"
 archive = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz"

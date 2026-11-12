@@ -15,13 +15,13 @@ timeout_seconds = 1200
 
 [tasks.registry]
 description = "Build Registry, resolve CDIN releases, prepare and replay the immutable source workspace"
-command = ["python3", "scripts/registry.py"]
+command = ["python3", "scripts/registry.py", "--source-build", "--developer-source-components"]
 depends_on = ["dependencies"]
 timeout_seconds = 2400
 
 [tasks.stack]
-description = "Build, test, install and smoke-test the selected Registry-prepared product profile"
-command = ["python3", "scripts/build_stack.py", "--build-sdl3-from-source"]
+description = "Build, test, install and smoke-test the selected Registry-prepared developer profile; SDL3 source is explicitly opted in"
+command = ["python3", "scripts/build_stack.py", "--registry-source-build", "--build-sdl3-from-source"]
 depends_on = ["registry"]
 timeout_seconds = 3600
 
@@ -41,13 +41,23 @@ description = "Test portable Python and Registry Go toolchain environment select
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_bootstrap.py"]
 timeout_seconds = 60
 
+[tasks.registry-artifact-tests]
+description = "Test immutable Registry release bootstrap, provenance and cache verification"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_registry_artifact.py"]
+timeout_seconds = 60
+
 [tasks.sdl3-source-tests]
-description = "Test SDL3 source archive extraction and SDK package safety"
-command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*sdl3*.py"]
+description = "Test bounded SDL3 source extraction and explicit developer-only opt-in"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_build_stack_sdl3.py"]
+timeout_seconds = 60
+
+[tasks.pre-release-tests]
+description = "Test the source pre-release manifest against Registry artifact/source delivery semantics"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pre_release.py"]
 timeout_seconds = 60
 
 [tasks.pre-release]
 description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "sdl3-source-tests"]
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests"]
 timeout_seconds = 180

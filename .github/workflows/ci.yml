@@ -41,6 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      GITHUB_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -69,12 +70,9 @@ jobs:
             mingw-w64-ucrt-x86_64-python
             mingw-w64-ucrt-x86_64-python-pip
             mingw-w64-ucrt-x86_64-go
-      - name: Select Lua 5.4 for Windows (UCRT64)
+      - name: Verify Lua 5.4 pkg-config for Backend artifact consumers (Windows/UCRT64)
         if: runner.os == 'Windows'
-        run: |
-          pkg-config --modversion lua5.4
-          echo "CDIN_LUA_INCLUDE_DIR=$(cygpath -m /ucrt64/include/lua5.4)" >> "$GITHUB_ENV"
-          echo "CDIN_LUA_LIBRARY=$(cygpath -m /ucrt64/lib/liblua5.4.dll.a)" >> "$GITHUB_ENV"
+        run: pkg-config --modversion lua5.4
       - name: Install native build dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -91,8 +89,10 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Run SDL3 SDK packaging safety tests
-        run: python -m unittest discover -s tests -p "test_*sdl3*.py"
+      - name: Run Registry and SDL3 artifact bootstrap tests
+        run: |
+          python -m unittest discover -s tests -p test_registry_artifact.py
+          python -m unittest discover -s tests -p "test_*sdl3*.py"
       - name: Prepare Git identity and base branch for gix
         run: |
           git config user.name "github-actions[bot]"
@@ -232,6 +232,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

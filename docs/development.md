@@ -15,10 +15,10 @@ The [Architecture](architecture.md) document describes ownership and runtime beh
 | `src/cli/` | Small launcher argument parser. |
 | `src/diagnostics/` | CDIN logger adapter and Backend log callback. |
 | `include/cdin/` | Private headers shared by launcher modules. |
-| `scripts/deps.py` | Pinned non-component dependency checkout and materialization. |
-| `scripts/registry.py` | Build Registry, validate inputs, resolve, prepare, verify and replay the component workspace. |
+| `scripts/deps.py` | Download, validate and atomically install the pinned Kernel 1.2.1 + logger 0.1.0 SDK Release package. |
+| `scripts/registry.py` | Acquire the pinned Registry Release binary/Catalog by default; validate, resolve, prepare, verify and replay the component workspace. Its explicit `--source-build` switch is for Registry development only. |
 | `scripts/registry_version.py` | Read package versions from the Resolved Manifest for CMake package checks. |
-| `scripts/build_stack.py` | Build/test/install orchestration using Registry-collected component sources. |
+| `scripts/build_stack.py` | Artifact-only consumer orchestration; source-delivered components are accepted only under the explicit developer/CI opt-in. |
 | `scripts/check_boundaries.py` | Source-boundary guard plus architecture unit tests and compiler-resolved include audit. |
 | `scripts/check_include_graph.py` | Trace compiler-resolved headers from `compile_commands.json`; reject private component source/build headers. |
 | `src/integration/gui_sdl.c` | CDIN-owned Backend/Frontend Protocol transport and GUI-SDL process lifecycle composition. |
@@ -36,7 +36,7 @@ Registry prepares immutable component source units under `.deps/registry-workspa
 
 ## 2. Prerequisites
 
-The native stack needs a C11 compiler and linker, CMake 3.22 or newer, Make, Git, `pkg-config`, PUC Lua 5.4 development files, Python 3.11 or newer and Go 1.27.3 or newer for the Registry build tool.
+The Composition Root build needs a C11 compiler and linker, CMake 3.22 or newer, Make, `pkg-config`, PUC Lua 5.4 development files and Python 3.11 or newer. The normal consumer path is designed not to require Git or Go: Registry and component packages are acquired as pinned Release artifacts. Git and Go 1.27.3 or newer are required only by the explicit hybrid developer/CI source path (`make registry-dev`, `make stack-dev`, or `make stack-gui-dev`).
 
 ### GNU/Linux
 
@@ -44,8 +44,11 @@ On Debian or Ubuntu:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential cmake git make pkg-config \
+sudo apt-get install build-essential cmake make pkg-config \
   liblua5.4-dev python3 python3-pip
+
+# Only for the explicit hybrid developer/CI source-build path:
+sudo apt-get install git golang
 ```
 
 ### macOS
@@ -61,37 +64,50 @@ export PKG_CONFIG_PATH="$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 ### Windows
 
-Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, Git, pkgconf, Lua 5.4, Python, Python pip and Go packages from the UCRT64 repository:
+Use the MSYS2 **UCRT64** environment. Install the MinGW-w64 toolchain, CMake, Make, pkgconf, Lua 5.4, Python and Python pip from the UCRT64 repository. Git and Go are needed only for the explicit developer source-build targets:
 
 ```sh
-pacman -S --needed base-devel git mingw-w64-ucrt-x86_64-toolchain \
+pacman -S --needed base-devel mingw-w64-ucrt-x86_64-toolchain \
   mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-pkgconf \
   mingw-w64-ucrt-x86_64-lua54 mingw-w64-ucrt-x86_64-python \
-  mingw-w64-ucrt-x86_64-python-pip mingw-w64-ucrt-x86_64-go
+  mingw-w64-ucrt-x86_64-python-pip
+
+# Only for the explicit hybrid developer/CI source-build path:
+pacman -S --needed git mingw-w64-ucrt-x86_64-go
 ```
 
-Use the `lua54` package rather than the unversioned `lua` package. The CI build selects `/ucrt64/include/lua5.4` and `/ucrt64/lib/liblua5.4.dll.a` explicitly so Lua 5.5 cannot be selected accidentally. Run the build commands from that environment so compiler, Python, Go and pkg-config resolve to the same toolchain. MSVC is not currently a verified build target.
+Use the `lua54` package rather than the unversioned `lua` package. The CI build selects `/ucrt64/include/lua5.4` and `/ucrt64/lib/liblua5.4.dll.a` explicitly so Lua 5.5 cannot be selected accidentally. The normal Registry binary bootstrap does not require Go. Install the UCRT64 Go package only when using the explicit Registry source-build targets. MSVC is not currently a verified build target.
 
 ## 3. Resolve, build and test the component stack
 
-From the repository root:
+There are two intentionally separate paths.
+
+**Normal consumer path (artifact-only):**
 
 ```sh
-make stack
+make install
+# or choose the GUI-SDL profile:
+CDIN_FRONTEND_VARIANT=gui-sdl make install
 ```
 
-The Pipeline task graph performs the following steps in order:
+This path does not clone component repositories or build component sources. Registry resolves only published artifacts; CDIN stages their verified packages and builds the Composition Root. It fails closed while any required immutable Registry/component/SDK Release is missing. It must never silently fall back to source delivery.
 
-1. Check out the immutable non-component dependencies and developer tools.
-2. Check out and build the pinned Registry source, then run its Go test suite.
-3. Validate the selected Product Definition and Catalog Index against Registry's versioned contracts.
-4. Resolve the transitive component/dependency/contract graph.
-5. Prepare the immutable source workspace and Resolved Manifest.
-6. Verify the Manifest, replay it into a second workspace and compare the resulting Manifest bytes.
-7. Materialize the selected source units for the existing dependency-ordered build.
-8. Build/test/install Kernel, Backend and Frontend, configure/build/test/install CDIN, and run product lifecycle E2E.
+**Current hybrid developer/CI path:**
 
-The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains only non-component dependencies and build tools. See [Registry integration](development/registry.md).
+```sh
+make stack-dev
+make stack-gui-dev
+```
+
+The developer targets build/test the pinned Registry source and explicitly allow source delivery for components whose package Releases are not published yet.
+
+The current development profile reuses the existing Kernel 1.2.1 Release package, including the pinned logger 0.1.0 SDK, and selects Backend 1.2.1 as a native `cmake-prefix-v1` artifact. Runtime and Frontend remain source-delivered by the current Catalog; GUI-SDL also builds the checksum-pinned SDL3 3.4.16 source archive. This hybrid path is for contributor/CI validation only and is not the ordinary consumer installation.
+
+**Release blockers:** the corrected Registry `v0.2.0-dev.1` Release/descriptor is not published; Runtime's next immutable module Release and matching Catalog entry, Frontend Core/TUI/GUI-SDL package Releases, and the five-target SDL3 SDK Release are also missing. Therefore the default `make registry`, `make stack` and `make install` paths fail closed today. This is expected behavior, not a reason to add a source fallback.
+
+CDIN #122 remains open until the actual immutable artifacts are published, selected and staged by Registry, warm/offline consumer installs pass, and only the Composition Root is built in the normal path.
+
+The Product Definition and Resolved Manifest, not `deps.lock`, are authoritative for component versions and source revisions. `deps.lock` retains non-component dependency pins and the exact Registry Release pin. See [Registry integration](development/registry.md).
 
 To prepare a Registry workspace without compiling the stack:
 
@@ -110,7 +126,7 @@ make stack-gui
 
 On Windows PowerShell, the same Makefile entry point selects `python`. When your Python installation is exposed only through the Python launcher, use `make PYTHON="py -3" install`.
 
-Registry builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. For a private mirror, set `CDIN_GOPROXY` explicitly.
+Registry source builds honor `CDIN_GOPROXY`. The default is `https://proxy.golang.org,direct`, so a broken inherited `GOPROXY` setting such as an unreliable third-party mirror does not silently break the pinned Go toolchain download. The normal binary bootstrap does not invoke Go. For a private mirror used by the developer source-build path, set `CDIN_GOPROXY` explicitly.
 
 Registry refuses to overwrite an existing workspace or replay destination. Remove the generated `.deps/registry-workspace-<profile>` and `.deps/registry-replay-<profile>` directories (or use `make clean`) before preparing the same profile again.
 
@@ -134,7 +150,9 @@ gix doctor
 pipeline run check
 ```
 
-For a release candidate, use `pipeline run pre-release`. This task depends on the complete `check` graph and reproducible `package` task, verifies the Registry Resolved Manifest and source archive checksum, and writes `dist/cdin-pre-release.json`. The GitHub pre-release workflow runs the same verification graph for `v*-rc*` tags. Its current source-only artifact is not an application installer.
+For a release candidate, use `pipeline run pre-release`. This task depends on the complete `check` graph, reproducible `package`, Registry bootstrap/artifact tests, SDL3 source-safety tests and dedicated pre-release manifest tests. It verifies the exact Registry component/variant graph, Kernel/logger/Lua environment-provider contracts, immutable source and selected-artifact provenance, Catalog/release metadata identities and the source archive checksum before writing `dist/cdin-pre-release.json`. The report preserves the selected artifact descriptors and does not claim that a source snapshot is an installable application.
+
+The GitHub development pre-release workflow runs after each successful pushed-commit CI run, creates a unique `v0.0.0-dev.<run-number>` tag for that exact verified commit and publishes the source-only snapshot. A pushed `v*` version tag uses the separate tag-backed release workflow, which re-verifies the exact tagged commit and extracts the matching Keep a Changelog section. Both publication paths require the repository's `CDIN_RELEASE_TOKEN` with Contents and Workflows read/write permissions; they must fail closed rather than publish an unverified snapshot. The source-only pre-release is not an application installer.
 
 Pipeline is the standard local/CI entry point. Its tasks are declared in `pipeline.toml`; GitHub Actions should set up the native toolchain and invoke Pipeline rather than implement a second build graph.
 

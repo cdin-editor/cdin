@@ -13,10 +13,12 @@ Install prerequisites listed in the [Developer guide](development.md#2-prerequis
 ```sh
 git clone https://github.com/cdin-editor/cdin.git
 cd cdin
-make stack
+make stack-dev
 ```
 
-The build uses immutable revisions in `deps.lock`. Component sources are checked out under `.deps/src/`; build trees and installed dependencies are placed under `.deps/`.
+This is the explicit hybrid developer path: Registry is built from its pinned source revision, and Runtime/Frontend source delivery is enabled only for development/CI. Component sources are checked out under `.deps/src/`; build trees and installed dependencies are placed under `.deps/`.
+
+The normal consumer command is `make install`. It is artifact-only and currently fails closed until Registry, Runtime, Frontend and the GUI-SDL SDK immutable Releases are published and pinned. Do not use the developer source path as evidence that artifact-first installation is complete.
 
 The installed executable is:
 
@@ -89,8 +91,6 @@ The last inspected Windows run reached the initial render but did not yet
 observe edited text in the rendered output. Keep Windows TUI fail-closed until
 the input/ACK/redraw path passes the ConPTY acceptance test. GUI-SDL launch
 is not available.
-
-## 6. Source archive
 
 ## 6. Source archive
 
