@@ -41,6 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      CDIN_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
       GITHUB_TOKEN: ${{ github.token }}
     defaults:
       run:
@@ -185,6 +186,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload extracted-tested installed product distribution
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdin-installed-product-${{ runner.os }}-${{ matrix.profile }}
+          path: |
+            dist/distributions/*.tar.gz
+            dist/distributions/*.zip
+            dist/distributions/*.sha256
+            dist/distributions/*.manifest.json
+          if-no-files-found: error
+          retention-days: 30
   attest-source-snapshot:
     name: Attest trusted main-branch source snapshot
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

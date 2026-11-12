@@ -24,10 +24,11 @@ metadata, respectively.
 
 - The Composition Root foundation is merged: [PR #110](https://github.com/cdin-editor/cdin/pull/110), merge commit `e2ea9f74bf247a1b1104cded53255ac4a34551a0`.
 - SDL3 SDK producer [PR #126](https://github.com/cdin-editor/cdin/pull/126) is merged at `f12f1fca4ca1d4fb5060a802549596085e3172d2`. Its five-target native build/consumer matrix has passed, but the tag-backed SDK Release and downloadable assets are not published.
-- Artifact-first consumer work is in [PR #131](https://github.com/cdin-editor/cdin/pull/131); the previous bounded SDL3 staging hardening is merged in [PR #130](https://github.com/cdin-editor/cdin/pull/130). PR #131 remains under exact-head native, sanitizer, package-consumer and quality validation.
+- Artifact-first consumer bootstrap [PR #131](https://github.com/cdin-editor/cdin/pull/131) is merged at `084cac7f04c9ff22ae47ba5f219c672af6a73b6f`. Its exact-head seven-job TUI/GUI-SDL native + ASan/UBSan matrix, five-target SDL3 SDK producer matrix, CodeQL and Code Quality passed. It is an implementation milestone, not proof that missing immutable component Releases have been published or that a clean external consumer can already install the full stack.
 - The current hybrid developer/CI stack reuses the existing Kernel 1.2.1 SDK (including logger 0.1.0), consumes Backend 1.2.1 as a native package, and still uses source delivery for Runtime 1.0.0-rc.2 and Frontend 1.0.2. GUI-SDL development still builds the pinned SDL3 3.4.16 source; TUI never acquires SDL3.
 - The next immutable publisher candidates are Runtime 1.0.0-rc.3, Backend 1.2.2, Frontend 1.1.1, Registry 0.2.0-dev.1 and the SDL3 3.4.16 SDK. Publisher code is prepared, but their tags, canonical metadata assets and package Releases have not been published. Historical releases remain unchanged.
 - Artifact-first installation is intentionally fail-closed until the corrected Registry executable/Catalog pair, Runtime module archive, Backend/Frontend packages and GUI-SDL SDK are published, pinned and verified. Normal `make install` must not clone or build component repositories.
+- Installed-product bundle work is in [docs/development/distribution.md](docs/development/distribution.md): the build packages the real installed prefix, records the exact Registry Manifest and component identities, and tests the extracted executable without a `CDIN_RUNTIME_ROOT` override. These are development CI artifacts only, not a rolling `latest` or immutable SemVer GitHub Release.
 - Product integration remains DEVELOPMENT. [CDIN #111](https://github.com/cdin-editor/cdin/issues/111), [#118](https://github.com/cdin-editor/cdin/issues/118), [#121](https://github.com/cdin-editor/cdin/issues/121), [#122](https://github.com/cdin-editor/cdin/issues/122) and [#124](https://github.com/cdin-editor/cdin/issues/124) remain open. IME and PaneTree splitter capabilities must stay unadvertised until compatible immutable Runtime/Backend/Frontend releases are pinned and live product E2E passes.
 - GUI-SDL remains experimental. Its current renderer is an ASCII/debug-text baseline; production Unicode shaping/bidi/Persian text, IME, panels/scrolling, FE-019 stress and supported release-mode launch remain product gates. Do not distribute the current `--check` executable or experimental TUI as a completed interactive editor.
 - See [integration status](docs/development/integration-status.md), [installation](docs/installation.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111) for the live readiness boundary.
@@ -64,6 +65,7 @@ On Windows, use `.deps/install/bin/cdin.exe` from MSYS2 UCRT64.
 [Spec traceability](docs/architecture/traceability.md) ·
 [Dependency matrix](docs/development/dependency-matrix.md) ·
 [Registry integration](docs/development/registry.md) ·
+[Installed distributions](docs/development/distribution.md) ·
 [Integration status](docs/development/integration-status.md) ·
 [Tooling](docs/development/tooling.md)
 

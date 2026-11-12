@@ -14,6 +14,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Add a pinned Registry release-artifact bootstrap that verifies the exact Git tag, source commit, release descriptor, Catalog snapshot, asset digests and native executable architecture before use.
 - Add initial artifact-consumer paths for Backend native CMake packages, Runtime Lua module archives and separate Frontend Core, TUI and GUI-SDL packages.
 - Add verified exact-pin Registry cache reuse, offline operation and fail-closed handling for incomplete or corrupt cache state.
+- Package the installed CDIN product prefix as native target/profile development distributions with a machine-readable build record, exact Registry Manifest, checksums and archive manifest.
+
+- Verify installed distributions after safe extraction outside the checkout, including relocated Runtime discovery, executable version and lifecycle checks; upload each tested OS/profile bundle as a CI artifact.
+- Discover bundled Runtime Lua modules relative to the installed executable while preserving explicit runtime-root overrides.
 
 ### Changed
 
