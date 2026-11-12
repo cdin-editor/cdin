@@ -27,8 +27,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Keep SDL3 source compilation restricted to the explicit GUI-SDL developer opt-in; TUI must never acquire SDL3.
 - Validate pre-release reports against Registry's exact component/variant graph and environment-provider contracts, preserving immutable artifact descriptors, source provenance, Catalog identities and release metadata digests; reject duplicate component identities.
 - Make the one-time `v0.3.0-alpha.1` release recovery forward-only: verify the existing immutable tag, create a Release only when absent, and fail without deleting or replacing any existing Release.
-- Publish a unique source-only development pre-release for each successful pushed-branch commit, tied to the exact commit that passed CI.
-- Publish pushed version tags as tag-backed GitHub Releases using the matching changelog section and verified source assets.
+- Publish a unique source-only development pre-release for every successful pushed CI commit, including main, tied to the exact commit that passed CI; use the Unreleased/latest changelog section or an explicit no-changelog notice when needed.
+- Keep the rolling latest application prerelease separate and gated on a successful Product Acceptance workflow on main.
+- Publish pushed SemVer tags as tag-backed GitHub Releases only when the tagged commit is reachable from main; exclude the synthetic v0.0.0-dev.* source tags.
 
 ## [0.3.0-alpha.1] - 2026-11-10
 
