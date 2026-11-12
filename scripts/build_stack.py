@@ -17,8 +17,10 @@ from pathlib import Path
 
 try:
     from .package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+    from .sdl3_artifact import install_sdl3_sdk
 except ImportError:  # Direct execution: scripts/ is sys.path[0].
     from package_sdl3_sdk import safe_extract as safe_extract_sdl3_source
+    from sdl3_artifact import install_sdl3_sdk
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / ".deps" / "src"
@@ -302,22 +304,28 @@ def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
         )
     try:
         metadata = json.loads(sdk.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise RuntimeError(f"SDL3 SDK identity manifest is invalid: {error}") from error
+        source_pin = tomllib.loads(LOCK.read_text(encoding="utf-8"))["tooling"]["sdl3"]
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError(f"SDL3 SDK identity/source lock is invalid: {error}") from error
     expected_target = {
         "os": "macos" if target["os"] == "darwin" else target["os"],
         "architecture": target["architecture"],
         "abi": target["abi"],
     }
+    expected_source = {
+        "url": source_pin["archive"],
+        "sha256": source_pin["sha256"],
+    }
     if (
         metadata.get("schema") != "cdin.sdl3-sdk.v1"
-        or metadata.get("version") != "3.4.16"
+        or metadata.get("version") != source_pin["version"]
         or metadata.get("target") != expected_target
+        or metadata.get("source") != expected_source
         or metadata.get("linkage") != "static"
         or metadata.get("cmake_package") != "SDL3"
     ):
         raise RuntimeError(
-            f"SDL3 SDK identity does not match the pinned version/target: {metadata}"
+            f"SDL3 SDK identity does not match the pinned version/source/target: {metadata}"
         )
 
 
@@ -328,16 +336,6 @@ def cmake_component(name: str, source: Path, *, options: list[str], env: dict[st
     run(["cmake", "--build", str(build), "--parallel"], env=env)
     run(["ctest", "--test-dir", str(build), "--output-on-failure"], env=env)
     run(["cmake", "--install", str(build)], env=env)
-
-
-def require_sdl3_source_build_opt_in(profile: str, enabled: bool) -> None:
-    """Prevent GUI-SDL source compilation from becoming an implicit install path."""
-    if profile == "gui-sdl" and not enabled:
-        raise RuntimeError(
-            "GUI-SDL requires the pinned prebuilt SDL3 SDK for consumer installs; "
-            "building SDL3 from source is developer-only. Pass "
-            "--build-sdl3-from-source only for an explicit local development build."
-        )
 
 
 def should_build_sdl3_from_source(profile: str, enabled: bool) -> bool:
@@ -534,8 +532,6 @@ def main() -> int:
         PROFILE = "tui"
         WORKSPACE = ROOT / ".deps" / "registry-workspace-tui"
 
-    require_sdl3_source_build_opt_in(PROFILE, args.build_sdl3_from_source)
-
     for tool in ("cmake", "make", "pkg-config"):
         if shutil.which(tool) is None:
             print(f"missing required build tool: {tool}", file=sys.stderr)
@@ -581,6 +577,9 @@ def main() -> int:
         env = pkg_env()
         if should_build_sdl3_from_source(PROFILE, args.build_sdl3_from_source):
             install_sdl3(env)
+        elif gui_enabled:
+            install_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
+            require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
         frontend = DEPS / "frontend"
         frontend_options = [
             "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
@@ -610,8 +609,7 @@ def main() -> int:
             staged_prefixes.append(variant_prefix)
         frontend_prefixes = tuple(staged_prefixes)
         if gui_enabled:
-            # CDIN #124 owns acquisition/verification of this SDK. Until that
-            # path is wired to the published five-target release, fail closed.
+            install_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
             require_sdl3_sdk(PREFIX, manifest["resolution"]["target"])
         env = pkg_env(additional_prefixes=frontend_prefixes)
 
