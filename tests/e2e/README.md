@@ -1,5 +1,19 @@
 # End-to-end verification
 
+## Current native matrix evidence — 2026-11-12
+
+CDIN PR #138 is merged at `bb49dc9939477d892cfd3d9d6d9c2c6c2d889998`. Its exact tested head was `cfeac2dfe890d8ebe721e2e38fe39c4db3473548`; [CI run 43246685141, attempt 2](https://github.com/cdin-editor/cdin/actions/runs/43246685141) passed all ten native target/profile jobs:
+
+- Linux x86_64: TUI and GUI-SDL.
+- Linux ARM64: TUI and GUI-SDL.
+- macOS x86_64: TUI and GUI-SDL.
+- macOS ARM64: TUI and GUI-SDL.
+- Windows x86_64 UCRT64: TUI and GUI-SDL.
+
+Each job checked its actual runner OS/architecture before building; Windows also verified the UCRT64 environment. Artifact names include explicit target and profile. The Linux ASan/UBSan/leak-detection job passed. The first macOS ARM64 GUI-SDL attempt was cancelled; only that job was rerun, and attempt 2 passed.
+
+This is native build/integration-matrix evidence, not proof that every packaged UI is a supported live product. The remaining gates below still apply: Windows Console TUI launch/input/restore, GUI-SDL launch/render/input and cleanup, extension lifecycle, transport/process-failure recovery, soak/performance baselines, clean-machine installation and published immutable/rolling product assets. Do not treat this matrix run as PRODUCT READY.
+
 This directory documents executable-level integration coverage and product E2E gates. Only results run against the recorded SHA count as PASS.
 
 ## 1. Executable test suite
