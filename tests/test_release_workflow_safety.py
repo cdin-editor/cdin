@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import subprocess
+import textwrap
 import unittest
 
 
@@ -120,6 +123,19 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("contents: write", self.source_tag)
         self.assertIn("contents: write", self.rolling)
         self.assertIn("actions: read", self.rolling)
+
+    def test_development_tag_creation_shell_has_valid_bash_syntax(self) -> None:
+        if shutil.which("bash") is None:
+            self.skipTest("bash is not installed")
+        script = textwrap.dedent(self.source_tag.split("        run: |\\n", 1)[1])
+        result = subprocess.run(
+            ["bash", "-n"],
+            input=script,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_source_tag_lookup_fails_closed_and_resolves_annotated_tags(self) -> None:
         self.assertIn('status="$(curl', self.source_tag)
