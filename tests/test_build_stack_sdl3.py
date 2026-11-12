@@ -22,13 +22,11 @@ def write_archive(path: Path, member_name: str) -> None:
 
 
 class SDL3SourceExtractionTests(unittest.TestCase):
-    def test_gui_source_build_requires_explicit_opt_in(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "developer-only"):
-            build_stack.require_sdl3_source_build_opt_in("gui-sdl", False)
-
-    def test_explicit_gui_source_build_and_tui_profile_are_allowed(self) -> None:
-        build_stack.require_sdl3_source_build_opt_in("gui-sdl", True)
-        build_stack.require_sdl3_source_build_opt_in("tui", False)
+    def test_gui_defaults_to_artifact_delivery_and_source_build_is_explicit(self) -> None:
+        self.assertFalse(build_stack.should_build_sdl3_from_source("gui-sdl", False))
+        self.assertTrue(build_stack.should_build_sdl3_from_source("gui-sdl", True))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", False))
+        self.assertFalse(build_stack.should_build_sdl3_from_source("tui", True))
 
     def test_tui_never_acquires_sdl_even_if_pipeline_sets_source_opt_in(self) -> None:
         self.assertFalse(build_stack.should_build_sdl3_from_source("tui", True))
