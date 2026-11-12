@@ -23,6 +23,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Correct SDL3 SDK source-version SemVer validation so the pinned 3.4.16 version is accepted and malformed versions are rejected.
 - Keep component source builds behind explicit contributor/developer targets; the normal artifact consumer path does not silently fall back to cloning or compiling a component.
 - Keep SDL3 source compilation restricted to the explicit GUI-SDL developer opt-in; TUI must never acquire SDL3.
 - Validate pre-release reports against Registry's exact component/variant graph and environment-provider contracts, preserving immutable artifact descriptors, source provenance, Catalog identities and release metadata digests; reject duplicate component identities.
