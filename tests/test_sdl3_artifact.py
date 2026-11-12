@@ -209,7 +209,8 @@ class ReleaseIdentityTests(unittest.TestCase):
             "tag_name": pin["tag"], "draft": False, "prerelease": True,
             "assets": [{"name": asset["file_name"], "size": asset["size_bytes"]}],
         }
-        with patch.object(sdk, "fetch_github_json", return_value=release):
+        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
+        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
             with self.assertRaisesRegex(sdk.SDL3ArtifactError, "asset size/digest"):
                 sdk.verify_release(pin, asset)
 
