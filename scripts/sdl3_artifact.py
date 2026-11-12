@@ -444,6 +444,8 @@ def safe_extract(archive_path: Path, destination: Path) -> Path:
     except (OSError, tarfile.TarError) as error:
         raise SDL3ArtifactError(f"SDL3 SDK archive is not a valid gzip TAR: {error}") from error
     with archive:
+        if any(destination.iterdir()):
+            raise SDL3ArtifactError("SDL3 SDK extraction destination must be empty")
         members = archive.getmembers()
         if not members or len(members) > MAX_ARCHIVE_ENTRIES:
             raise SDL3ArtifactError("SDL3 SDK archive has an invalid entry count")
@@ -661,6 +663,9 @@ def main() -> int:
         print(f"Verified SDL3 SDK {target_name}: {package}", flush=True)
         return 0
     except SDL3ArtifactError as error:
+        print(f"CDIN SDL3 SDK bootstrap failed: {error}", file=sys.stderr)
+        return 2
+    except (OSError, urllib.error.URLError, TimeoutError, ValueError) as error:
         print(f"CDIN SDL3 SDK bootstrap failed: {error}", file=sys.stderr)
         return 2
 
