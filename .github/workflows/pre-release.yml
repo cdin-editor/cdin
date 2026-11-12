@@ -146,7 +146,7 @@ jobs:
     needs: [validate-release-credential]
     if: >-
       needs.validate-release-credential.result == 'success' &&
-      github.event.workflow_run.name == 'Product Acceptance' &&
+      github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
