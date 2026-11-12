@@ -91,9 +91,9 @@ jobs:
     if: needs.create-development-tag.result == 'success'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@df2ee4acfa5d831c96459f551928b4d85ef29891
     with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+      pipeline-ref: df2ee4acfa5d831c96459f551928b4d85ef29891
       source-ref: ${{ needs.create-development-tag.outputs.source_ref }}
       changelog-path: CHANGELOG.md
       changelog-missing-policy: warn
@@ -217,9 +217,9 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
     permissions:
       contents: write
-    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+    uses: m-mdy-m/pipeline/.github/workflows/source-release.yml@df2ee4acfa5d831c96459f551928b4d85ef29891
     with:
-      pipeline-ref: 4fc55439656a7b0e4b270ae05049c29b0ddc1d56
+      pipeline-ref: df2ee4acfa5d831c96459f551928b4d85ef29891
       source-ref: refs/tags/v0.3.0-alpha.1
       changelog-path: CHANGELOG.md
       changelog-missing-policy: fail
