@@ -25,7 +25,7 @@ The archive is staged in a temporary directory, extracted into a fresh directory
 
 The extracted executable is run with `--version` and `--check` without setting `CDIN_RUNTIME_ROOT`. This proves the headless Composition Root validation path can discover the bundled Runtime module tree relative to the extracted executable. It does **not** prove interactive TUI terminal startup/restoration or GUI-SDL startup/cleanup; those remain separate product acceptance gates.
 
-A TUI bundle rejects SDL3 files and never acquires the SDL3 source or SDK. A GUI-SDL development bundle requires its pinned SDL3 files in the install prefix. Until CDIN #124 publishes the five target SDK assets, GUI-SDL CI still builds the pinned SDL3 source as an explicit developer/CI fallback.
+A TUI bundle rejects SDL3 files and never acquires the SDL3 source or SDK. A normal GUI-SDL consumer build now requests the exact immutable five-target SDK through `scripts/sdl3_artifact.py`; it verifies the tagged Release commit, GitHub asset size/digest, SHA-256 sidecar, package manifest, target ABI and static linkage before staging the SDK. The current `deps.lock` intentionally has no `[dependencies.sdl3_sdk]` block because `sdl3-sdk-v3.4.16` has not yet been published; normal GUI-SDL consumer installation therefore fails closed until the real Release and all five asset digests are available. Only the explicit developer/CI source-build option (for example `make stack-gui-dev`) may compile the separately checksum-pinned SDL3 source. TUI never downloads either form.
 
 The CI matrix currently uploads one tested archive/checksum/manifest set per OS/profile for 30 days. These are workflow artifacts, not GitHub Releases.
 
