@@ -38,7 +38,21 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def atomic_write(path: Path, payload: bytes) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    if temporary.exists() or temporary.is_symlink():
+        raise DistributionError(f"temporary output already exists: {temporary}")
+    try:
+        temporary.write_bytes(payload)
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def read_json(path: Path, label: str) -> dict[str, Any]:
+    if path.is_symlink() or not path.is_file():
+        raise DistributionError(f"{label} is missing or unsafe: {path}")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -369,8 +383,10 @@ def package_distribution(
     suffix = ".zip" if target["os"] == "windows" else ".tar.gz"
     archive_name = f"{archive_root}{suffix}"
     archive_path = output_directory / archive_name
-    if archive_path.exists():
-        raise DistributionError(f"refusing to overwrite an existing distribution: {archive_name}")
+    checksum_path = archive_path.with_name(archive_path.name + ".sha256")
+    manifest_path = archive_path.with_name(archive_root + ".manifest.json")
+    if any(path.exists() or path.is_symlink() for path in (archive_path, checksum_path, manifest_path)):
+        raise DistributionError(f"refusing to overwrite an existing distribution identity: {archive_name}")
 
     build_info: dict[str, Any] = {
         "schema_version": 1,
@@ -399,14 +415,22 @@ def package_distribution(
             json.dumps(build_info, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        if target["os"] == "windows":
-            write_zip(stage_root, archive_path, archive_root)
-        else:
-            write_tar_gz(stage_root, archive_path, archive_root)
+        with tempfile.NamedTemporaryFile(
+            prefix=".cdin-distribution-", suffix=".tmp", dir=output_directory, delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+        try:
+            if target["os"] == "windows":
+                write_zip(stage_root, temporary_path, archive_root)
+            else:
+                write_tar_gz(stage_root, temporary_path, archive_root)
+            os.replace(temporary_path, archive_path)
+        finally:
+            if temporary_path.exists():
+                temporary_path.unlink()
 
     digest = sha256_file(archive_path)
-    checksum_path = archive_path.with_name(archive_path.name + ".sha256")
-    checksum_path.write_text(f"{digest}  {archive_path.name}\n", encoding="ascii")
+    atomic_write(checksum_path, f"{digest}  {archive_path.name}\n".encode("ascii"))
     release_manifest = {
         "schema_version": 1,
         "product": "com.cdin.editor",
@@ -421,11 +445,19 @@ def package_distribution(
             "sha256": digest,
         },
     }
-    manifest_path = archive_path.with_name(archive_root + ".manifest.json")
-    manifest_path.write_text(json.dumps(release_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    release_manifest["workflow"] = {
+        "run_id": os.environ.get("GITHUB_RUN_ID"),
+        "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+    }
+    atomic_write(
+        manifest_path,
+        (json.dumps(release_manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+    )
 
     if run_smoke:
-        with tempfile.TemporaryDirectory(prefix="cdin-distribution-extract-") as extract_dir:
+        with tempfile.TemporaryDirectory(
+            prefix="cdin-distribution-extract-", dir=ROOT.parent
+        ) as extract_dir:
             extracted = safe_extract(archive_path, Path(extract_dir))
             verify_extracted(extracted, version)
 
@@ -448,7 +480,6 @@ def main() -> int:
     parser.add_argument("--workspace", type=Path)
     parser.add_argument("--output-directory", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--source-revision", default=os.environ.get("GITHUB_SHA", ""))
-    parser.add_argument("--skip-extracted-smoke", action="store_true", help="test-only; never use in release CI")
     args = parser.parse_args()
     workspace = args.workspace or ROOT / ".deps" / f"registry-workspace-{args.profile}"
     source_revision = args.source_revision
@@ -467,7 +498,7 @@ def main() -> int:
             output_directory=args.output_directory.absolute(),
             profile=args.profile,
             source_revision=source_revision,
-            run_smoke=not args.skip_extracted_smoke,
+            run_smoke=True,
         )
     except (OSError, DistributionError, subprocess.SubprocessError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"distribution packaging failed: {error}", file=sys.stderr)
