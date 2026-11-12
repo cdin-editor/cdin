@@ -34,6 +34,43 @@ class SDL3SourceExtractionTests(unittest.TestCase):
         self.assertTrue(build_stack.should_build_sdl3_from_source("gui-sdl", True))
         self.assertFalse(build_stack.should_build_sdl3_from_source("gui-sdl", False))
 
+    def test_gui_consumer_uses_immutable_artifact_by_default(self) -> None:
+        target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"), target, "gui-sdl", False, {}
+            )
+        acquire.assert_called_once_with(Path(".deps/install"), target)
+        verify.assert_called_once_with(Path(".deps/install"), target)
+        source.assert_not_called()
+
+    def test_only_explicit_gui_developer_mode_uses_source_fallback(self) -> None:
+        target = {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"}
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"), target, "gui-sdl", True, {"PATH": ""}
+            )
+        source.assert_called_once_with({"PATH": ""})
+        acquire.assert_not_called()
+        verify.assert_not_called()
+
+    def test_tui_never_invokes_either_sdl_delivery_path(self) -> None:
+        with patch.object(build_stack, "install_sdl3_sdk") as acquire, \
+             patch.object(build_stack, "require_sdl3_sdk") as verify, \
+             patch.object(build_stack, "install_sdl3") as source:
+            build_stack.prepare_sdl3(
+                Path(".deps/install"),
+                {"os": "linux", "architecture": "x86_64", "abi": "gnu-glibc-2.39"},
+                "tui", True, {},
+            )
+        acquire.assert_not_called()
+        verify.assert_not_called()
+        source.assert_not_called()
+
     def _write_lock(self, root: Path, digest: str) -> Path:
         lock = root / "deps.lock"
         lock.write_text(
