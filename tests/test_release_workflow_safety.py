@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "pre-release.yml"
 EXPECTED_ALPHA_COMMIT = "e4c5fb26659f9a00cf11163ae132ebe40e7e0157"
-EXPECTED_PIPELINE_REF = "df2ee4acfa5d831c96459f551928b4d85ef29891"
+EXPECTED_PIPELINE_REF = "0f8c5a460932030b95d6f04b089eaf968df8c064"
 
 
 class LegacyReleaseRecoverySafetyTests(unittest.TestCase):
@@ -94,7 +94,7 @@ class VersionedReleaseWorkflowTests(unittest.TestCase):
             if line.strip().startswith("pipeline-ref:")
         ).split(":", 1)[1].strip()
         self.assertEqual(workflow_ref, helper_ref)
-        self.assertEqual(workflow_ref, "df2ee4acfa5d831c96459f551928b4d85ef29891")
+        self.assertEqual(workflow_ref, "0f8c5a460932030b95d6f04b089eaf968df8c064")
         self.assertIn("contents: write", publish)
         self.assertNotIn("CDIN_RELEASE_TOKEN", self.workflow)
         self.assertNotIn("secrets:", publish)
@@ -188,7 +188,7 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         workflow_ref = workflow_line.rsplit("@", 1)[1]
         helper_ref = helper_line.split(":", 1)[1].strip()
         self.assertEqual(workflow_ref, helper_ref)
-        self.assertEqual(workflow_ref, "df2ee4acfa5d831c96459f551928b4d85ef29891")
+        self.assertEqual(workflow_ref, "0f8c5a460932030b95d6f04b089eaf968df8c064")
 
     def test_rolling_channel_uses_the_explicit_product_acceptance_workflow_path(self) -> None:
         self.assertIn(
