@@ -60,7 +60,7 @@ class InstalledDistributionTests(unittest.TestCase):
                 "#!/bin/sh\n"
                 "case \"$1\" in\n"
                 "  --version) echo 'cdin 0.2.0'; exit 0 ;;\n"
-                "  --check) test -d \"$CDIN_RUNTIME_ROOT\"; exit $? ;;\n"
+                "  --check) app_root=\\$(CDPATH= cd -- \"\\$(dirname \"$0\")/..\" && pwd); test -d \"$app_root/share/cdin/lua\"; exit $? ;;\\n"
                 "  *) exit 2 ;;\n"
                 "esac\n",
                 encoding="utf-8",
