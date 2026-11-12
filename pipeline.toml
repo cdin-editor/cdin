@@ -56,8 +56,19 @@ description = "Test the source pre-release manifest against Registry artifact/so
 command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_pre_release.py"]
 timeout_seconds = 60
 
+[tasks.distribution-tests]
+description = "Test installed application archive provenance, safe extraction and product launch verification"
+command = ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_package_distribution.py"]
+timeout_seconds = 60
+
+[tasks.distribution]
+description = "Package the installed CDIN application prefix and verify it from a clean extracted directory"
+command = ["python3", "scripts/package_distribution.py"]
+depends_on = ["stack"]
+timeout_seconds = 240
+
 [tasks.pre-release]
-description = "Prepare a verified CDIN source pre-release report after the full product checks and reproducible package"
+description = "Prepare verified CDIN source and installed-product artifacts after full product checks"
 command = ["python3", "scripts/pre_release.py"]
-depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests"]
-timeout_seconds = 180
+depends_on = ["check", "package", "bootstrap-tests", "registry-artifact-tests", "sdl3-source-tests", "pre-release-tests", "distribution-tests", "distribution"]
+timeout_seconds = 300
