@@ -301,6 +301,37 @@ class ArchiveAndPackageTests(unittest.TestCase):
                 "url": SOURCE_URL, "sha256": SOURCE_SHA
             })
 
+    def test_allows_os_managed_symlinked_parent_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real_parent = root / "private" / "var"
+            real_parent.mkdir(parents=True)
+            system_alias = root / "var"
+            try:
+                system_alias.symlink_to(real_parent, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("native symlink creation is not permitted on this runner")
+
+            destination = system_alias / "extract"
+            sdk._ensure_real_directory(destination)
+            self.assertTrue((real_parent / "extract").is_dir())
+            self.assertFalse((real_parent / "extract").is_symlink())
+
+    def test_rejects_symlink_at_extraction_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real_destination = root / "real"
+            real_destination.mkdir()
+            destination = root / "extract"
+            try:
+                destination.symlink_to(real_destination, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("native symlink creation is not permitted on this runner")
+
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "destination must be a real directory"):
+                sdk._ensure_real_directory(destination)
+            self.assertEqual(list(real_destination.iterdir()), [])
+
     def test_extraction_requires_an_empty_destination(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
