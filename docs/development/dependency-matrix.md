@@ -1,5 +1,21 @@
 # Dependency and delivery matrix
 
+## Release inventory versus CDIN selection — 2026-11-13
+
+The table below separates the latest published component Release from the exact identity selected by the current CDIN Catalog/lock. A published package is not automatically adopted. A package is admissible only after its exact tag/commit, canonical ADR-0028 Metadata asset, artifact URIs, target tuple, size/digest and downstream consumer tests agree.
+
+| Component | Currently selected by CDIN | Latest observed Release | Admissibility for a future pin |
+| --- | --- | --- | --- |
+| Kernel | 1.2.1 (lock, five target asset pins; ABI 1.1.0) | [1.2.3](https://github.com/cdin-editor/kernel/releases/tag/v1.2.3), five target-native CMake-prefix packages plus `kernel-1.2.3.json` | Published candidate; create a Catalog/Manifest update only after dependency/ABI compatibility and clean-prefix consumer tests. |
+| Backend | 1.2.1 (static Catalog native artifact) | [1.2.2](https://github.com/cdin-editor/backend/releases/tag/v1.2.2), five target archives plus `backend-1.2.2.json` | Published candidate; still requires exact Manifest pin, CMake consumer verification and live-stack integration. Backend #35 remains open. |
+| Runtime | 1.0.0-rc.2 (source unit) | RC3 is prepared, but `v1.0.0-rc.3` has no Release | Not artifact-consumable yet; keep source development path separate and do not invent a tag or asset digest. |
+| Frontend Core/TUI/GUI-SDL | 1.0.2 source units | [1.2.0](https://github.com/cdin-editor/frontend/releases/tag/v1.2.0) exists, but its Metadata references 15 direct package archives that are absent from the 11-asset Release inventory | **Reject for Registry/CDIN artifact resolution.** Keep v1.2.0 immutable; PR [Frontend #54](https://github.com/cdin-editor/frontend/pull/54) corrects future flat asset publication. |
+| Registry CLI/Catalog | Consumer pin is `v0.1.0-dev` (invalid target mapping, descriptor identity absent); developer source separately pins dev.2 | `v0.2.0-dev.2` has publisher preparation but no tag/Release | Normal consumer acquisition remains fail-closed; do not use old dev.1 or v0.1.0-dev assets. Registry #58 remains open. |
+| SDL3 SDK | No `[dependencies.sdl3_sdk]` immutable pin; developer source archive 3.4.16 | No `sdl3-sdk-v3.4.16` Release | GUI-SDL artifact consumer remains fail-closed until five target archives and real digests exist. TUI remains SDL-free. |
+
+The current selected identities in the table above are the ones documented in the existing dependency rows below. Do not replace them with newer Releases until the Catalog/Product Definitions and generated `registry-manifest.json` are deliberately updated and exact replay/consumer tests pass.
+
+
 Component versions/revisions remain selected by the Registry Catalog and the Product Definitions, then recorded in the generated `registry-manifest.json`. `deps.lock` holds the separate immutable Kernel/logger SDK asset pin, the Registry consumer/development pins and developer tooling; it is not a second component-version resolver.
 
 This table describes the current **hybrid developer/CI inventory**. It is not the normal consumer delivery policy: normal Product Definitions are resolved with `delivery_mode: artifact` and reject source-only Runtime/Frontend entries. The developer/CI path opts into `artifact-or-source` explicitly.
