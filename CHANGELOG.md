@@ -9,12 +9,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Constrain SDK cache/extraction directories to repository or OS-temporary roots, reject traversal and symlinks below the trusted root, and resolve the trusted root before walking components so macOS `/var` aliases remain supported. Preserve rejection of symlink destinations and archive member links, traversal and special files. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
+
+
 ### Added
 
 - Expand the native CDIN product CI matrix to Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64 for both TUI and GUI-SDL, with host identity checks and target/profile-qualified artifacts.
 
 - Add a pinned Registry release-artifact bootstrap that verifies the exact Git tag, source commit, release descriptor, Catalog snapshot, asset digests and native executable architecture before use.
 - Add initial artifact-consumer paths for Backend native CMake packages, Runtime Lua module archives and separate Frontend Core, TUI and GUI-SDL packages.
+- Add a fail-closed immutable SDL3 SDK consumer for GUI-SDL: require a complete five-target `deps.lock` pin, verify tag/source/release identity and each archive's real size and SHA-256, and reuse only verified cached artifacts offline. Keep source compilation behind an explicit contributor opt-in and never acquire SDL3 for TUI.
 - Add verified exact-pin Registry cache reuse, offline operation and fail-closed handling for incomplete or corrupt cache state.
 - Package the installed CDIN product prefix as native target/profile development distributions with a machine-readable build record, exact Registry Manifest, checksums and archive manifest.
 
@@ -23,6 +29,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Correct SDL3 SDK source-version SemVer validation so the pinned 3.4.16 version is accepted and malformed versions are rejected.
 - Keep component source builds behind explicit contributor/developer targets; the normal artifact consumer path does not silently fall back to cloning or compiling a component.
 - Keep SDL3 source compilation restricted to the explicit GUI-SDL developer opt-in; TUI must never acquire SDL3.
 - Validate pre-release reports against Registry's exact component/variant graph and environment-provider contracts, preserving immutable artifact descriptors, source provenance, Catalog identities and release metadata digests; reject duplicate component identities.
