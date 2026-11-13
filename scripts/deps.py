@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install and verify the immutable Kernel + logger SDK release package.
 
-The Kernel 1.2.1 GitHub Release already contains both the Kernel C SDK and its
+The Kernel 1.2.3 GitHub Release contains both the Kernel C SDK and its
 pinned m-mdy-m/log.c 0.1.0 static SDK. This consumer bootstrap downloads that
 published archive; it never clones or compiles Kernel or logger source.
 """
