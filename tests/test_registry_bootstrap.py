@@ -34,6 +34,7 @@ from scripts.deps import (
     download_asset,
     fetch_github_json,
     verify_release_asset_identity,
+    load_pin,
 )
 from scripts.registry import (
     create_effective_product_definition,
@@ -67,6 +68,30 @@ class KernelSDKAPIRedirectTests(unittest.TestCase):
 
 
 class KernelSDKReleasePinTests(unittest.TestCase):
+
+    def test_repository_lock_pins_the_published_kernel_123_release_assets(self) -> None:
+        pin = load_pin()
+        self.assertEqual(pin["repository"], "https://github.com/cdin-editor/kernel")
+        self.assertEqual(pin["tag"], "v1.2.3")
+        self.assertEqual(pin["version"], "1.2.3")
+        self.assertEqual(pin["revision"], "2fb09f52dc1a9963cf358ec54d584c520e174e67")
+        self.assertEqual(pin["kernel_abi"], "1.1.0")
+        self.assertEqual(pin["logger_version"], "0.1.0")
+        expected = {
+            "linux-x86_64": ("cdin-kernel-1.2.3-linux-x86_64.tar.gz", 381038, "48a82eb7f4c1fac57c7661f070c1338eb17c10d709eff0d87bb0229b87e46013"),
+            "linux-arm64": ("cdin-kernel-1.2.3-linux-arm64.tar.gz", 388521, "9da597d5109e5280d78b1f9c18f68bb10db3d87d64c973bffedbceffbed52bc6"),
+            "macos-x86_64": ("cdin-kernel-1.2.3-macos-x86_64.tar.gz", 346687, "e2ae0ea23e58f5a2210ad19a20ae99f2cf3febb0e8b0f714917beb7f8fa768a3"),
+            "macos-arm64": ("cdin-kernel-1.2.3-macos-arm64.tar.gz", 342015, "8a4ddece6db4f0ed48657b2f7bf64edf1137fa9bb6d09b0b8f2908bb0d450fea"),
+            "windows-x86_64": ("cdin-kernel-1.2.3-windows-x86_64.zip", 309735, "d0ced8272c80c1e5df886441c67493a25cca0e3a95a7c0e81be515282cb6364a"),
+        }
+        self.assertEqual(set(pin["assets"]), set(expected))
+        for target, (filename, size, digest) in expected.items():
+            with self.subTest(target=target):
+                asset = pin["assets"][target]
+                self.assertEqual(asset["file_name"], filename)
+                self.assertEqual(asset["size_bytes"], size)
+                self.assertEqual(asset["sha256"], digest)
+                self.assertEqual(asset["format"], "zip" if target.startswith("windows-") else "tar.gz")
 
     def test_github_api_uses_the_workflow_token_when_available(self) -> None:
         requested = {}
