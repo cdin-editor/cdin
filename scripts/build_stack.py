@@ -168,7 +168,7 @@ def _stage_install_prefix(
 
 
 def stage_kernel_sdk_prefix(package: Path, prefix: Path) -> None:
-    """Stage the pinned Kernel 1.2.1 + logger 0.1.0 SDK into CDIN's private prefix."""
+    """Stage the pinned Kernel 1.2.3 + logger 0.1.0 SDK into CDIN's private prefix."""
     _stage_install_prefix(
         package,
         prefix,
