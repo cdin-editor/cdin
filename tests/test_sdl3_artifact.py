@@ -342,7 +342,7 @@ class ArchiveAndPackageTests(unittest.TestCase):
             except (OSError, NotImplementedError):
                 self.skipTest("native symlink creation is not permitted on this runner")
 
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "destination must be a real directory"):
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "symlink/non-directory component"):
                 sdk._ensure_real_directory(destination)
             self.assertEqual(list(real_destination.iterdir()), [])
 
