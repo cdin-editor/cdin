@@ -256,6 +256,13 @@ class ProductAcceptanceWorkflowTests(unittest.TestCase):
         self.assertNotIn("--build-sdl3-from-source", self.workflow)
         self.assertIn("scripts/deps.py --verify", self.workflow)
 
+    def test_product_acceptance_installs_sdk_before_offline_verification(self) -> None:
+        install = "run: python scripts/deps.py"
+        verify = "run: python scripts/deps.py --verify"
+        self.assertIn(install + "\n", self.workflow)
+        self.assertIn(verify, self.workflow)
+        self.assertLess(self.workflow.index(install), self.workflow.index(verify))
+
     def test_acceptance_rejects_registry_or_sdl3_source_trees(self) -> None:
         self.assertIn('.deps" / "tools" / "registry', self.workflow)
         self.assertIn('.deps" / "src" / "sdl3', self.workflow)
