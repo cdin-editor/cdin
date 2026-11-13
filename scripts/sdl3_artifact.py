@@ -350,15 +350,53 @@ def verify_release(pin: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]
 
 def _ensure_real_directory(path: Path) -> None:
     absolute = Path(os.path.abspath(path))
-    chain = [absolute, *absolute.parents]
+
+    # The requested directory is caller-owned, not an archive member. Reject a
+    # symlink at the final destination, but canonicalize parent aliases such
+    # as macOS /var -> /private/var before checking the real directory chain.
+    # Archive-provided paths are validated separately in safe_extract().
+    try:
+        destination_info = absolute.lstat()
+    except FileNotFoundError:
+        destination_info = None
+    except OSError as error:
+        raise SDL3ArtifactError(f"SDL3 SDK destination cannot be inspected: {error}") from error
+
+    if destination_info is not None and (
+        stat.S_ISLNK(destination_info.st_mode)
+        or not stat.S_ISDIR(destination_info.st_mode)
+    ):
+        raise SDL3ArtifactError(
+            f"SDL3 SDK destination must be a real directory, not a symlink or file: {absolute}"
+        )
+
+    try:
+        canonical = absolute.resolve(strict=False)
+    except (OSError, RuntimeError) as error:
+        raise SDL3ArtifactError(f"SDL3 SDK destination cannot be resolved safely: {error}") from error
+
+    chain = [canonical, *canonical.parents]
     for item in reversed(chain):
         try:
             info = item.lstat()
         except FileNotFoundError:
             continue
+        except OSError as error:
+            raise SDL3ArtifactError(f"SDL3 SDK path cannot be inspected: {error}") from error
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
-            raise SDL3ArtifactError(f"SDL3 SDK path has a symlink/non-directory ancestor: {item}")
-    absolute.mkdir(parents=True, exist_ok=True)
+            raise SDL3ArtifactError(
+                f"SDL3 SDK path has a symlink/non-directory ancestor after resolution: {item}"
+            )
+
+    try:
+        canonical.mkdir(parents=True, exist_ok=True)
+        final_info = canonical.lstat()
+    except OSError as error:
+        raise SDL3ArtifactError(f"SDL3 SDK directory cannot be created safely: {error}") from error
+    if stat.S_ISLNK(final_info.st_mode) or not stat.S_ISDIR(final_info.st_mode):
+        raise SDL3ArtifactError(
+            f"SDL3 SDK destination changed while it was being created: {canonical}"
+        )
 
 
 def _download(url: str, destination: Path, *, expected_size: int, max_size: int) -> None:
