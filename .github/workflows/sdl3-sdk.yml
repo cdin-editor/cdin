@@ -55,8 +55,9 @@ jobs:
     name: SDL3 SDK / ${{ matrix.target }}
     needs: [prepare-main-release]
     if: >-
-      github.event_name != 'workflow_run' ||
-      needs.prepare-main-release.outputs.build_required == 'true'
+      always() &&
+      (github.event_name != 'workflow_run' ||
+       needs.prepare-main-release.outputs.build_required == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -129,9 +130,11 @@ jobs:
   publish:
     name: Publish pinned SDL3 SDK release assets
     if: >-
-      startsWith(github.ref, 'refs/tags/sdl3-sdk-v') ||
-      (github.event_name == 'workflow_run' &&
-       needs.prepare-main-release.outputs.build_required == 'true')
+      always() &&
+      needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/sdl3-sdk-v') ||
+       (github.event_name == 'workflow_run' &&
+        needs.prepare-main-release.outputs.build_required == 'true'))
     needs: [prepare-main-release, build]
     runs-on: ubuntu-24.04
     permissions:
