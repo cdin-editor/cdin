@@ -349,54 +349,77 @@ def verify_release(pin: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]
 
 
 def _ensure_real_directory(path: Path) -> None:
-    absolute = Path(os.path.abspath(path))
+    requested = Path(path)
 
-    # The requested directory is caller-owned, not an archive member. Reject a
-    # symlink at the final destination, but canonicalize parent aliases such
-    # as macOS /var -> /private/var before checking the real directory chain.
-    # Archive-provided paths are validated separately in safe_extract().
-    try:
-        destination_info = absolute.lstat()
-    except FileNotFoundError:
-        destination_info = None
-    except OSError as error:
-        raise SDL3ArtifactError(f"SDL3 SDK destination cannot be inspected: {error}") from error
+    # Spec ADR-0025 §1 and immutable-artifact-delivery §8 require private,
+    # bounded staging and rejection of unsafe paths:
+    # https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21
+    # https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231
+    # Accept only destinations rooted in the repository or the OS temporary
+    # directory. Resolving the trusted root first handles macOS /var aliases
+    # without following arbitrary symlinks supplied below that root.
+    if not requested.is_absolute() or any(part in ("", ".", "..") for part in requested.parts):
+        raise SDL3ArtifactError("SDL3 SDK destination must be an absolute path without traversal")
 
-    if destination_info is not None and (
-        stat.S_ISLNK(destination_info.st_mode)
-        or not stat.S_ISDIR(destination_info.st_mode)
-    ):
+    temporary_root = Path(tempfile.gettempdir())
+    trusted_roots = (ROOT, temporary_root, temporary_root.resolve())
+    matches: list[tuple[int, Path, Path]] = []
+    for trusted_root in trusted_roots:
+        try:
+            relative = requested.relative_to(trusted_root)
+        except ValueError:
+            continue
+        if not relative.parts:
+            continue
+        try:
+            canonical_root = trusted_root.resolve(strict=True)
+            root_info = canonical_root.lstat()
+        except (OSError, RuntimeError) as error:
+            raise SDL3ArtifactError(f"SDL3 SDK trusted storage root is unavailable: {error}") from error
+        if stat.S_ISLNK(root_info.st_mode) or not stat.S_ISDIR(root_info.st_mode):
+            raise SDL3ArtifactError("SDL3 SDK trusted storage root must be a real directory")
+        matches.append((len(trusted_root.parts), canonical_root, relative))
+
+    if not matches:
         raise SDL3ArtifactError(
-            f"SDL3 SDK destination must be a real directory, not a symlink or file: {absolute}"
+            "SDL3 SDK destination must be inside the repository or OS temporary directory"
         )
 
-    try:
-        canonical = absolute.resolve(strict=False)
-    except (OSError, RuntimeError) as error:
-        raise SDL3ArtifactError(f"SDL3 SDK destination cannot be resolved safely: {error}") from error
+    # Prefer the most specific trusted root when the repository is itself
+    # located below the system temporary directory.
+    _, current, relative = max(matches, key=lambda item: item[0])
+    for part in relative.parts:
+        if (
+            part in ("", ".", "..")
+            or "/" in part
+            or "\\" in part
+            or any(ord(char) < 32 or ord(char) == 127 for char in part)
+        ):
+            raise SDL3ArtifactError(f"unsafe SDL3 SDK destination path component: {part!r}")
 
-    chain = [canonical, *canonical.parents]
-    for item in reversed(chain):
+        current = current / part
         try:
-            info = item.lstat()
+            info = current.lstat()
         except FileNotFoundError:
-            continue
+            try:
+                current.mkdir()
+            except FileExistsError:
+                # Another process may have created the directory; inspect it
+                # below rather than trusting the racing creator.
+                pass
+            except OSError as error:
+                raise SDL3ArtifactError(f"SDL3 SDK directory cannot be created: {error}") from error
+            try:
+                info = current.lstat()
+            except OSError as error:
+                raise SDL3ArtifactError(f"SDL3 SDK directory cannot be inspected: {error}") from error
         except OSError as error:
             raise SDL3ArtifactError(f"SDL3 SDK path cannot be inspected: {error}") from error
+
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
             raise SDL3ArtifactError(
-                f"SDL3 SDK path has a symlink/non-directory ancestor after resolution: {item}"
+                f"SDL3 SDK path has a symlink/non-directory component: {current}"
             )
-
-    try:
-        canonical.mkdir(parents=True, exist_ok=True)
-        final_info = canonical.lstat()
-    except OSError as error:
-        raise SDL3ArtifactError(f"SDL3 SDK directory cannot be created safely: {error}") from error
-    if stat.S_ISLNK(final_info.st_mode) or not stat.S_ISDIR(final_info.st_mode):
-        raise SDL3ArtifactError(
-            f"SDL3 SDK destination changed while it was being created: {canonical}"
-        )
 
 
 def _download(url: str, destination: Path, *, expected_size: int, max_size: int) -> None:
