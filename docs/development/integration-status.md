@@ -1,3 +1,55 @@
+## Current integration update — 2026-11-13 (post-release audit, 17:15 UTC)
+
+**Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This checkpoint supersedes older inventory claims below. It distinguishes newly published component Releases from the versions still selected by CDIN's Product Definitions, Catalog and lock files.
+
+### Current repository heads and published component identities
+
+| Repository | Observed `main` SHA | Latest relevant immutable Release | Integration status |
+|---|---|---|---|
+| Spec | `274f84f0ca08378db9c4a5cf6820065256f31d5a` | Stable `v1.4.0` | ADR-0028 is accepted. Spec source contains later development work, but no stable `v1.5.0` Release is recorded. |
+| Kernel | `2fb09f52dc1a9963cf358ec54d584c520e174e67` | [`v1.2.3`](https://github.com/cdin-editor/kernel/releases/tag/v1.2.3) | Five target-native user/install archives, five `cmake-prefix-v1` Registry archives, checksums and `kernel-1.2.3.json` are published. Package version 1.2.3 remains independent from Kernel C ABI 1.1.0 and logger 0.1.0. CDIN still pins 1.2.1 on main; [CDIN PR #143](https://github.com/cdin-editor/cdin/pull/143) updates the consumer pin and its Build-Info validator. |
+| Runtime | `eb48a511ea6d5085db38e501784290d80cb03947` | [`v1.0.0`](https://github.com/cdin-editor/runtime/releases/tag/v1.0.0) | Stable source and platform-neutral Lua module TAR.GZ/ZIP packages, checksums and canonical `runtime-1.0.0.json` are published. Runtime #16 remains open until the exact artifact is staged and consumed by CDIN without a Runtime checkout. |
+| Backend | `5d6371e8ca9ce1ee236d961181c259b3dfe72158` | [`v1.2.2`](https://github.com/cdin-editor/backend/releases/tag/v1.2.2) | Five target-native installable packages, descriptors/checksums and canonical `backend-1.2.2.json` are published. Backend #35 remains open for exact downstream Registry/CDIN consumer evidence. |
+| Frontend | `b28b8e80b48483c04a33c64832bafcd9da062897` | [`v1.2.2`](https://github.com/cdin-editor/frontend/releases/tag/v1.2.2) | Core, TUI and GUI-SDL packages are published for the five configured targets, with 15 direct package archives and three canonical variant metadata assets. The `v1.2.2` tag resolves to `728406c1e677d601c55b82b4fbf1a77eecfd8581`; main subsequently added only the `ui-presentation/1` capability identifier in PR #59, without requesting/advertising it. Frontend #40 remains open pending exact Registry/CDIN artifact consumption. |
+| Registry | `3285f861798f5bfc1479f50b2e920636b4214aae` | Only published executable Release remains `v0.1.0-dev` | The old release has incorrect target mappings and must not be consumed. Registry #53 (ADR-0028 discovery implementation) is closed, but #58 (publish the exact Catalog with the five executables and release descriptor) remains open. [Registry PR #63](https://github.com/cdin-editor/registry/pull/63) refreshes the static Catalog's immutable metadata identities and corrects the Frontend 1.2.2 digests/tag-resolved commit; it is not merged yet. |
+| CDIN | `4dc81f84d4187b721b8a84a8fa018aad9ba7a201` | Source-only development Releases such as `v0.0.0-dev.996` | The composition-root/native target-profile matrix is green, but no fixed `latest` product Release or immutable SemVer application Release exists. PR #143 is open to pin Kernel SDK 1.2.3. |
+| cdin-x | `bac35ff6ae25acad74875470a6feb24e7605cd0e` | `v0.2.0` | No new bundle identity is required for the current P0 package migration; live manager integration remains a product acceptance item. |
+
+### What CDIN actually selects on main
+
+The published component Releases above are **not yet the dependency set used by the product**. At this checkpoint:
+
+- `deps.lock` still pins Kernel SDK 1.2.1 and logger 0.1.0. PR #143 updates the direct SDK pin to Kernel 1.2.3, preserving ABI 1.1.0/logger 0.1.0, and adapts the consumer validator to Kernel 1.2.3's actual `Target OS`, `Target architecture` and `Target ABI` Build-Info fields.
+- The Registry consumer lock still refers to the unsafe `v0.1.0-dev` executable Release and has no verified descriptor size/digest. The normal consumer bootstrap therefore fails closed.
+- The TUI and GUI-SDL Product Definitions still select Backend 1.2.1 and Frontend 1.0.2. Runtime selection is still the historical RC2 source candidate.
+- The Catalog on Registry main remains the old static snapshot. PR #63 adds canonical Metadata Release Asset URIs and GitHub API SHA-256 values for Backend 1.2.2, Frontend 1.2.2 Core/TUI/GUI-SDL, Kernel 1.2.3 and Runtime 1.0.0. Do not treat those entries as published in the Registry main snapshot until PR #63 merges.
+- No `[dependencies.sdl3_sdk]` pin exists in CDIN `deps.lock`. CDIN PR #126 (producer) and PR #141 (staging/path-safety correction) are merged and the five-target SDK builder/consumer checks have run, but no tag-backed SDL3 SDK Release exists. CDIN #124 remains open.
+
+Do not change Product Definitions or the Registry consumer pin to use newly published component versions until the corrected Registry executable, same-tag Catalog/descriptor and required SDL3 SDK Release are immutable and their exact sizes/digests have been verified.
+
+### Verified CDIN CI — useful, but not artifact-first proof
+
+CDIN main CI [run 43440950985](https://github.com/cdin-editor/cdin/actions/runs/43440950985) passed all ten target/profile jobs (Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64; each with TUI and GUI-SDL) plus ASan/UBSan/leak detection on exact main SHA `4dc81f84d4187b721b8a84a8fa018aad9ba7a201`. The run includes headless protocol/document smokes, extension CLI smoke, POSIX PTY TUI and Windows ConPTY TUI checks.
+
+**This is native build/integration evidence, not a clean consumer artifact-first installation.** The matrix explicitly invokes Registry source-build/developer-component mode and GUI-SDL's SDL3 source-build mode. It does not prove that normal `make install` works without Git/Go or component source checkouts, nor that a published product installer can be downloaded and run outside the build tree.
+
+### P0/product gates — still open
+
+- **CDIN #121 — pinned Registry executable:** blocked on a corrected five-target Registry executable Release plus the exact same-tag Catalog snapshot, descriptor and final checksum inventory; clean bootstrap must not require Git/Go.
+- **CDIN #124 — SDL3 SDK consumer:** blocked on the immutable five-target SDK Release, lock pin, digest/path validation and clean-prefix CMake/link tests; TUI must not acquire SDL3.
+- **CDIN #122 — artifact-first product installation:** blocked on Registry #121, Runtime #16, Backend #35, Frontend #40, SDL3 #124, Product Definition/lock synchronization, cold/warm/offline install and exact Manifest replay.
+- **CDIN #118 — IME and PaneTree:** component implementations and contracts exist, but exact compatible immutable releases have not been selected by CDIN and the live product path has not passed TUI/GUI-SDL native matrices and sanitizers. Keep both optional capabilities unadvertised until it does.
+- **CDIN #111 — product release gate:** interactive editing UX, actual GUI-SDL launch/render/input, Windows Console TUI acceptance, Unicode shaping and Persian/Arabic bidi, plugin lifecycle, transport/process recovery, performance/soak baselines, clean install/upgrade/uninstall and real application distribution remain incomplete.
+- **Runtime #16, Backend #35, Frontend #40 and Registry #58** remain open until their published immutable package/metadata identities are consumed and verified by the downstream product.
+
+### Product release channels
+
+The latest CDIN source-only development Release is not an application distribution. The rolling fixed `latest` prerelease remains dormant because the dedicated Product Acceptance workflow is absent; the versioned SemVer product workflow correctly refuses publication before that gate exists. No product `latest` or immutable SemVer application Release is claimed.
+
+**Do not close any P0 issue from component Release publication or a green component CI alone.** The product remains DEVELOPMENT — NOT PRODUCT READY.
+
+---
+
 ## Current integration update — 2026-11-13 (verified component Release inventory)
 
 **Authoritative product status: DEVELOPMENT — NOT PRODUCT READY.** This checkpoint supersedes the older release-inventory claims below. It distinguishes published GitHub Releases from the versions actually selected by CDIN's current Catalog/Product Definitions/lock. A newer published package is not selected automatically, and a published Metadata asset is not accepted until every URI and digest resolves to the exact asset bytes.
