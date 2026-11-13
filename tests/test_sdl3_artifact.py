@@ -147,6 +147,13 @@ class TargetAndPinTests(unittest.TestCase):
                 "version": "3.4.16", "archive": SOURCE_URL, "sha256": SOURCE_SHA
             }}}, "linux-x86_64")
 
+    def test_validates_semver_source_version(self) -> None:
+        sdk.validate_pin(make_lock(), "linux-x86_64")
+        lock = make_lock()
+        lock["tooling"]["sdl3"]["version"] = "3.4"
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "version/tag/source provenance"):
+            sdk.validate_pin(lock, "linux-x86_64")
+
     def test_requires_all_five_target_asset_identities(self) -> None:
         lock = make_lock()
         del lock["dependencies"]["sdl3_sdk"]["assets"]["windows-x86_64"]
@@ -293,6 +300,51 @@ class ArchiveAndPackageTests(unittest.TestCase):
             sdk.verify_package_prefix(extracted, "3.4.16", TARGET, {
                 "url": SOURCE_URL, "sha256": SOURCE_SHA
             })
+
+    def test_allows_os_managed_symlinked_parent_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real_parent = root / "private" / "var"
+            real_parent.mkdir(parents=True)
+            system_alias = root / "var"
+            try:
+                system_alias.symlink_to(real_parent, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("native symlink creation is not permitted on this runner")
+
+            destination = system_alias / "extract"
+            with patch.object(sdk.tempfile, "gettempdir", return_value=str(system_alias)):
+                sdk._ensure_real_directory(destination)
+            self.assertTrue((real_parent / "extract").is_dir())
+            self.assertFalse((real_parent / "extract").is_symlink())
+
+    def test_rejects_sdk_destination_outside_trusted_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = Path(root.anchor) / "cdin-sdk-untrusted-destination"
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "inside the repository or OS temporary"):
+                sdk._ensure_real_directory(outside)
+
+    def test_rejects_parent_traversal_in_sdk_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / ".." / "escaped"
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "without traversal"):
+                sdk._ensure_real_directory(destination)
+
+    def test_rejects_symlink_at_extraction_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            real_destination = root / "real"
+            real_destination.mkdir()
+            destination = root / "extract"
+            try:
+                destination.symlink_to(real_destination, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("native symlink creation is not permitted on this runner")
+
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "symlink/non-directory component"):
+                sdk._ensure_real_directory(destination)
+            self.assertEqual(list(real_destination.iterdir()), [])
 
     def test_extraction_requires_an_empty_destination(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
