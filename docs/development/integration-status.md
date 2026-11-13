@@ -675,3 +675,15 @@ The new merge-SHA CDIN run [42224282657](https://github.com/cdin-editor/cdin/act
 The candidate uses the immutable Frontend PR #17 source revision `552eedd14e3971e2b39d706804d4af57f8b2dc38` and the checksum-pinned SDL3 3.4.16 archive recorded in `deps.lock`. `scripts/build_stack.py` builds and installs SDL3, builds the Frontend SDL target, then configures CDIN with `CDIN_ENABLE_GUI_SDL=ON`. The CDIN executable owns the in-process transport callbacks and Backend lifecycle; the Frontend SDL library owns SDL window/events/rendering and the semantic model. No Backend, Runtime or Kernel private headers are added to the Frontend package.
 
 The live-session smoke is intentionally a CI test path, not a second editor implementation: it attaches the GUI Driver Session, creates a temporary document through Runtime, pushes a deterministic SDL text event and Ctrl+S key event, and checks the saved bytes. The test is bounded and removes its temporary file on teardown. It does not prove production text shaping, full GUI interactions, reconnect or installer readiness.
+
+
+## Follow-up automation work — 2026-11-13 20:55 local
+
+The refreshed Catalog inventory is now merged in Registry via [PR #63](https://github.com/cdin-editor/registry/pull/63). The following implementation PRs have been opened; none is treated as product acceptance until its checks and downstream runs complete:
+
+- [Registry PR #64](https://github.com/cdin-editor/registry/pull/64) creates/verifies the immutable `v0.2.0-dev.3` tag against the exact successful main CI commit and invokes the existing pinned cross-platform release producer. The Registry Release itself has not yet been published.
+- [CDIN PR #143](https://github.com/cdin-editor/cdin/pull/143) pins the published Kernel 1.2.3 SDK and validates all five target asset identities/metadata.
+- [CDIN PR #145](https://github.com/cdin-editor/cdin/pull/145) adds the missing artifact-first Product Acceptance matrix. It uses normal consumer installation, forbids Registry/SDL3 source builds, validates the extracted installed distribution and publishes the ten target/profile artifacts consumed by the rolling `latest` workflow.
+- [CDIN PR #146](https://github.com/cdin-editor/cdin/pull/146) adds immutable SDL3 SDK release publication after trusted main CI, with a preflight to avoid rebuilding an existing SDK release.
+
+At the time of this update, the GitHub Actions runs for these PRs are queued; Code Quality for PR #145 has passed. No Registry `v0.2.0-dev.3` Release, SDL3 SDK Release, artifact-first Product Acceptance run, or rolling product `latest` has been verified. CDIN's checked-in Product Definitions and Registry/SDL3 pins therefore remain blockers. The epic and all downstream acceptance issues remain open.
