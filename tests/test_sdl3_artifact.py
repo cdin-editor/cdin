@@ -313,9 +313,23 @@ class ArchiveAndPackageTests(unittest.TestCase):
                 self.skipTest("native symlink creation is not permitted on this runner")
 
             destination = system_alias / "extract"
-            sdk._ensure_real_directory(destination)
+            with patch.object(sdk.tempfile, "gettempdir", return_value=str(system_alias)):
+                sdk._ensure_real_directory(destination)
             self.assertTrue((real_parent / "extract").is_dir())
             self.assertFalse((real_parent / "extract").is_symlink())
+
+    def test_rejects_sdk_destination_outside_trusted_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = Path(root.anchor) / "cdin-sdk-untrusted-destination"
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "inside the repository or OS temporary"):
+                sdk._ensure_real_directory(outside)
+
+    def test_rejects_parent_traversal_in_sdk_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / ".." / "escaped"
+            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "without traversal"):
+                sdk._ensure_real_directory(destination)
 
     def test_rejects_symlink_at_extraction_destination(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
