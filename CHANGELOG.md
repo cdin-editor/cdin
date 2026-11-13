@@ -11,7 +11,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Accept OS-managed parent-directory aliases such as macOS `/var` resolving to `/private/var` while retaining rejection of a symlink at the caller-selected SDK extraction destination. Archive member links, traversal and special files remain rejected. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
+- Constrain SDK cache/extraction directories to repository or OS-temporary roots, reject traversal and symlinks below the trusted root, and resolve the trusted root before walking components so macOS `/var` aliases remain supported. Preserve rejection of symlink destinations and archive member links, traversal and special files. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
 
 
 ### Added
