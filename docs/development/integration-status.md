@@ -1,3 +1,57 @@
+## Current integration update — 2026-11-13 (verified component Release inventory)
+
+**Authoritative product status: DEVELOPMENT — NOT PRODUCT READY.** This checkpoint supersedes the older release-inventory claims below. It distinguishes published GitHub Releases from the versions actually selected by CDIN's current Catalog/Product Definitions/lock. A newer published package is not selected automatically, and a published Metadata asset is not accepted until every URI and digest resolves to the exact asset bytes.
+
+### Current repository heads and release inventory
+
+| Repository | Observed `main` SHA | Latest relevant published identity | Current finding |
+|---|---|---|---|
+| Spec | `274f84f0ca08378db9c4a5cf6820065256f31d5a` | Stable Release `v1.4.0`; main source/status reports `1.5.0` | ADR-0028 is accepted in main and Registry Data Contract is `1.4.0`. A `v1.5.0` GitHub Release was not found; do not describe the main-source version label as a published tag. |
+| Kernel | `2fb09f52dc1a9963cf358ec54d584c520e174e67` | [`v1.2.3`](https://github.com/cdin-editor/kernel/releases/tag/v1.2.3) | Published 2026-11-13 with five target-native CMake-prefix packages, checksums and `kernel-1.2.3.json`. CDIN still pins Kernel 1.2.1 in `deps.lock`. |
+| Runtime | `5f37d733b42ad363abd8c26669157ae1bcc55186` | No `v1.0.0-rc.3` Release | RC3 publisher preparation is on main, but the tag/Release and canonical `runtime-1.0.0-rc.3.json` asset are absent. Runtime #16 remains open. |
+| Backend | `41681388d8294efeb371b0d337b426a72c19aeae` | [`v1.2.2`](https://github.com/cdin-editor/backend/releases/tag/v1.2.2) | Published 2026-11-13 with five target-native package archives, descriptors/checksums and canonical `backend-1.2.2.json`. CDIN's static Catalog still selects Backend 1.2.1. Backend #35 remains open for downstream release/consumer acceptance. |
+| Frontend | `c0e85af949fb9e48314b9007a820563b584b7c5e` | [`v1.2.0`](https://github.com/cdin-editor/frontend/releases/tag/v1.2.0) | Release has three canonical Metadata JSON files but only five target-level aggregate archives; the 15 direct Core/TUI/GUI-SDL package archive basenames referenced by Metadata are absent. Do not use this Release identity for artifact-first Catalog consumption. [Frontend PR #54](https://github.com/cdin-editor/frontend/pull/54) corrects future publishing; the immutable v1.2.0 Release is not rewritten. Frontend #40 remains open. |
+| Registry | `5a232b218215d3b9960602e4ffd56e7b20f0607b` | No `v0.2.0-dev.2` Release | The dev.2 publisher and same-tag Catalog/descriptor generation are prepared and the release workflow is pinned. No matching tag/Release or five-target executable/Catalog/descriptor inventory exists. Registry #58 and CDIN #121 remain open. Historical dev.1 is incomplete and must not be rewritten or consumed. |
+| CDIN | `62c30852676cfc2213b0bd70b443f28359e30db1` | No product `latest` or new immutable product Release | PRs #131, #133, #138, #139 and #140 are merged. The normal Registry and SDL3 consumers fail closed until their real Releases are published and pinned. Product Acceptance workflow is absent; SemVer product release remains gated. |
+| cdin-x | `bac35ff6ae25acad74875470a6feb24e7605cd0e` | Existing bundle release `v0.2.0` | No new cdin-x Release was needed for this P0 checkpoint. |
+| Pipeline | `0c2c89c7c64575c6b0f66c78925bdf5638abc5e9` | Immutable workflow/helper revision used by release publishers | Keep the called release workflow ref and `pipeline-ref` equal. Frontend main currently regressed to an older pin; PR #54 restores the common immutable revision. |
+
+### What CDIN actually selects today
+
+The published releases above are **not** the current product dependency set. The current `deps.lock` and Registry static Catalog still select:
+
+- Kernel 1.2.1 (five target asset hashes/sizes in `deps.lock`) and logger 0.1.0.
+- Backend 1.2.1 (Registry native `cmake-prefix-v1` artifact).
+- Runtime 1.0.0-rc.2 as a source unit.
+- Frontend TUI 1.0.2 and GUI-SDL 1.0.2 as source units.
+- Registry consumer pin `v0.1.0-dev`, whose target mapping is invalid and whose descriptor digest/size are absent; normal bootstrap fails closed. Registry development source is pinned separately to dev.2.
+- SDL3 3.4.16 source archive for explicit development builds; the new five-target `[dependencies.sdl3_sdk]` pin is intentionally absent because no SDK Release exists.
+
+Do not update Product Definitions/Manifest merely because Kernel 1.2.3 and Backend 1.2.2 have appeared. Frontend v1.2.0 is not an admissible candidate until PR #54 publishes a new immutable identity with 15 direct package assets whose basename, size and SHA-256 match the generated Metadata. Runtime, Registry and SDL3 must first publish their own exact tag-bound packages.
+
+### P0/product gates — still open
+
+- CDIN #111: overarching interactive editor, recovery, performance, install/upgrade/uninstall and Product Acceptance gate.
+- CDIN #118: live IME and PaneTree end-to-end tests against the exact immutable component stack.
+- CDIN #121: verified Registry executable, same-tag Catalog and descriptor Release plus clean/no-Go bootstrap.
+- CDIN #122: complete artifact-first install and Manifest replay for TUI/GUI-SDL on all supported targets.
+- CDIN #124: published five-target SDL3 SDK and clean-prefix GUI-SDL consumption.
+- Runtime #16, Backend #35, Frontend #40 and Registry #58: release-publisher/consumer acceptance remains open.
+
+### Product release channels
+
+CDIN PR #139 separates source-only development snapshots, rolling product `latest`, and immutable SemVer releases. The rolling product channel remains dormant because `.github/workflows/product-acceptance.yml` is not present. The current `release.yml` intentionally refuses SemVer product publication until Product Acceptance exists. A source-only `v0.0.0-dev.*` Release is not an application distribution. No product `latest` or immutable SemVer application Release is claimed.
+
+### Current CI / review checkpoint
+
+- CDIN PR #141 addresses the SDL3 SemVer pin and safe temporary-directory handling. Its exact-head CI must pass all native target/profile jobs, sanitizers and security review before merge; no component or SDK Release can be created until then.
+- Frontend PR #54 fixes the v1.2.0 asset-layout defect and restores the immutable Pipeline pin. Its five-target native and quality CI must pass before a new package tag is cut.
+- No P0 issue is closed by this checkpoint. Keep IME and PaneTree capability negotiation disabled until #118 passes against the exact selected immutable stack.
+
+Spec anchors: [ADR-0028 publisher contract, lines 19–24](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0028-github-release-metadata-discovery.md#L19-L24); [ADR-0025 immutable artifact delivery, lines 15–21](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21).
+
+---
+
 ## Current integration update — 2026-11-12 (after Pipeline rolling-release merge)
 
 **Authoritative product status: DEVELOPMENT — not PRODUCT READY.** The native target/profile CI matrix is complete, and the reusable rolling-release infrastructure is merged, but the complete package startup/cleanup and interactive product acceptance gates remain incomplete. No rolling latest or new immutable product/component/SDK Release has been published by this work.
