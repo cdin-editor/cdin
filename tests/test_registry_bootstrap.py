@@ -572,11 +572,11 @@ class KernelSDKCompositionTests(unittest.TestCase):
             for target, (target_os, architecture, abi) in cases.items():
                 with self.subTest(target=target):
                     info.write_text(
-                        "Package version: 1.2.3\\n"
-                        "C ABI version: 1.1.0\\n"
-                        f"Target OS: {target_os}\\n"
-                        f"Target architecture: {architecture}\\n"
-                        f"Target ABI: {abi}\\n",
+                        "Package version: 1.2.3\n"
+                        "C ABI version: 1.1.0\n"
+                        f"Target OS: {target_os}\n"
+                        f"Target architecture: {architecture}\n"
+                        f"Target ABI: {abi}\n",
                         encoding="utf-8",
                     )
                     parse_build_info(package, pin, target)
@@ -587,11 +587,11 @@ class KernelSDKCompositionTests(unittest.TestCase):
             package = Path(temporary)
             info = package / "BUILD-INFO.txt"
             valid = (
-                "Package version: 1.2.3\\n"
-                "C ABI version: 1.1.0\\n"
-                "Target OS: darwin\\n"
-                "Target architecture: x86_64\\n"
-                "Target ABI: macos-15\\n"
+                "Package version: 1.2.3\n"
+                "C ABI version: 1.1.0\n"
+                "Target OS: darwin\n"
+                "Target architecture: x86_64\n"
+                "Target ABI: macos-15\n"
             )
             for field, bad_value in (
                 ("Target OS", "macos"),
@@ -602,7 +602,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
                     lines = valid.splitlines()
                     index = next(i for i, line in enumerate(lines) if line.startswith(field + ":"))
                     lines[index] = f"{field}: {bad_value}"
-                    info.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+                    info.write_text("\n".join(lines) + "\n", encoding="utf-8")
                     with self.assertRaisesRegex(SDKBootstrapError, "BUILD-INFO"):
                         parse_build_info(package, pin, "macos-x86_64")
 
