@@ -1,0 +1,223 @@
+name: Product Acceptance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installed-product:
+    name: Installed product / ${{ matrix.target }} / ${{ matrix.profile }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            os: ubuntu-24.04
+            shell: bash
+            profile: tui
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            shell: bash
+            profile: tui
+          - target: macos-x86_64
+            os: macos-15-intel
+            shell: bash
+            profile: tui
+          - target: macos-arm64
+            os: macos-15
+            shell: bash
+            profile: tui
+          - target: windows-x86_64
+            os: windows-latest
+            shell: msys2 {0}
+            profile: tui
+          - target: linux-x86_64
+            os: ubuntu-24.04
+            shell: bash
+            profile: gui-sdl
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            shell: bash
+            profile: gui-sdl
+          - target: macos-x86_64
+            os: macos-15-intel
+            shell: bash
+            profile: gui-sdl
+          - target: macos-arm64
+            os: macos-15
+            shell: bash
+            profile: gui-sdl
+          - target: windows-x86_64
+            os: windows-latest
+            shell: msys2 {0}
+            profile: gui-sdl
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
+      CDIN_EXPECTED_TARGET: ${{ matrix.target }}
+      CDIN_SOURCE_REVISION: ${{ github.sha }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up MSYS2 UCRT64 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-lua54
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake git make pkg-config liblua5.4-dev \
+            python3 python3-pip
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake make pkg-config lua@5.4
+          echo "$(brew --prefix lua@5.4)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix lua@5.4)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        if: runner.os != 'Windows'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify native runner and Windows ABI
+        run: |
+          python - <<'PY'
+          import os
+          import platform
+
+          operating_system = {
+              "Linux": "linux",
+              "Darwin": "macos",
+              "Windows": "windows",
+          }.get(platform.system())
+          architecture = {
+              "x86_64": "x86_64",
+              "amd64": "x86_64",
+              "aarch64": "arm64",
+              "arm64": "arm64",
+          }.get(platform.machine().lower())
+          actual = f"{operating_system}-{architecture}"
+          expected = os.environ["CDIN_EXPECTED_TARGET"]
+          if actual != expected:
+              raise SystemExit(f"expected {expected}, detected {actual}")
+          if operating_system == "windows" and os.environ.get("MSYSTEM") != "UCRT64":
+              raise SystemExit("Windows product acceptance requires the UCRT64 ABI")
+          print(f"Verified native target: {actual}")
+          PY
+
+      - name: Verify artifact-first bootstrap contracts
+        run: |
+          python -m unittest discover -s tests -p test_registry_artifact.py
+          python -m unittest discover -s tests -p "test_*sdl3*.py"
+          python -m unittest discover -s tests -p test_package_distribution.py
+
+      - name: Verify immutable SDK pin before installation
+        run: |
+          python scripts/deps.py --verify
+
+      - name: Install the product using consumer defaults only
+        run: make install
+
+      - name: Reject developer source-build residue
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(".").resolve()
+          forbidden = [
+              root / ".deps" / "tools" / "registry",
+              root / ".deps" / "src" / "sdl3",
+          ]
+          present = [str(path.relative_to(root)) for path in forbidden if path.exists()]
+          if present:
+              raise SystemExit("consumer installation created developer source trees: " + ", ".join(present))
+          profile = os.environ["CDIN_FRONTEND_VARIANT"]
+          sdl_sdk = root / ".deps" / "sdk" / "share" / "cdin" / "sdl3-sdk.json"
+          if profile == "tui" and sdl_sdk.exists():
+              raise SystemExit("TUI unexpectedly acquired the SDL3 SDK")
+          if profile == "gui-sdl" and not sdl_sdk.is_file():
+              raise SystemExit("GUI-SDL did not acquire its pinned prebuilt SDL3 SDK")
+          PY
+
+      - name: Package and verify the extracted installed product
+        run: python scripts/package_distribution.py --profile "${{ matrix.profile }}"
+
+      - name: Validate target/profile archive, manifest and checksum
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path("dist/distributions")
+          manifests = list(output.glob("*.manifest.json"))
+          archives = [p for p in output.iterdir() if p.suffix in {".zip", ".gz"}]
+          checksums = list(output.glob("*.sha256"))
+          if len(manifests) != 1 or len(archives) != 1 or len(checksums) != 1:
+              raise SystemExit("expected exactly one archive, manifest and checksum")
+          manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
+          expected_target = os.environ["CDIN_EXPECTED_TARGET"]
+          target = manifest.get("target", {})
+          actual_target = f"{target.get('os')}-{target.get('architecture')}"
+          if actual_target != expected_target:
+              raise SystemExit(f"manifest target mismatch: {actual_target} != {expected_target}")
+          if manifest.get("profile") != os.environ["CDIN_FRONTEND_VARIANT"]:
+              raise SystemExit("manifest profile mismatch")
+          archive = archives[0]
+          expected_digest = checksums[0].read_text(encoding="ascii").split()[0]
+          actual_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          if expected_digest != actual_digest:
+              raise SystemExit("installed product checksum mismatch")
+          if manifest.get("archive", {}).get("sha256") != actual_digest:
+              raise SystemExit("manifest archive digest mismatch")
+          if manifest.get("source_commit") != os.environ["CDIN_SOURCE_REVISION"]:
+              raise SystemExit("manifest source commit mismatch")
+          print(f"Verified {expected_target}/{manifest['profile']} {archive.name} sha256={actual_digest}")
+          PY
+
+      - name: Upload verified installed product
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cdin-installed-product-${{ matrix.target }}-${{ matrix.profile }}
+          path: |
+            dist/distributions/*.tar.gz
+            dist/distributions/*.zip
+            dist/distributions/*.sha256
+            dist/distributions/*.manifest.json
+          if-no-files-found: error
+          retention-days: 30
