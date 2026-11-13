@@ -193,7 +193,8 @@ jobs:
           manifest = json.loads(manifests[0].read_text(encoding="utf-8"))
           expected_target = os.environ["CDIN_EXPECTED_TARGET"]
           target = manifest.get("target", {})
-          actual_target = f"{target.get('os')}-{target.get('architecture')}"
+          manifest_os = {"darwin": "macos"}.get(target.get("os"), target.get("os"))
+          actual_target = f"{manifest_os}-{target.get('architecture')}"
           if actual_target != expected_target:
               raise SystemExit(f"manifest target mismatch: {actual_target} != {expected_target}")
           if manifest.get("profile") != os.environ["CDIN_FRONTEND_VARIANT"]:
