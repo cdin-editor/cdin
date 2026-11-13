@@ -220,5 +220,64 @@ class RollingProductReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("v0.0.0-dev", self.rolling)
 
 
+
+class ProductAcceptanceWorkflowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = (
+            ROOT / ".github" / "workflows" / "product-acceptance.yml"
+        ).read_text(encoding="utf-8")
+
+    def test_product_acceptance_is_the_trusted_main_rolling_release_gate(self) -> None:
+        self.assertIn("name: Product Acceptance", self.workflow)
+        self.assertIn("  push:\n    branches: [main]", self.workflow)
+        self.assertIn("workflow_dispatch:", self.workflow)
+
+    def test_matrix_covers_all_five_targets_and_both_product_profiles(self) -> None:
+        for target in (
+            "linux-x86_64",
+            "linux-arm64",
+            "macos-x86_64",
+            "macos-arm64",
+            "windows-x86_64",
+        ):
+            for profile in ("tui", "gui-sdl"):
+                with self.subTest(target=target, profile=profile):
+                    self.assertIn(f"target: {target}", self.workflow)
+                    self.assertIn(f"profile: {profile}", self.workflow)
+        self.assertEqual(self.workflow.count("profile: tui"), 5)
+        self.assertEqual(self.workflow.count("profile: gui-sdl"), 5)
+
+    def test_consumer_acceptance_never_opts_into_developer_source_builds(self) -> None:
+        self.assertIn("run: make install", self.workflow)
+        self.assertNotIn("--source-build", self.workflow)
+        self.assertNotIn("--developer-source-components", self.workflow)
+        self.assertNotIn("--registry-source-build", self.workflow)
+        self.assertNotIn("--build-sdl3-from-source", self.workflow)
+        self.assertIn("scripts/deps.py --verify", self.workflow)
+
+    def test_acceptance_rejects_registry_or_sdl3_source_trees(self) -> None:
+        self.assertIn('.deps" / "tools" / "registry', self.workflow)
+        self.assertIn('.deps" / "src" / "sdl3', self.workflow)
+        self.assertIn("GUI-SDL did not acquire its pinned prebuilt SDL3 SDK", self.workflow)
+        self.assertIn("TUI unexpectedly acquired the SDL3 SDK", self.workflow)
+
+    def test_uploaded_artifact_contract_matches_the_rolling_release_consumer(self) -> None:
+        self.assertIn("cdin-installed-product-${{ matrix.target }}-${{ matrix.profile }}", self.workflow)
+        self.assertIn("dist/distributions/*.manifest.json", self.workflow)
+        self.assertIn("dist/distributions/*.sha256", self.workflow)
+        self.assertIn("retention-days: 30", self.workflow)
+
+    def test_archive_manifest_checksum_and_source_revision_are_verified(self) -> None:
+        for marker in (
+            "manifest.get(\"source_commit\")",
+            "manifest.get(\"archive\", {}).get(\"sha256\")",
+            "hashlib.sha256(archive.read_bytes()).hexdigest()",
+            "python scripts/package_distribution.py",
+        ):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, self.workflow)
+
+
 if __name__ == "__main__":
     unittest.main()
