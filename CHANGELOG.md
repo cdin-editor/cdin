@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Accept OS-managed parent-directory aliases such as macOS `/var` resolving to `/private/var` while retaining rejection of a symlink at the caller-selected SDK extraction destination. Archive member links, traversal and special files remain rejected. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
+
+
 ### Added
 
 - Expand the native CDIN product CI matrix to Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64 for both TUI and GUI-SDL, with host identity checks and target/profile-qualified artifacts.
