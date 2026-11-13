@@ -1,51 +1,52 @@
 # Pinned SDK packages for contracts provided by the CDIN build environment.
-# Kernel 1.2.1's published native packages contain both cdin-kernel and the
-# independently versioned m-mdy-m/log.c 0.1.0 SDK. The package source commit,
-# tag, per-target asset size and GitHub-published SHA-256 are immutable inputs.
+# Kernel 1.2.3 publishes target-native archives containing both the Kernel C
+# SDK and its separately versioned m-mdy-m/log.c 0.1.0 static SDK. These are
+# the ordinary installable release archives with their verified installer;
+# the parallel cmake-prefix-v1 archives are consumed through Registry.
+#
+# The package source commit, tag, per-target asset size and GitHub-published
+# SHA-256 are immutable inputs.
 
 [dependencies]
 
 [dependencies.kernel_sdk]
 repository = "https://github.com/cdin-editor/kernel"
-tag = "v1.2.1"
-version = "1.2.1"
-revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
+tag = "v1.2.3"
+version = "1.2.3"
+revision = "2fb09f52dc1a9963cf358ec54d584c520e174e67"
 kernel_abi = "1.1.0"
 logger_version = "0.1.0"
 
 [dependencies.kernel_sdk.assets."linux-x86_64"]
-file_name = "cdin-kernel-1.2.1-linux-x86_64.tar.gz"
+file_name = "cdin-kernel-1.2.3-linux-x86_64.tar.gz"
 format = "tar.gz"
-size_bytes = 268126
-sha256 = "05779c5a23a24b3a5cb4e978d803f8e4bd81c73dbf5ba2b47e36b34ed0ddda21"
+size_bytes = 381038
+sha256 = "48a82eb7f4c1fac57c7661f070c1338eb17c10d709eff0d87bb0229b87e46013"
 
 [dependencies.kernel_sdk.assets."linux-arm64"]
-file_name = "cdin-kernel-1.2.1-linux-arm64.tar.gz"
+file_name = "cdin-kernel-1.2.3-linux-arm64.tar.gz"
 format = "tar.gz"
-size_bytes = 274198
-sha256 = "2b8a081343b31772701c0fcbe287860b8c4f19efe8e852edbcf282c2428365e8"
+size_bytes = 388521
+sha256 = "9da597d5109e5280d78b1f9c18f68bb10db3d87d64c973bffedbceffbed52bc6"
 
 [dependencies.kernel_sdk.assets."macos-x86_64"]
-file_name = "cdin-kernel-1.2.1-macos-x86_64.tar.gz"
+file_name = "cdin-kernel-1.2.3-macos-x86_64.tar.gz"
 format = "tar.gz"
-size_bytes = 254606
-sha256 = "0a1dbb4bfb9c61ec82ff1636d5042b8291be848a9042ea201869dc1a7bc383e4"
+size_bytes = 346687
+sha256 = "e2ae0ea23e58f5a2210ad19a20ae99f2cf3febb0e8b0f714917beb7f8fa768a3"
 
 [dependencies.kernel_sdk.assets."macos-arm64"]
-file_name = "cdin-kernel-1.2.1-macos-arm64.tar.gz"
+file_name = "cdin-kernel-1.2.3-macos-arm64.tar.gz"
 format = "tar.gz"
-size_bytes = 252064
-sha256 = "d61e1314b7864fd8ebdac850242d101778588e38c11bbb8b0dc4abbcbcf872d9"
+size_bytes = 342015
+sha256 = "8a4ddece6db4f0ed48657b2f7bf64edf1137fa9bb6d09b0b8f2908bb0d450fea"
 
 [dependencies.kernel_sdk.assets."windows-x86_64"]
-file_name = "cdin-kernel-1.2.1-windows-x86_64.zip"
+file_name = "cdin-kernel-1.2.3-windows-x86_64.zip"
 format = "zip"
-size_bytes = 300986
-sha256 = "cab2b903670cdffec8996a8daf42328c789d69392f7a1c818254af8b23b48a71"
+size_bytes = 309735
+sha256 = "d0ced8272c80c1e5df886441c67493a25cca0e3a95a7c0e81be515282cb6364a"
 
-# Consumer Registry release pin. The descriptor digest/size are intentionally
-# absent until Registry #58 publishes and verifies the corrected 0.2.0-dev.2
-# release. Normal acquisition therefore fails closed rather than using v0.1.0-dev.
 [tooling.registry]
 repository = "https://github.com/cdin-editor/registry.git"
 revision = "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"
