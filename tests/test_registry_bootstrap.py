@@ -31,6 +31,7 @@ from scripts.deps import (
     _GitHubAPIRedirectHandler,
     install_sdk_atomically,
     parse_kernel_abi,
+    parse_build_info,
     download_asset,
     fetch_github_json,
     verify_release_asset_identity,
@@ -556,6 +557,55 @@ class BackendArtifactStagingTests(unittest.TestCase):
 
 
 class KernelSDKCompositionTests(unittest.TestCase):
+    def test_kernel_123_build_info_validates_published_target_tuple(self) -> None:
+        cases = {
+            "linux-x86_64": ("linux", "x86_64", "gnu-glibc-2.39"),
+            "linux-arm64": ("linux", "arm64", "gnu-glibc-2.39"),
+            "macos-x86_64": ("darwin", "x86_64", "macos-15"),
+            "macos-arm64": ("darwin", "arm64", "macos-15"),
+            "windows-x86_64": ("windows", "x86_64", "windows-ucrt64"),
+        }
+        pin = {"version": "1.2.3", "kernel_abi": "1.1.0"}
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary)
+            info = package / "BUILD-INFO.txt"
+            for target, (target_os, architecture, abi) in cases.items():
+                with self.subTest(target=target):
+                    info.write_text(
+                        "Package version: 1.2.3\\n"
+                        "C ABI version: 1.1.0\\n"
+                        f"Target OS: {target_os}\\n"
+                        f"Target architecture: {architecture}\\n"
+                        f"Target ABI: {abi}\\n",
+                        encoding="utf-8",
+                    )
+                    parse_build_info(package, pin, target)
+
+    def test_kernel_123_build_info_rejects_wrong_os_architecture_or_abi(self) -> None:
+        pin = {"version": "1.2.3", "kernel_abi": "1.1.0"}
+        with tempfile.TemporaryDirectory() as temporary:
+            package = Path(temporary)
+            info = package / "BUILD-INFO.txt"
+            valid = (
+                "Package version: 1.2.3\\n"
+                "C ABI version: 1.1.0\\n"
+                "Target OS: darwin\\n"
+                "Target architecture: x86_64\\n"
+                "Target ABI: macos-15\\n"
+            )
+            for field, bad_value in (
+                ("Target OS", "macos"),
+                ("Target architecture", "arm64"),
+                ("Target ABI", "macos-14"),
+            ):
+                with self.subTest(field=field):
+                    lines = valid.splitlines()
+                    index = next(i for i, line in enumerate(lines) if line.startswith(field + ":"))
+                    lines[index] = f"{field}: {bad_value}"
+                    info.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+                    with self.assertRaisesRegex(SDKBootstrapError, "BUILD-INFO"):
+                        parse_build_info(package, pin, "macos-x86_64")
+
     def test_kernel_header_abi_parser_uses_public_three_part_constants(self) -> None:
         header = (
             "#define CDIN_KERNEL_ABI_MAJOR 1u\n"
