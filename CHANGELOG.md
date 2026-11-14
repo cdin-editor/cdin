@@ -11,6 +11,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Pin the artifact-first Registry consumer to the published immutable `v0.2.0-dev.3` Release, including its exact tag-resolved source commit and release-descriptor SHA-256/size. Keep the developer-only Registry source pin separate from normal installation.
+
 - Constrain SDK cache/extraction directories to repository or OS-temporary roots, reject traversal and symlinks below the trusted root, and resolve the trusted root before walking components so macOS `/var` aliases remain supported. Preserve rejection of symlink destinations and archive member links, traversal and special files. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
 
 
