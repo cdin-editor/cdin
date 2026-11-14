@@ -94,10 +94,10 @@ jobs:
         shell: bash
         run: |
           if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
-            echo "::warning::CDIN_GITHUB_READ_TOKEN is not configured; public GitHub API requests will use the anonymous rate limit. Configure a read-only cross-repository token to improve reliability."
-          else
-            echo "Cross-repository GitHub API read credential is configured."
+            echo "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix. Configure a fine-grained token with Contents: read for CDIN, Kernel, Runtime, Backend, Frontend and Registry."
+            exit 1
           fi
+          echo "Cross-repository GitHub API read credential is configured."
 
       - name: Set up MSYS2 UCRT64 (Windows)
         if: runner.os == 'Windows'
