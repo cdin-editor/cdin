@@ -82,12 +82,20 @@ jobs:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.sha }}
-      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+
+      - name: Verify cross-repository GitHub read token
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Configure Actions secret CDIN_GITHUB_READ_TOKEN with read-only Contents access to the CDIN component repositories."
+            exit 1
+          fi
 
       - name: Set up MSYS2 UCRT64 (Windows)
         if: runner.os == 'Windows'
@@ -154,6 +162,7 @@ jobs:
 
       - name: Verify artifact-first bootstrap contracts
         run: |
+          python -m unittest discover -s tests -p test_deps.py
           python -m unittest discover -s tests -p test_registry_artifact.py
           python -m unittest discover -s tests -p "test_*sdl3*.py"
           python -m unittest discover -s tests -p test_package_distribution.py
