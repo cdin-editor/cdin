@@ -347,6 +347,33 @@ class ReleaseIdentityTests(unittest.TestCase):
                 sdk.verify_release(pin, asset)
 
 
+class ChecksumSidecarTests(unittest.TestCase):
+    def test_accepts_exact_lf_and_crlf_sidecars(self) -> None:
+        filename = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
+        archive_digest = "a" * 64
+        for ending in (b"\\n", b"\\r\\n"):
+            payload = f"{archive_digest}  {filename}".encode("ascii") + ending
+            asset = {
+                "sha256": archive_digest,
+                "sidecar_size_bytes": len(payload),
+                "sidecar_sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            with self.subTest(ending=ending):
+                sdk.verify_checksum_sidecar_bytes(payload, asset, filename)
+
+    def test_rejects_wrong_checksum_even_when_sidecar_digest_is_pinned(self) -> None:
+        filename = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
+        archive_digest = "a" * 64
+        payload = f"{'b' * 64}  {filename}\\r\\n".encode("ascii")
+        asset = {
+            "sha256": archive_digest,
+            "sidecar_size_bytes": len(payload),
+            "sidecar_sha256": hashlib.sha256(payload).hexdigest(),
+        }
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "does not match"):
+            sdk.verify_checksum_sidecar_bytes(payload, asset, filename)
+
+
 class ArchiveAndPackageTests(unittest.TestCase):
     def test_extracts_and_verifies_exact_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
