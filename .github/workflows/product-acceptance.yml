@@ -83,6 +83,7 @@ jobs:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.sha }}
+      GH_TOKEN: ${{ github.token }}
       CDIN_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
       REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
     steps:
