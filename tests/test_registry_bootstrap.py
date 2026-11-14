@@ -333,18 +333,18 @@ class RegistryPinSeparationTests(unittest.TestCase):
         development = consumer["development"]
 
         expected_repository = "https://github.com/cdin-editor/registry.git"
-        expected_revision = "9fac913ada29a33a650f1b17c27fb2e6c657ae15"
-        self.assertEqual(consumer["release_tag"], "v0.2.0-dev.3")
-        self.assertEqual(consumer["version"], "0.2.0-dev.3")
+        expected_revision = "c5b6900319cebe22f2d035a6c3b23a32f06a48b5"
+        self.assertEqual(consumer["release_tag"], "v1.0.0")
+        self.assertEqual(consumer["version"], "1.0.0")
         self.assertEqual(consumer["revision"], expected_revision)
-        self.assertEqual(consumer["release_descriptor_size"], 1645)
+        self.assertEqual(consumer["release_descriptor_size"], 1633)
         self.assertEqual(
             consumer["release_descriptor_sha256"],
-            "040ce9cf92a269486ee6e59d0a7459aeecda41d8d909c0ec40962d16a43a5fba",
+            "b47030a2f6ebba6a3ccfe88ca28437111f1e71b0c0ae5e8fbcb6a6eeaf78e495",
         )
         self.assertEqual(registry_pin(), (expected_repository, expected_revision))
 
-        self.assertEqual(development["version"], "0.2.0-dev.3")
+        self.assertEqual(development["version"], "1.0.0")
         self.assertEqual(development["revision"], expected_revision)
         self.assertEqual(registry_pin(development=True), (expected_repository, expected_revision))
 
