@@ -43,6 +43,8 @@ from scripts.registry import (
     registry_go_environment,
     verify_backend_artifact,
 )
+from scripts.smoke_support import resolve_runtime_root
+import scripts.smoke_support as smoke_support
 
 
 
@@ -322,14 +324,83 @@ class RegistryPinSeparationTests(unittest.TestCase):
             registry_pin(),
             ("https://github.com/cdin-editor/registry.git", "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"),
         )
-        self.assertEqual(development["version"], "0.2.0-dev.2")
+        self.assertEqual(development["version"], "0.2.0-dev.3")
         self.assertEqual(
             registry_pin(development=True),
-            ("https://github.com/cdin-editor/registry.git", "9c5a2960c77985a3fb7c7a535635c3f1b6093baa"),
+            ("https://github.com/cdin-editor/registry.git", "9fac913ada29a33a650f1b17c27fb2e6c657ae15"),
         )
         self.assertNotEqual(consumer["revision"], development["revision"])
 
 
+
+
+
+class SmokeRuntimeRootResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve()
+        self.deps = self.root / ".deps"
+        self.deps.mkdir()
+        self.build = self.root / "build" / "stack" / "cdin"
+        self.build.mkdir(parents=True)
+        self.cache = self.build / "CMakeCache.txt"
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _configure_runtime(self, runtime_root: Path) -> None:
+        runtime_entry = runtime_root / "lua" / "cdin" / "runtime.lua"
+        runtime_entry.parent.mkdir(parents=True, exist_ok=True)
+        runtime_entry.write_text("return {}\\n", encoding="utf-8")
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            encoding="utf-8",
+        )
+
+    def test_resolves_the_artifact_package_selected_by_cmake(self) -> None:
+        runtime_root = (
+            self.deps / "registry-workspace-tui" / "components" / "runtime"
+            / "default" / "package" / "cdin-runtime-1.0.0"
+        )
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_resolves_an_explicit_developer_source_runtime(self) -> None:
+        runtime_root = self.deps / "src" / "runtime"
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_rejects_a_runtime_path_outside_private_dependencies(self) -> None:
+        runtime_root = self.root / "outside" / "runtime"
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "inside CDIN .deps"):
+                    resolve_runtime_root()
+
+    def test_rejects_a_symlinked_runtime_module(self) -> None:
+        runtime_root = self.deps / "runtime"
+        module_dir = runtime_root / "lua" / "cdin"
+        module_dir.mkdir(parents=True)
+        external = self.root / "outside.lua"
+        external.write_text("return {}\\n", encoding="utf-8")
+        module = module_dir / "runtime.lua"
+        try:
+            module.symlink_to(external)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlink creation is unavailable: {error}")
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            encoding="utf-8",
+        )
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "symlink"):
+                    resolve_runtime_root()
 
 
 class BackendArtifactCompatibilityTests(unittest.TestCase):
