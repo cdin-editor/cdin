@@ -43,6 +43,8 @@ from scripts.registry import (
     detect_target_tuple,
     registry_go_environment,
 )
+from scripts.smoke_support import resolve_runtime_root
+import scripts.smoke_support as smoke_support
 
 
 
@@ -1032,6 +1034,70 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         with patch("scripts.build_stack.WORKSPACE", self.workspace):
             with self.assertRaisesRegex(RuntimeError, "universal any/any/none"):
                 runtime_module_package_root(manifest)
+
+
+class SmokeRuntimeRootResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve()
+        self.deps = self.root / ".deps"
+        self.deps.mkdir()
+        self.build = self.root / "build/stack/cdin"
+        self.build.mkdir(parents=True)
+        self.cache = self.build / "CMakeCache.txt"
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _configure_runtime(self, runtime_root: Path) -> None:
+        runtime_entry = runtime_root / "lua/cdin/runtime.lua"
+        runtime_entry.parent.mkdir(parents=True, exist_ok=True)
+        runtime_entry.write_text("return {}\\n", encoding="utf-8")
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            encoding="utf-8",
+        )
+
+    def test_resolves_runtime_from_the_artifact_package_selected_by_cmake(self) -> None:
+        runtime_root = (
+            self.deps / "registry-workspace-tui/components/runtime/default/package"
+            / "cdin-runtime-1.0.0"
+        )
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_resolves_runtime_from_explicit_developer_source_configuration(self) -> None:
+        runtime_root = self.deps / "src/runtime"
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_rejects_runtime_path_outside_private_dependency_root(self) -> None:
+        external = self.root / "outside/runtime"
+        self._configure_runtime(external)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "inside CDIN .deps"):
+                    resolve_runtime_root()
+
+    def test_rejects_missing_or_symlinked_runtime_entry(self) -> None:
+        runtime_root = self.deps / "runtime"
+        runtime_root.mkdir()
+        (runtime_root / "lua/cdin").mkdir(parents=True)
+        outside = self.root / "outside.lua"
+        outside.write_text("return {}\\n", encoding="utf-8")
+        (runtime_root / "lua/cdin/runtime.lua").symlink_to(outside)
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            encoding="utf-8",
+        )
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "symlink"):
+                    resolve_runtime_root()
 
 
 class RegistryArtifactConsumerValidationTests(unittest.TestCase):
