@@ -11,6 +11,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Select explicit, least-privilege cross-repository GitHub API credentials for Kernel SDK, Registry and SDL3 release/tag discovery. Ignore the automatically scoped Actions `GITHUB_TOKEN` when reading component repositories; preserve local-shell fallback and anonymous public API operation when no optional read token is configured.
+- Keep the dedicated read-only Actions secret separate from `GH_TOKEN`, so same-repository GitHub CLI operations retain their normal permissions. Warn when the cross-repository secret is absent instead of failing before public API fallback; actual API calls still enforce immutable tag, descriptor, digest, size and archive validation.
+
 - Validate the split Frontend graph with the shared Core dependency in both immutable artifact and developer Registry-source modes. Resolve component delivery from the actual Manifest instead of assuming that a source-built Registry implies source-built components.
 - Run CTest Manifest verification through the pinned Registry bootstrap. Normal consumers now use the verified cached Registry executable/Catalog; developer CI uses the explicit pinned source build. Neither path assumes a Registry binary at the old `build/tools/registry` location.
 - Make the developer stack consume published Frontend and SDL3 SDK packages when the Manifest selects artifacts. Building Registry from source no longer forces Runtime/Frontend source builds or SDL3 source compilation.
