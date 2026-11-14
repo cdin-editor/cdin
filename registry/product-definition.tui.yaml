@@ -17,4 +17,4 @@ environment_contracts:
   - contract_id: org.lua.puc-lua-c-api
     version: "5.4.0"
 policy:
-  allow_prerelease: true
+  allow_prerelease: false
