@@ -241,6 +241,46 @@ def create_effective_product_definition(
     return destination
 
 
+def verify_backend_artifact(
+    backend: dict,
+    workspace: Path,
+    target: dict[str, str],
+) -> Path:
+    """Validate the selected Backend package without pinning a package release number.
+
+    Registry owns SemVer/dependency/contract selection. CDIN validates that the
+    selected Manifest entry is an immutable target-native Backend package with
+    the expected public package layout; a new compatible Backend release must
+    not require a source-code edit to this composition root.
+    """
+    version = backend.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError("Registry Manifest is missing the selected Backend version")
+    if backend.get("delivery") != "artifact":
+        raise RuntimeError(
+            f"CDIN requires Backend {version} as a verified Registry artifact; "
+            "refusing a silent source fallback"
+        )
+    selected_artifact = backend.get("selected_artifact")
+    if not isinstance(selected_artifact, dict):
+        raise RuntimeError("Registry Manifest is missing Backend's selected artifact")
+    if selected_artifact.get("kind") != "native-development-package":
+        raise RuntimeError("Backend selected artifact is not a native development package")
+    if selected_artifact.get("layout") != "cmake-prefix-v1":
+        raise RuntimeError("Backend package does not declare the cmake-prefix-v1 layout")
+    if selected_artifact.get("target") != target:
+        raise RuntimeError(
+            f"Backend artifact target {selected_artifact.get('target')} does not match host {target}"
+        )
+    expected_path = "components/backend/default/package"
+    if selected_artifact.get("workspace_path") != expected_path:
+        raise RuntimeError("Backend package workspace path is not canonical")
+    backend_package = workspace / expected_path
+    if backend_package.is_symlink() or not backend_package.is_dir():
+        raise RuntimeError(f"Registry Backend package is missing or unsafe: {backend_package}")
+    return backend_package
+
+
 def verify_workspace(
     binary: Path,
     profile: str,
@@ -279,27 +319,7 @@ def verify_workspace(
         for item in manifest["components"]
     }
     backend = by_key[("backend", "default")]
-    if backend["version"] != "1.2.1" or backend.get("delivery") != "artifact":
-        raise RuntimeError(
-            "CDIN requires Backend 1.2.1 as a verified Registry artifact; "
-            "refusing a silent source fallback"
-        )
-    selected_artifact = backend.get("selected_artifact")
-    if not isinstance(selected_artifact, dict):
-        raise RuntimeError("Registry Manifest is missing Backend's selected artifact")
-    if selected_artifact.get("kind") != "native-development-package":
-        raise RuntimeError("Backend selected artifact is not a native development package")
-    if selected_artifact.get("layout") != "cmake-prefix-v1":
-        raise RuntimeError("Backend package does not declare the cmake-prefix-v1 layout")
-    if selected_artifact.get("target") != target:
-        raise RuntimeError(
-            f"Backend artifact target {selected_artifact.get('target')} does not match host {target}"
-        )
-    backend_package = workspace / "components" / "backend" / "default" / "package"
-    if selected_artifact.get("workspace_path") != "components/backend/default/package":
-        raise RuntimeError("Backend package workspace path is not canonical")
-    if not backend_package.is_dir():
-        raise RuntimeError(f"Registry Backend package is missing: {backend_package}")
+    verify_backend_artifact(backend, workspace, target)
 
     for key, component in by_key.items():
         if key[0] == "backend":
