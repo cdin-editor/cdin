@@ -1,3 +1,48 @@
+## Current integration update — 2026-11-14 (artifact publication and consumer refresh)
+
+**Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This snapshot distinguishes published component/SDK artifacts, CDIN's currently merged main commit, and the in-flight consumer refresh. It supersedes the 2026-11-13 inventory below; older sections remain historical evidence and are not current state.
+
+### Exact repository and release identities
+
+| Area | Immutable identity / observed source | Current finding |
+|---|---|---|
+| Spec | Stable Release `v1.4.0` tag peels to `868ab19087c0ab4d44fb2b05990fbd6520b6c4fa`; current `main` source SHA `274f84f0ca08378db9c4a5cf6820065256f31d5a` | Registry Data Contract baseline 1.4.0 and ADR-0028 are accepted. The latest stable tag and the newer default-branch source must not be conflated. |
+| Kernel | Stable `v1.2.3`, tag commit `2fb09f52dc1a9963cf358ec54d584c520e174e67` | Five target-native SDK archives are published. Kernel ABI 1.1.0 and logger C API 0.1.0 remain separate compatibility identities. |
+| Runtime | Stable `v1.0.0`, tag commit `eb48a511ea6d5085db38e501784290d80cb03947` | Platform-neutral Lua module archives, checksums and canonical metadata Release Asset are published. Runtime #16 remains open for downstream clean-consumer verification. |
+| Backend | Stable `v1.2.2`, tag commit `41681388d8294efeb371b0d337b426a72c19aeae` | Five target-native CMake packages and canonical `backend-1.2.2.json` metadata are published. Backend #35 remains open for downstream Manifest/install proof. |
+| Frontend | Stable `v1.2.2`, tag commit `728406c1e677d601c55b82b4fbf1a77eecfd8581` | Core, TUI and GUI-SDL variants have five-target native package archives and canonical metadata. Frontend #40 remains open for clean-prefix consumption and product proof. |
+| Registry | Development Release `v0.2.0-dev.3`, tag commit `9fac913ada29a33a650f1b17c27fb2e6c657ae15` | The five-target executable, same-tag Catalog and release descriptor are published. This is a prerelease build tool, not Registry 1.0.0 Stable; Registry #71 remains a separate stable acceptance gate. |
+| SDL3 SDK | Prerelease tag `sdl3-sdk-v3.4.16`, tag commit `d249122c51acbab7262a6cd1e675922fd043bac7` | Five target archives and checksum sidecars are published. CDIN #124 is now a consumer-verification issue, not an unpublished-Release issue. |
+| CDIN | Merged `main` after PR #148: `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5` | Project/CLI version remains 0.2.0. No `v1.0.0` Stable tag or product Release has been created. |
+
+### CDIN consumer work in progress
+
+- [PR #148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 SDK tag when a missing Release must be rebuilt, and makes the live extension/TUI smoke helpers resolve Runtime from the configured CMake package root.
+- [PR #149](https://github.com/cdin-editor/cdin/pull/149) is open on head `cdfeb6a895deee30ec1e2d2d5f143ada4c8b3bb2`, based on `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It refreshes the consumer Registry pin and developer source pin to the exact `v0.2.0-dev.3` commit; selects Backend/Frontend 1.2.2 and Runtime 1.0.0; removes the Backend 1.2.1 hardcode while retaining artifact/target/layout/path validation; pins all five SDL3 SDK assets; declares the GUI-only external SDL3 contract; and sets both stable Product Definitions to reject component prereleases.
+- PR #149 CI, SDL3 SDK, Product Acceptance and Code Quality workflows have been triggered for the refreshed head. Their latest observed state was queued/in progress; **no queued or in-progress run counts as PASS**. Merge is blocked until exact-head required checks complete successfully and their outputs are inspected.
+- The Registry consumer and developer-source pins use the same exact immutable `v0.2.0-dev.3` source commit but remain separate lock sections because they represent different delivery modes. Normal consumer installation must use the verified binary; source builds remain explicit developer/CI-only behavior.
+- The GUI-SDL Product Definition declares `org.cdin.sdl3-sdk = 3.4.16`; the TUI Product Definition does not declare SDL3. The SDK lock contains the actual five archive sizes and GitHub API SHA-256 digests. TUI must never download or stage SDL3.
+
+### Optional capabilities and UI limitations
+
+Backend 1.2.2 and Runtime 1.0.0 contain the Protocol/Runtime handling for `ime-composition/1` and `pane-splitter-resize/1`. Frontend 1.2.2 also contains the GUI-SDL paths, but its published normal package build keeps both `CDIN_FRONTEND_GUI_SDL_ENABLE_IME_COMPOSITION` and `CDIN_FRONTEND_GUI_SDL_ENABLE_PANE_SPLITTER` disabled by default. The CDIN live product E2E in #118 has not passed, so these capabilities remain unadvertised. A component capability implementation or Spec vector is not product integration evidence.
+
+The released GUI-SDL renderer still uses SDL diagnostic debug text and does not provide production shaping, font fallback, grapheme layout or bidi. Persian/Arabic editing is not a stable product claim. TUI and GUI-SDL remain experimental product paths; native compilation and a headless document smoke do not prove supported interactive launch/cleanup across all targets.
+
+### Product gates — remain open
+
+- **CDIN #111:** overarching product acceptance: supported TUI/GUI launch, real editing UX, GUI text shaping and Persian/Arabic/bidi, Windows console readiness, extension lifecycle, transport/process recovery, performance/soak, clean installation/upgrade/uninstall, package provenance/signing and complete product distribution.
+- **CDIN #118:** live IME preedit/update/cancel/commit exactly-once and live PaneTree Driver/Observer/stale-revision/atomic-flush tests, against the exact immutable selected stack. Keep both optional capabilities disabled until this passes.
+- **CDIN #121:** verify clean, offline-capable use of the pinned Registry executable/Catalog without Git or Go on every supported target.
+- **CDIN #122:** verify cold-cache, warm-cache and offline artifact-first installation and replay across the five targets and both profiles; prove there is no normal source fallback and extracted products run outside the checkout.
+- **CDIN #124:** consume the published SDK from clean prefixes on all five target ABIs; verify CMake configure/link and SDK integrity, and prove TUI never acquires SDL3.
+- **Runtime #16, Backend #35, Frontend #40 and Registry #58:** close only after their published identities are consumed by exact CDIN Manifests and clean consumer tests.
+- **Registry #71:** stable Registry 1.0.0 remains a separate open acceptance gate. CDIN must not describe its pinned Registry v0.2.0-dev.3 tool as stable.
+
+**Release decision:** CDIN remains DEVELOPMENT — NOT PRODUCT READY. Do not change the product version to 1.0.0, create tag `v1.0.0`, or publish a Stable application Release until #111 and all required target/profile, capability, distribution and recovery acceptance evidence is complete.
+
+---
+
 ## Current integration update — 2026-11-13 (post-release audit, 17:15 UTC)
 
 **Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This checkpoint supersedes older inventory claims below. It distinguishes newly published component Releases from the versions still selected by CDIN's Product Definitions, Catalog and lock files.
