@@ -257,7 +257,10 @@ class ReleaseWorkflowPermissionTests(unittest.TestCase):
         self.assertIn("actions: read", permissions)
         self.assertIn("contents: write", permissions)
         self.assertIn('gh run download "${GITHUB_RUN_ID}"', publish)
-        self.assertIn('gh release create "${GITHUB_REF_NAME}"', publish)
+        self.assertIn('gh release create "$TAG_NAME"', publish)
+        self.assertIn('TAG_NAME: ${{ startsWith(github.ref, \'refs/tags/sdl3-sdk-v\')', publish)
+        self.assertIn('SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}', publish)
+        self.assertIn('tag_commit" != "$SOURCE_SHA"', publish)
 
 
 if __name__ == "__main__":
