@@ -30,13 +30,13 @@ metadata, respectively.
 - **Runtime:** stable `v1.0.0`, including the platform-neutral Lua module archives and canonical Release metadata.
 - **Backend:** stable `v1.2.2`, with five target-native CMake development packages and canonical Release metadata.
 - **Frontend:** stable `v1.2.2`, with separate Core, TUI and GUI-SDL packages for the five maintained native targets.
-- **Registry:** the pinned build-time CLI/Catalog pair is the immutable `v0.2.0-dev.3` Release. This is a development release of the tool, not Registry 1.0.0 Stable and not an application runtime dependency.
+- **Registry:** stable `v1.0.0` is published as an immutable Release with five native executables, a dynamic `release_sources` Catalog, a source/asset descriptor and SHA256SUMS. CDIN pins the exact tag-resolved commit `c5b6900319cebe22f2d035a6c3b23a32f06a48b5` and descriptor digest. Registry remains a build-time tool, not a runtime dependency.
 - **SDL3 SDK:** `sdl3-sdk-v3.4.16` is published as an immutable-tagged prerelease. Its five target archives are pinned by tag-resolved source commit, byte size and SHA-256 in `deps.lock`; only GUI-SDL may acquire it.
 
 ### Product integration state
 
 - CDIN PR [#148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 tag during recovery and makes live smoke tests resolve the Runtime package selected by the active CMake configuration.
-- CDIN PR [#149](https://github.com/cdin-editor/cdin/pull/149) carries the artifact-first consumer refresh: Registry `v0.2.0-dev.3`, Backend/Frontend `1.2.2`, Runtime `1.0.0`, the exact five-target SDL3 SDK pin, dynamic Backend artifact validation, and stable Product Definition prerelease policy. Its exact-head CI and Product Acceptance are still required before merge.
+- CDIN PR [#149](https://github.com/cdin-editor/cdin/pull/149) carries the artifact-first consumer refresh: Registry `1.0.0` with its immutable dynamic Catalog, Backend/Frontend `1.2.2`, Runtime `1.0.0`, the exact five-target SDL3 SDK pin, dynamic Backend artifact validation, and stable Product Definition prerelease policy. Its exact-head CI and Product Acceptance are still required before merge.
 - The TUI Product Definition does not declare or acquire SDL3. The GUI-SDL Product Definition declares the external SDL3 SDK contract.
 - GUI-SDL's current renderer still uses diagnostic debug text and does not provide production shaping, font fallback, grapheme layout or bidi. Persian/Arabic editing is not a supported stable claim.
 - The GUI-SDL IME and PaneTree implementations exist in Frontend `v1.2.2`, but their compile-time capability gates default to OFF in the published packages. They must remain unadvertised until CDIN #118 passes against the exact selected stack.
@@ -68,7 +68,7 @@ make stack-gui-dev                  # explicit hybrid developer/CI GUI-SDL path
 
 On Windows, use `.deps/install/bin/cdin.exe` from MSYS2 UCRT64.
 
-**Current release readiness:** ordinary `make install` is intentionally fail-closed until the corrected Registry Release, Runtime/Frontend packages and GUI-SDL SDK are published and pinned. Use the `*-dev` targets only for the current hybrid source-development workflow; this is not a completed artifact-first consumer install.
+**Current release readiness:** the ordinary `make install` path is wired to the immutable Registry 1.0.0 binary/Catalog and published component packages; no source checkout is part of that consumer path. The exact five-target × two-profile install, offline/cache and extracted-product acceptance is still being validated. The `*-dev` targets remain explicit contributor/CI source-build paths and are not substitutes for consumer installation.
 
 ## Documentation
 
