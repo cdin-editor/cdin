@@ -17,6 +17,7 @@ from scripts.registry_artifact import (
     TARGETS,
     _TrustedAPIHostRedirectHandler,
     GitHubReleaseClient,
+    github_api_token_from_environment,
     acquire_registry_artifact,
     detect_target,
     verify_binary_target,
