@@ -219,9 +219,9 @@ class InstalledDistributionTests(unittest.TestCase):
             extracted = safe_extract(Path(result["archive"]), Path(temporary))
             build_info = json.loads((extracted / "BUILD-INFO.json").read_text(encoding="utf-8"))
         kernel = build_info["build_dependencies"]["kernel_sdk"]
-        self.assertEqual(kernel["version"], "1.2.1")
+        self.assertEqual(kernel["version"], "1.2.3")
         self.assertEqual(kernel["logger_version"], "0.1.0")
-        self.assertEqual(kernel["source_revision"], "f4875b6eb59bd76878e7ff486b6114abd9bb1329")
+        self.assertEqual(kernel["source_revision"], "2fb09f52dc1a9963cf358ec54d584c520e174e67")
         self.assertEqual(len(kernel["asset"]["sha256"]), 64)
         self.assertEqual(
             {item["contract_id"] for item in build_info["environment_contracts"]},

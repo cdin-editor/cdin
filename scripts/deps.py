@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install and verify the immutable Kernel + logger SDK release package.
 
-The Kernel 1.2.1 GitHub Release already contains both the Kernel C SDK and its
+The Kernel 1.2.3 GitHub Release contains both the Kernel C SDK and its
 pinned m-mdy-m/log.c 0.1.0 static SDK. This consumer bootstrap downloads that
 published archive; it never clones or compiles Kernel or logger source.
 """
@@ -609,6 +609,7 @@ def extract_zip(archive_path: Path, destination: Path) -> Path:
 
 
 def parse_build_info(package_root: Path, pin: dict, target: str) -> None:
+    """Validate the package identity emitted by Kernel's release packager."""
     build_info = package_root / "BUILD-INFO.txt"
     if not build_info.is_file():
         raise SDKBootstrapError("Kernel package is missing BUILD-INFO.txt")
@@ -620,18 +621,27 @@ def parse_build_info(package_root: Path, pin: dict, target: str) -> None:
             if key in fields:
                 raise SDKBootstrapError(f"duplicate Kernel BUILD-INFO field: {key}")
             fields[key] = value.strip()
+
     platform_name, architecture = target.split("-", 1)
-    expected_platform = {"linux": "linux", "macos": "macos", "windows": "windows"}[platform_name]
-    required = {
+    expected = {
         "Package version": pin["version"],
         "C ABI version": pin["kernel_abi"],
-        "Platform": expected_platform,
-        "Architecture": architecture,
+        "Target OS": {
+            "linux": "linux",
+            "macos": "darwin",
+            "windows": "windows",
+        }[platform_name],
+        "Target architecture": architecture,
+        "Target ABI": {
+            "linux": "gnu-glibc-2.39",
+            "macos": "macos-15",
+            "windows": "windows-ucrt64",
+        }[platform_name],
     }
-    for key, expected in required.items():
-        if fields.get(key) != expected:
+    for key, value in expected.items():
+        if fields.get(key) != value:
             raise SDKBootstrapError(
-                f"Kernel BUILD-INFO {key!r} is {fields.get(key)!r}, expected {expected!r}"
+                f"Kernel BUILD-INFO {key!r} is {fields.get(key)!r}, expected {value!r}"
             )
 
 
