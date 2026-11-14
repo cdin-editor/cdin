@@ -479,6 +479,19 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         temporary.unlink(missing_ok=True)
 
 
+def verify_checksum_sidecar_bytes(data: bytes, asset: dict[str, Any], filename: str) -> None:
+    """Verify the exact pinned sidecar bytes, accepting LF and CRLF line endings."""
+    if (
+        len(data) != asset["sidecar_size_bytes"]
+        or hashlib.sha256(data).hexdigest() != asset["sidecar_sha256"]
+    ):
+        raise SDL3ArtifactError("SDL3 SDK checksum sidecar size/SHA-256 differs from deps.lock")
+    expected_lf = f"{asset['sha256']}  {filename}\n".encode("ascii")
+    expected_crlf = f"{asset['sha256']}  {filename}\r\n".encode("ascii")
+    if data not in (expected_lf, expected_crlf):
+        raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
+
+
 def download_asset(pin: dict[str, Any], asset: dict[str, Any],
                    source: dict[str, str], *, cache: Path = CACHE, offline: bool = False) -> Path:
     filename = asset["file_name"]
@@ -515,14 +528,11 @@ def download_asset(pin: dict[str, Any], asset: dict[str, Any],
         expected_size=asset["sidecar_size_bytes"],
         max_size=256,
     )
-    if sha256_file(sidecar) != asset["sidecar_sha256"]:
+    try:
+        verify_checksum_sidecar_bytes(sidecar.read_bytes(), asset, filename)
+    except SDL3ArtifactError:
         sidecar.unlink(missing_ok=True)
-        raise SDL3ArtifactError("SDL3 SDK checksum sidecar SHA-256 differs from deps.lock")
-    sidecar_lf = f"{asset['sha256']}  {filename}\n".encode("ascii")
-    sidecar_crlf = f"{asset['sha256']}  {filename}\r\n".encode("ascii")
-    if sidecar.read_bytes() not in (sidecar_lf, sidecar_crlf):
-        sidecar.unlink(missing_ok=True)
-        raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
+        raise
     return destination
 
 
