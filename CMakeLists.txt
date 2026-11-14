@@ -23,6 +23,13 @@ if(CDIN_REGISTRY_PROFILE STREQUAL "tui" AND CDIN_ENABLE_GUI_SDL)
     message(FATAL_ERROR "The tui Registry profile must not enable the GUI-SDL adapter")
 endif()
 
+# Keep CTest's product-level Registry verifier on the exact workspace selected
+# by the active product profile. This is also the path consumed by
+# scripts/build_stack.py before it configures and builds the Composition Root.
+set(CDIN_REGISTRY_WORKSPACE
+    "${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}"
+    CACHE PATH "Prepared Registry workspace selected for this CDIN product profile")
+
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # The Composition Root never compiles copied component sources.
