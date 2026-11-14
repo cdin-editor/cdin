@@ -398,6 +398,20 @@ class BackendArtifactCompatibilityTests(unittest.TestCase):
             verify_backend_artifact(self._backend(), self.workspace, self.target)
 
 
+class ProductEnvironmentContractTests(unittest.TestCase):
+    def test_gui_sdl_declares_its_external_sdl3_sdk_provider(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "registry" / "product-definition.gui-sdl.yaml").read_text(
+            encoding="utf-8"
+        )
+        tui = (root / "registry" / "product-definition.tui.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('contract_id: org.cdin.sdl3-sdk', gui)
+        self.assertIn('version: "3.4.16"', gui)
+        self.assertNotIn('contract_id: org.cdin.sdl3-sdk', tui)
+
+
 class RegistryTargetDetectionTests(unittest.TestCase):
     def test_linux_target_uses_supported_glibc_baseline(self) -> None:
         self.assertEqual(
