@@ -743,6 +743,7 @@ def main() -> int:
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
+         f"-DCDIN_REGISTRY_WORKSPACE={WORKSPACE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
          *frontend_cmake_options,
          "-DCDIN_INSTALL_RUNTIME=ON",
