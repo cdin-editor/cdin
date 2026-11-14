@@ -76,30 +76,40 @@ file_name = "sdl3-sdk-3.4.16-linux-x86_64.tar.gz"
 format = "tar.gz"
 size_bytes = 2711768
 sha256 = "dfb692b98c3a249ef7606286062f6fb9da5b808635324c2cbdffb8b8bba2776a"
+sidecar_size_bytes = 102
+sidecar_sha256 = "6a174cde6398da7ee479b7997f377356dc965b6a162672f01fca9ba6650d5734"
 
 [dependencies.sdl3_sdk.assets."linux-arm64"]
 file_name = "sdl3-sdk-3.4.16-linux-arm64.tar.gz"
 format = "tar.gz"
 size_bytes = 2677647
 sha256 = "75123f596aafc6c331bc7286020049bce8ca11468b7b80b422d6d2e907263441"
+sidecar_size_bytes = 101
+sidecar_sha256 = "39c7c3faa33683395cf7408766b9c1f25a5191358f3592b5d1fe21f42b05031b"
 
 [dependencies.sdl3_sdk.assets."macos-x86_64"]
 file_name = "sdl3-sdk-3.4.16-macos-x86_64.tar.gz"
 format = "tar.gz"
 size_bytes = 2168788
 sha256 = "d596b2625521dace0f80fa7f2ce55e7b7657916ef2e4ea0027d0f659fae2c59f"
+sidecar_size_bytes = 102
+sidecar_sha256 = "71e20eb370fc6fc982784fea0cb6cfe586a0c9b8397bfc161ba9b8decc898c23"
 
 [dependencies.sdl3_sdk.assets."macos-arm64"]
 file_name = "sdl3-sdk-3.4.16-macos-arm64.tar.gz"
 format = "tar.gz"
 size_bytes = 2165743
 sha256 = "f41bc805fe3a900232b7d89f23f317b40811996e8ad086bd10fc5f713beb6619"
+sidecar_size_bytes = 101
+sidecar_sha256 = "063c899e6a6aa3b9330de17f88678c71818e39c501a9065538430e660b3132b5"
 
 [dependencies.sdl3_sdk.assets."windows-x86_64"]
 file_name = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
 format = "tar.gz"
 size_bytes = 2665888
 sha256 = "66440cb77ddd3accb42ba7f3b19f261c7f31b1247660f817cd2eedcbe99f6667"
+sidecar_size_bytes = 105
+sidecar_sha256 = "bb365cc380d82cfe39d84644d15b0e9bfd5085cdc8e55466e0dc980799e46fe9"
 
 # The SDL source archive remains pinned only for the explicit SDK producer
 # workflow. Normal GUI-SDL consumers use the immutable SDK package above.
