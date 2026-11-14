@@ -302,16 +302,23 @@ def verify_workspace(
         item["variant"] for item in manifest["components"]
         if item["component_id"] == "frontend"
     }
-    expected_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    required_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
     # The split Frontend package contract makes Core a transitive dependency
-    # of each adapter. The current developer Catalog predates that split and
-    # continues to materialize the whole Frontend source tree.
+    # of each adapter. Artifact consumers must resolve it exactly once. The
+    # explicit developer source mode may still consume a legacy source unit
+    # without a separate Core variant, but if Registry selects Core it is
+    # validated as an ordinary source/artifact component below.
     if manifest.get("resolution", {}).get("delivery_mode") == "artifact":
-        expected_variants.add("core")
-    if frontend_variants != expected_variants:
+        expected_variants = required_variants | {"core"}
+        if frontend_variants != expected_variants:
+            raise RuntimeError(
+                f"Registry selected Frontend variants {sorted(frontend_variants)}, "
+                f"expected {sorted(expected_variants)}"
+            )
+    elif frontend_variants - {"core"} != required_variants:
         raise RuntimeError(
             f"Registry selected Frontend variants {sorted(frontend_variants)}, "
-            f"expected {sorted(expected_variants)}"
+            f"expected {sorted(required_variants)} with optional shared Core"
         )
 
     by_key = {
