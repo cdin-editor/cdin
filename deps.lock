@@ -62,11 +62,47 @@ repository = "https://github.com/cdin-editor/registry.git"
 revision = "9fac913ada29a33a650f1b17c27fb2e6c657ae15"
 version = "0.2.0-dev.3"
 
-# This source archive is for explicit developer/CI fallback only.
-# Normal GUI-SDL consumers use scripts/sdl3_artifact.py and require a complete
-# [dependencies.sdl3_sdk] five-target immutable Release pin. That table is
-# intentionally absent until CDIN #124 publishes and verifies every asset;
-# do not invent tag commits, sizes or digests.
+# Immutable GUI-SDL SDK Release. The five target archives and their
+# GitHub-published SHA-256/size values are bound to the exact tag-resolved
+# source commit. TUI must never acquire this package.
+[dependencies.sdl3_sdk]
+repository = "https://github.com/cdin-editor/cdin"
+tag = "sdl3-sdk-v3.4.16"
+version = "3.4.16"
+revision = "d249122c51acbab7262a6cd1e675922fd043bac7"
+
+[dependencies.sdl3_sdk.assets."linux-x86_64"]
+file_name = "sdl3-sdk-3.4.16-linux-x86_64.tar.gz"
+format = "tar.gz"
+size_bytes = 2711768
+sha256 = "dfb692b98c3a249ef7606286062f6fb9da5b808635324c2cbdffb8b8bba2776a"
+
+[dependencies.sdl3_sdk.assets."linux-arm64"]
+file_name = "sdl3-sdk-3.4.16-linux-arm64.tar.gz"
+format = "tar.gz"
+size_bytes = 2677647
+sha256 = "75123f596aafc6c331bc7286020049bce8ca11468b7b80b422d6d2e907263441"
+
+[dependencies.sdl3_sdk.assets."macos-x86_64"]
+file_name = "sdl3-sdk-3.4.16-macos-x86_64.tar.gz"
+format = "tar.gz"
+size_bytes = 2168788
+sha256 = "d596b2625521dace0f80fa7f2ce55e7b7657916ef2e4ea0027d0f659fae2c59f"
+
+[dependencies.sdl3_sdk.assets."macos-arm64"]
+file_name = "sdl3-sdk-3.4.16-macos-arm64.tar.gz"
+format = "tar.gz"
+size_bytes = 2165743
+sha256 = "f41bc805fe3a900232b7d89f23f317b40811996e8ad086bd10fc5f713beb6619"
+
+[dependencies.sdl3_sdk.assets."windows-x86_64"]
+file_name = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
+format = "tar.gz"
+size_bytes = 2665888
+sha256 = "66440cb77ddd3accb42ba7f3b19f261c7f31b1247660f817cd2eedcbe99f6667"
+
+# The SDL source archive remains pinned only for the explicit SDK producer
+# workflow. Normal GUI-SDL consumers use the immutable SDK package above.
 [tooling.sdl3]
 version = "3.4.16"
 archive = "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz"
