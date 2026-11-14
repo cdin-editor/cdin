@@ -75,6 +75,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+      - name: Verify cross-repository GitHub read token
+        run: |
+          if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
+            echo "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix. Configure a fine-grained token with Contents: read for CDIN, Kernel, Runtime, Backend, Frontend and Registry."
+            exit 1
+          fi
+          echo "Cross-repository GitHub API read credential is configured."
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.os != 'Windows'
         with:
@@ -146,13 +153,6 @@ jobs:
           PY
       - name: Verify native product matrix contract
         run: python -m unittest discover -s tests -p test_ci_matrix.py
-      - name: Verify cross-repository GitHub read token
-        run: |
-          if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
-            echo "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix. Configure a fine-grained token with Contents: read for CDIN, Kernel, Runtime, Backend, Frontend and Registry."
-            exit 1
-          fi
-          echo "Cross-repository GitHub API read credential is configured."
       - name: Run SDK, Registry and SDL3 artifact bootstrap tests
         run: |
           python -m unittest discover -s tests -p test_deps.py
