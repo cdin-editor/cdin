@@ -87,6 +87,25 @@ class NativeProductMatrixTests(unittest.TestCase):
                     "GH_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
+                preflight = content.index("Verify cross-repository GitHub read token")
+                checkout = content.index("actions/checkout@")
+                self.assertGreater(preflight, checkout, path.name)
+                if path == WORKFLOW:
+                    first_build_setup = content.index("Install native build dependencies (Linux)")
+                    sanitizer_setup = content.index("Install native dependencies")
+                    self.assertLess(preflight, first_build_setup)
+                    sanitizer_preflight = content.index(
+                        "Verify cross-repository GitHub read token", preflight + 1
+                    )
+                    sanitizer_checkout = content.index(
+                        "actions/checkout@", checkout + 1
+                    )
+                    self.assertGreater(sanitizer_preflight, sanitizer_checkout)
+                    self.assertLess(sanitizer_preflight, sanitizer_setup)
+                else:
+                    self.assertLess(preflight, content.index("Set up MSYS2 UCRT64"))
+                    self.assertLess(preflight, content.index("Install Linux build dependencies"))
+                    self.assertLess(preflight, content.index("Install macOS build dependencies"))
 
         # The source-build/sanitizer job has its own runner and must be guarded too.
         self.assertEqual(
