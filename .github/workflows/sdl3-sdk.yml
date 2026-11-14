@@ -44,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          SOURCE_SHA: ${{ needs.prepare-main-release.outputs.source_sha }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
           TAG_NAME: sdl3-sdk-v3.4.16
         shell: bash
         run: |
@@ -181,7 +181,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_SHA: ${{ needs.prepare-main-release.outputs.source_sha }}
           TAG_NAME: sdl3-sdk-v3.4.16
         shell: bash
         run: |
