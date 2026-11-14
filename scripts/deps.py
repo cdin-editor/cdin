@@ -97,6 +97,22 @@ class _GitHubAPIRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, message, headers, new_url)
 
 
+def github_api_token_from_environment() -> str:
+    """Return an explicitly provisioned cross-repository token in CI.
+
+    GitHub Actions' automatic GITHUB_TOKEN is scoped to the workflow repository,
+    while this bootstrap reads the Kernel Release from a separate repository.
+    Outside Actions, GITHUB_TOKEN remains a convenient local-shell fallback.
+    """
+    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+        token = os.environ.get(name, "").strip()
+        if token:
+            return token
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return ""
+    return os.environ.get("GITHUB_TOKEN", "").strip()
+
+
 def fetch_github_json(url: str) -> dict:
     """Fetch bounded JSON from the exact public GitHub API host."""
     parsed = urllib.parse.urlsplit(url)
@@ -121,10 +137,11 @@ def fetch_github_json(url: str) -> dict:
         "User-Agent": "CDIN-SDK-Bootstrap/1",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    # GitHub's unauthenticated REST quota is shared by hosted runners. Use the
-    # workflow-scoped token when present so a six-target matrix does not exhaust
-    # the 60-request anonymous limit. The token is sent only to api.github.com.
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    # A cross-repository read token is explicit because Actions' automatic
+    # GITHUB_TOKEN cannot read a different repository's private API resources.
+    token = github_api_token_from_environment()
+    if any(character in token for character in "\\r\\n"):
+        raise SDKBootstrapError("cross-repository GitHub API token contains invalid header characters")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)
