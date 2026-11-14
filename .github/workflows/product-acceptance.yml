@@ -1,6 +1,20 @@
 name: Product Acceptance
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/product-acceptance.yml"
+      - "deps.lock"
+      - "registry/**"
+      - "scripts/build_stack.py"
+      - "scripts/configure.py"
+      - "scripts/deps.py"
+      - "scripts/package_distribution.py"
+      - "scripts/registry.py"
+      - "scripts/registry_artifact.py"
+      - "tests/test_package_distribution.py"
+      - "tests/test_registry_artifact.py"
   push:
     branches: [main]
   workflow_dispatch:
