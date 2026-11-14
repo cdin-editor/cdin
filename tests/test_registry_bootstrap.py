@@ -971,7 +971,7 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         )
         entry = root / "lua/cdin/runtime.lua"
         entry.parent.mkdir(parents=True)
-        entry.write_text("return {}\\n", encoding="utf-8")
+        entry.write_text("return {}\n", encoding="utf-8")
         manifest = {
             "components": [{
                 "component_id": "runtime",
@@ -997,7 +997,7 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         source_root = self.workspace / "src/runtime"
         entry = source_root / "lua/cdin/runtime.lua"
         entry.parent.mkdir(parents=True)
-        entry.write_text("return {}\\n", encoding="utf-8")
+        entry.write_text("return {}\n", encoding="utf-8")
         manifest = {
             "components": [{
                 "component_id": "runtime",
