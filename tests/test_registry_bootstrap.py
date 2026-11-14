@@ -302,9 +302,21 @@ class RegistryMakeTargetTests(unittest.TestCase):
         self.assertIn('if args.registry_source_build and shutil.which("git") is None:', stack_script)
         self.assertNotIn('for tool in ("git", "cmake", "make", "pkg-config"):', stack_script)
         self.assertIn("--source-build --developer-source-components", makefile)
-        # CI is allowed to test the explicit source build; normal Make targets are not.
+        # CI builds the pinned Registry CLI from source, but component and
+        # SDL3 delivery must still follow the actual Manifest/artifact pins.
         self.assertIn('"scripts/registry.py", "--source-build", "--developer-source-components"', pipeline)
         self.assertIn('"scripts/build_stack.py", "--registry-source-build"', pipeline)
+        self.assertNotIn('"--build-sdl3-from-source"', pipeline)
+
+    def test_developer_registry_build_can_consume_published_frontend_packages(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        stack_script = (root / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+
+        self.assertIn('frontend_deliveries = {', stack_script)
+        self.assertIn('frontend_split_packages = frontend_delivery == "artifact"', stack_script)
+        self.assertIn('if frontend_split_packages:', stack_script)
+        self.assertIn('if frontend_delivery == "source" and args.registry_source_build:', stack_script)
+        self.assertIn('selected_variants = tuple(sorted(frontend_components))', stack_script)
 
 
 
