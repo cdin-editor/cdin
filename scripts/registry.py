@@ -325,7 +325,6 @@ def expected_frontend_variants(
         item for item in components
         if item.get("component_id") == "frontend"
     ]
-    variants = {item.get("variant") for item in frontend_entries}
     artifact_delivery = any(
         item.get("delivery") == "artifact"
         or isinstance(item.get("selected_artifact"), dict)
