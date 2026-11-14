@@ -22,16 +22,31 @@ metadata, respectively.
 
 ## Current status
 
-- The Composition Root foundation is merged: [PR #110](https://github.com/cdin-editor/cdin/pull/110), merge commit `e2ea9f74bf247a1b1104cded53255ac4a34551a0`.
-- SDL3 SDK producer [PR #126](https://github.com/cdin-editor/cdin/pull/126) is merged at `f12f1fca4ca1d4fb5060a802549596085e3172d2`. Its five-target native build/consumer matrix has passed, but the tag-backed SDK Release and downloadable assets are not published.
-- Artifact-first consumer bootstrap [PR #131](https://github.com/cdin-editor/cdin/pull/131) is merged at `084cac7f04c9ff22ae47ba5f219c672af6a73b6f`. Its exact-head seven-job TUI/GUI-SDL native + ASan/UBSan matrix, five-target SDL3 SDK producer matrix, CodeQL and Code Quality passed. It is an implementation milestone, not proof that missing immutable component Releases have been published or that a clean external consumer can already install the full stack.
-- The current hybrid developer/CI stack reuses the existing Kernel 1.2.1 SDK (including logger 0.1.0), consumes Backend 1.2.1 as a native package, and still uses source delivery for Runtime 1.0.0-rc.2 and Frontend 1.0.2. GUI-SDL development still builds the pinned SDL3 3.4.16 source; TUI never acquires SDL3.
-- The next immutable publisher candidates are Runtime 1.0.0-rc.3, Backend 1.2.2, Frontend 1.1.1, Registry 0.2.0-dev.1 and the SDL3 3.4.16 SDK. Publisher code is prepared, but their tags, canonical metadata assets and package Releases have not been published. Historical releases remain unchanged.
-- Artifact-first installation is intentionally fail-closed until the corrected Registry executable/Catalog pair, Runtime module archive, Backend/Frontend packages and GUI-SDL SDK are published, pinned and verified. Normal `make install` must not clone or build component repositories.
-- Installed-product bundle work is in [docs/development/distribution.md](docs/development/distribution.md): the build packages the real installed prefix, records the exact Registry Manifest and component identities, and tests the extracted executable without a `CDIN_RUNTIME_ROOT` override. These are development CI artifacts only, not a rolling `latest` or immutable SemVer GitHub Release.
-- Product integration remains DEVELOPMENT. [CDIN #111](https://github.com/cdin-editor/cdin/issues/111), [#118](https://github.com/cdin-editor/cdin/issues/118), [#121](https://github.com/cdin-editor/cdin/issues/121), [#122](https://github.com/cdin-editor/cdin/issues/122) and [#124](https://github.com/cdin-editor/cdin/issues/124) remain open. IME and PaneTree splitter capabilities must stay unadvertised until compatible immutable Runtime/Backend/Frontend releases are pinned and live product E2E passes.
-- GUI-SDL remains experimental. Its current renderer is an ASCII/debug-text baseline; production Unicode shaping/bidi/Persian text, IME, panels/scrolling, FE-019 stress and supported release-mode launch remain product gates. Do not distribute the current `--check` executable or experimental TUI as a completed interactive editor.
-- See [integration status](docs/development/integration-status.md), [installation](docs/installation.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111) for the live readiness boundary.
+**CDIN 1.0.0 Stable is not ready.** The repository is still the 0.2.0 Composition Root candidate. Component artifacts have now been published, but clean product installation, supported interactive launch and the live product acceptance gates remain separate requirements.
+
+### Published component and tool identities
+
+- **Kernel:** stable `v1.2.3`, Kernel ABI `1.1.0`, and logger C API `0.1.0`. Its five target-native SDK archives are pinned independently from the component Registry packages.
+- **Runtime:** stable `v1.0.0`, including the platform-neutral Lua module archives and canonical Release metadata.
+- **Backend:** stable `v1.2.2`, with five target-native CMake development packages and canonical Release metadata.
+- **Frontend:** stable `v1.2.2`, with separate Core, TUI and GUI-SDL packages for the five maintained native targets.
+- **Registry:** the pinned build-time CLI/Catalog pair is the immutable `v0.2.0-dev.3` Release. This is a development release of the tool, not Registry 1.0.0 Stable and not an application runtime dependency.
+- **SDL3 SDK:** `sdl3-sdk-v3.4.16` is published as an immutable-tagged prerelease. Its five target archives are pinned by tag-resolved source commit, byte size and SHA-256 in `deps.lock`; only GUI-SDL may acquire it.
+
+### Product integration state
+
+- CDIN PR [#148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 tag during recovery and makes live smoke tests resolve the Runtime package selected by the active CMake configuration.
+- CDIN PR [#149](https://github.com/cdin-editor/cdin/pull/149) carries the artifact-first consumer refresh: Registry `v0.2.0-dev.3`, Backend/Frontend `1.2.2`, Runtime `1.0.0`, the exact five-target SDL3 SDK pin, dynamic Backend artifact validation, and stable Product Definition prerelease policy. Its exact-head CI and Product Acceptance are still required before merge.
+- The TUI Product Definition does not declare or acquire SDL3. The GUI-SDL Product Definition declares the external SDL3 SDK contract.
+- GUI-SDL's current renderer still uses diagnostic debug text and does not provide production shaping, font fallback, grapheme layout or bidi. Persian/Arabic editing is not a supported stable claim.
+- The GUI-SDL IME and PaneTree implementations exist in Frontend `v1.2.2`, but their compile-time capability gates default to OFF in the published packages. They must remain unadvertised until CDIN #118 passes against the exact selected stack.
+- TUI and GUI-SDL launch remain experimental product paths; a successful component build or headless smoke is not proof of a supported interactive editor.
+
+### Stable release gates
+
+The parent acceptance issue is [CDIN #111](https://github.com/cdin-editor/cdin/issues/111). The remaining tracked work includes [live IME and PaneTree E2E #118](https://github.com/cdin-editor/cdin/issues/118), [pinned Registry verification #121](https://github.com/cdin-editor/cdin/issues/121), [artifact-first product installation #122](https://github.com/cdin-editor/cdin/issues/122), and [SDL3 SDK consumption #124](https://github.com/cdin-editor/cdin/issues/124). Downstream clean-consumer verification remains tracked by Runtime [#16](https://github.com/cdin-editor/runtime/issues/16), Backend [#35](https://github.com/cdin-editor/backend/issues/35) and Frontend [#40](https://github.com/cdin-editor/frontend/issues/40).
+
+Before a `v1.0.0` tag or Stable Release can be created, the exact selected component stack must pass clean-cache, warm-cache and offline installation; extracted-package tests outside the source checkout; TUI and GUI-SDL launch/input/shutdown; Windows console readiness; live capability tests; extension and process/transport recovery; Unicode shaping and Persian/Arabic presentation; performance/soak and security checks; and the complete supported target/profile matrix. Upgrade/uninstall, package contents, licenses, release provenance and checksums must also be verified. A queued workflow is not a pass, and an immutable component release is not a CDIN product release.
 
 ## Build
 
