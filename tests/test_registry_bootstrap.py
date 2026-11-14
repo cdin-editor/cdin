@@ -375,10 +375,11 @@ class RegistryPinSeparationTests(unittest.TestCase):
         self.assertEqual(development["revision"], development_revision)
         self.assertEqual(registry_pin(development=True), (expected_repository, development_revision))
 
-        # The consumer binary and developer source build intentionally use
-        # the same immutable source identity, while their lock sections stay
-        # separate because they represent different delivery modes.
-        self.assertEqual(consumer["revision"], development["revision"])
+        # The consumer stays on the last published binary Release until
+        # Registry v1.0.1 is actually tagged and its descriptor is available.
+        # Developer CI may use the already-merged patch commit directly, but
+        # that source identity must never masquerade as a published Release.
+        self.assertNotEqual(consumer["revision"], development["revision"])
         self.assertNotIn("release_tag", development)
         self.assertNotIn("release_descriptor_sha256", development)
         self.assertNotIn("release_descriptor_size", development)
