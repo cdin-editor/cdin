@@ -256,6 +256,17 @@ class _AssetRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, message, headers, new_url)
 
 
+def github_api_token_from_environment() -> str:
+    """Select a cross-repository read token without reusing Actions' repo token."""
+    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+        token = os.environ.get(name, "").strip()
+        if token:
+            return token
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return ""
+    return os.environ.get("GITHUB_TOKEN", "").strip()
+
+
 def fetch_github_json(path: str) -> dict[str, Any]:
     if not path.startswith("/repos/cdin-editor/cdin/") or "?" in path or "#" in path:
         raise SDL3ArtifactError("SDL3 GitHub API path is outside the canonical CDIN repository")
@@ -264,7 +275,8 @@ def fetch_github_json(path: str) -> dict[str, Any]:
         "User-Agent": "CDIN-SDL3-SDK-Bootstrap/1",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    # CDIN release API calls use the explicit read token in Actions.
+    token = github_api_token_from_environment()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(f"https://api.github.com{path}", headers=headers)
