@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 import tempfile
@@ -130,6 +131,40 @@ def write_lock(path: Path, lock: dict) -> None:
         "",
     ])
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+class GitHubAPITokenSelectionTests(unittest.TestCase):
+    def test_explicit_read_token_wins_in_actions(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_ACTIONS": "true",
+                "CDIN_GITHUB_API_TOKEN": "fine-grained-read-token",
+                "GH_TOKEN": "cli-write-token",
+                "GITHUB_TOKEN": "repo-scoped-token",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                sdk.github_api_token_from_environment(),
+                "fine-grained-read-token",
+            )
+
+    def test_actions_repository_token_is_not_used_implicitly(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": "repo-scoped-token"},
+            clear=True,
+        ):
+            self.assertEqual(sdk.github_api_token_from_environment(), "")
+
+    def test_local_github_token_fallback_is_preserved(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"GITHUB_ACTIONS": "", "GITHUB_TOKEN": " local-token "},
+            clear=True,
+        ):
+            self.assertEqual(sdk.github_api_token_from_environment(), "local-token")
 
 
 class TargetAndPinTests(unittest.TestCase):
