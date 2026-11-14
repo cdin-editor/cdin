@@ -73,6 +73,8 @@ def make_lock(archive: Path | None = None) -> dict:
             "format": "tar.gz",
             "size_bytes": 123,
             "sha256": "c" * 64,
+            "sidecar_size_bytes": 100,
+            "sidecar_sha256": "d" * 64,
         }
         if archive is not None and key == "linux-x86_64":
             asset["size_bytes"] = archive.stat().st_size
@@ -115,6 +117,8 @@ def write_lock(path: Path, lock: dict) -> None:
             'format = "{}"'.format(asset["format"]),
             "size_bytes = {}".format(asset["size_bytes"]),
             'sha256 = "{}"'.format(asset["sha256"]),
+            "sidecar_size_bytes = {}".format(asset["sidecar_size_bytes"]),
+            'sidecar_sha256 = "{}"'.format(asset["sidecar_sha256"]),
             "",
         ])
     source = lock["tooling"]["sdl3"]
@@ -160,31 +164,38 @@ class TargetAndPinTests(unittest.TestCase):
             "linux-x86_64": (
                 "sdl3-sdk-3.4.16-linux-x86_64.tar.gz", 2711768,
                 "dfb692b98c3a249ef7606286062f6fb9da5b808635324c2cbdffb8b8bba2776a",
+                102, "6a174cde6398da7ee479b7997f377356dc965b6a162672f01fca9ba6650d5734",
             ),
             "linux-arm64": (
                 "sdl3-sdk-3.4.16-linux-arm64.tar.gz", 2677647,
                 "75123f596aafc6c331bc7286020049bce8ca11468b7b80b422d6d2e907263441",
+                101, "39c7c3faa33683395cf7408766b9c1f25a5191358f3592b5d1fe21f42b05031b",
             ),
             "macos-x86_64": (
                 "sdl3-sdk-3.4.16-macos-x86_64.tar.gz", 2168788,
                 "d596b2625521dace0f80fa7f2ce55e7b7657916ef2e4ea0027d0f659fae2c59f",
+                102, "71e20eb370fc6fc982784fea0cb6cfe586a0c9b8397bfc161ba9b8decc898c23",
             ),
             "macos-arm64": (
                 "sdl3-sdk-3.4.16-macos-arm64.tar.gz", 2165743,
                 "f41bc805fe3a900232b7d89f23f317b40811996e8ad086bd10fc5f713beb6619",
+                101, "063c899e6a6aa3b9330de17f88678c71818e39c501a9065538430e660b3132b5",
             ),
             "windows-x86_64": (
                 "sdl3-sdk-3.4.16-windows-x86_64.tar.gz", 2665888,
                 "66440cb77ddd3accb42ba7f3b19f261c7f31b1247660f817cd2eedcbe99f6667",
+                105, "bb365cc380d82cfe39d84644d15b0e9bfd5085cdc8e55466e0dc980799e46fe9",
             ),
         }
         self.assertEqual(set(pin["assets"]), set(sdk.TARGETS))
-        for target, (filename, size, digest) in expected.items():
+        for target, (filename, size, digest, sidecar_size, sidecar_digest) in expected.items():
             with self.subTest(target=target):
                 asset = pin["assets"][target]
                 self.assertEqual(asset["file_name"], filename)
                 self.assertEqual(asset["size_bytes"], size)
                 self.assertEqual(asset["sha256"], digest)
+                self.assertEqual(asset["sidecar_size_bytes"], sidecar_size)
+                self.assertEqual(asset["sidecar_sha256"], sidecar_digest)
 
     def test_validates_semver_source_version(self) -> None:
         sdk.validate_pin(make_lock(), "linux-x86_64")
