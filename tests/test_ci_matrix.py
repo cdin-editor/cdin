@@ -78,6 +78,7 @@ class NativeProductMatrixTests(unittest.TestCase):
                     "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
+                self.assertIn("GH_TOKEN: ${{ github.token }}", content)
                 self.assertIn(
                     "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix.",
                     content,
