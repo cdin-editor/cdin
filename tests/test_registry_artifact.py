@@ -258,14 +258,14 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
         lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
         pin = lock["tooling"]["registry"]
         revision, version, tag, descriptor_sha, descriptor_size = _validate_pin(pin)
-        self.assertEqual(revision, "9fac913ada29a33a650f1b17c27fb2e6c657ae15")
-        self.assertEqual(version, "0.2.0-dev.3")
-        self.assertEqual(tag, "v0.2.0-dev.3")
+        self.assertEqual(revision, "c5b6900319cebe22f2d035a6c3b23a32f06a48b5")
+        self.assertEqual(version, "1.0.0")
+        self.assertEqual(tag, "v1.0.0")
         self.assertEqual(
             descriptor_sha,
-            "040ce9cf92a269486ee6e59d0a7459aeecda41d8d909c0ec40962d16a43a5fba",
+            "b47030a2f6ebba6a3ccfe88ca28437111f1e71b0c0ae5e8fbcb6a6eeaf78e495",
         )
-        self.assertEqual(descriptor_size, 1645)
+        self.assertEqual(descriptor_size, 1633)
 
     def _pin(self, client: FakeGitHubClient) -> dict:
         return {
