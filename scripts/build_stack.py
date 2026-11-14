@@ -713,7 +713,6 @@ def main() -> int:
             "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
         ]
         cmake_component("frontend", frontend, options=frontend_options, env=env)
-        frontend_prefixes = ()
     else:
         raise RuntimeError(
             "normal CDIN installation requires artifact-delivered Frontend packages; "
