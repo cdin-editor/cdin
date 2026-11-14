@@ -153,7 +153,11 @@ class GitHubAPITokenSelectionTests(unittest.TestCase):
     def test_actions_repository_token_is_not_used_implicitly(self) -> None:
         with patch.dict(
             os.environ,
-            {"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": "repo-scoped-token"},
+            {
+                "GITHUB_ACTIONS": "true",
+                "GH_TOKEN": "same-repository-write-token",
+                "GITHUB_TOKEN": "repo-scoped-token",
+            },
             clear=True,
         ):
             self.assertEqual(sdk.github_api_token_from_environment(), "")
