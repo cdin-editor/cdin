@@ -144,9 +144,11 @@ jobs:
           python -m unittest discover -s tests -p "test_*sdl3*.py"
           python -m unittest discover -s tests -p test_package_distribution.py
 
-      - name: Verify immutable SDK pin before installation
-        run: |
-          python scripts/deps.py --verify
+      - name: Install the pinned Kernel/logger SDK through the consumer bootstrap
+        run: python scripts/deps.py
+
+      - name: Verify the installed SDK against the immutable lock
+        run: python scripts/deps.py --verify
 
       - name: Install the product using consumer defaults only
         run: make install
