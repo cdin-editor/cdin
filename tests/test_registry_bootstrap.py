@@ -321,10 +321,10 @@ class RegistryPinSeparationTests(unittest.TestCase):
             registry_pin(),
             ("https://github.com/cdin-editor/registry.git", "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"),
         )
-        self.assertEqual(development["version"], "0.2.0-dev.2")
+        self.assertEqual(development["version"], "0.2.0-dev.3")
         self.assertEqual(
             registry_pin(development=True),
-            ("https://github.com/cdin-editor/registry.git", "9c5a2960c77985a3fb7c7a535635c3f1b6093baa"),
+            ("https://github.com/cdin-editor/registry.git", "c30ab313638a53d82b1bc63e67af90b1e111551d"),
         )
         self.assertNotEqual(consumer["revision"], development["revision"])
 
