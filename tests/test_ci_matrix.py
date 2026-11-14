@@ -9,6 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+PRODUCT_ACCEPTANCE_WORKFLOW = ROOT / ".github" / "workflows" / "product-acceptance.yml"
 
 EXPECTED_TARGETS = {
     "linux-x86_64": "ubuntu-latest",
@@ -64,6 +65,36 @@ class NativeProductMatrixTests(unittest.TestCase):
         self.assertIn("Verify native runner target identity", self.workflow)
         self.assertIn("platform.machine().lower()", self.workflow)
         self.assertIn('os.environ.get("MSYSTEM") != "UCRT64"', self.workflow)
+
+    def test_hosted_cross_repository_api_access_requires_the_read_only_secret(self) -> None:
+        for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
+            with self.subTest(workflow=path.name):
+                content = path.read_text(encoding="utf-8")
+                self.assertIn(
+                    "CDIN_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
+                    content,
+                )
+                self.assertIn(
+                    "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
+                    content,
+                )
+                self.assertIn(
+                    "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix.",
+                    content,
+                )
+                self.assertIn("exit 1", content)
+                self.assertNotIn(
+                    "GH_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
+                    content,
+                )
+
+        # The source-build/sanitizer job has its own runner and must be guarded too.
+        self.assertEqual(
+            self.workflow.count(
+                "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix."
+            ),
+            2,
+        )
 
     def test_matrix_artifacts_are_unique_per_target_and_profile(self) -> None:
         for artifact in (
