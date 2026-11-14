@@ -193,8 +193,13 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
         filename = pinned_asset.get("file_name")
         size = pinned_asset.get("size_bytes")
         digest = pinned_asset.get("sha256")
+        sidecar_size = pinned_asset.get("sidecar_size_bytes")
+        sidecar_digest = pinned_asset.get("sidecar_sha256")
         if (
-            set(pinned_asset) != {"file_name", "format", "size_bytes", "sha256"}
+            set(pinned_asset) != {
+                "file_name", "format", "size_bytes", "sha256",
+                "sidecar_size_bytes", "sidecar_sha256",
+            }
             or filename != expected_name
             or pinned_asset.get("format") != "tar.gz"
             or isinstance(size, bool)
@@ -203,6 +208,12 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
             or size > MAX_ASSET_BYTES
             or not isinstance(digest, str)
             or SHA_RE.fullmatch(digest) is None
+            or isinstance(sidecar_size, bool)
+            or not isinstance(sidecar_size, int)
+            or sidecar_size <= 0
+            or sidecar_size > 256
+            or not isinstance(sidecar_digest, str)
+            or SHA_RE.fullmatch(sidecar_digest) is None
         ):
             raise SDL3ArtifactError(
                 f"SDL3 SDK asset pin for {target_name} is malformed"
@@ -343,8 +354,14 @@ def verify_release(pin: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]
             raise SDL3ArtifactError(
                 f"SDL3 SDK Release Asset size/digest differs from deps.lock for {key}"
             )
-        if indexed[filename + ".sha256"].get("size", 0) <= 0:
-            raise SDL3ArtifactError(f"SDL3 SDK Release checksum sidecar is empty for {key}")
+        sidecar = indexed[filename + ".sha256"]
+        if (
+            sidecar.get("size") != pinned_asset["sidecar_size_bytes"]
+            or sidecar.get("digest") != f"sha256:{pinned_asset['sidecar_sha256']}"
+        ):
+            raise SDL3ArtifactError(
+                f"SDL3 SDK checksum sidecar size/digest differs from deps.lock for {key}"
+            )
     return release
 
 
@@ -492,9 +509,19 @@ def download_asset(pin: dict[str, Any], asset: dict[str, Any],
         raise SDL3ArtifactError("downloaded SDL3 SDK archive SHA-256 mismatch")
     sidecar_url = f"{REPOSITORY}/releases/download/{pin['tag']}/{filename}.sha256"
     sidecar = cache / (cache_name + ".sha256")
-    _download(sidecar_url, sidecar, expected_size=67 + len(filename), max_size=256)
-    expected_line = f"{asset['sha256']}  {filename}\n"
-    if sidecar.read_text(encoding="ascii") != expected_line:
+    _download(
+        sidecar_url,
+        sidecar,
+        expected_size=asset["sidecar_size_bytes"],
+        max_size=256,
+    )
+    if sha256_file(sidecar) != asset["sidecar_sha256"]:
+        sidecar.unlink(missing_ok=True)
+        raise SDL3ArtifactError("SDL3 SDK checksum sidecar SHA-256 differs from deps.lock")
+    sidecar_lf = f"{asset['sha256']}  {filename}\n".encode("ascii")
+    sidecar_crlf = f"{asset['sha256']}  {filename}\r\n".encode("ascii")
+    if sidecar.read_bytes() not in (sidecar_lf, sidecar_crlf):
+        sidecar.unlink(missing_ok=True)
         raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
     return destination
 
