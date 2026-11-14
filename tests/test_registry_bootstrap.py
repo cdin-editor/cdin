@@ -481,6 +481,8 @@ class ProductEnvironmentContractTests(unittest.TestCase):
         self.assertIn('contract_id: org.cdin.sdl3-sdk', gui)
         self.assertIn('version: "3.4.16"', gui)
         self.assertNotIn('contract_id: org.cdin.sdl3-sdk', tui)
+        self.assertIn('allow_prerelease: false', gui)
+        self.assertIn('allow_prerelease: false', tui)
 
 
 class RegistryTargetDetectionTests(unittest.TestCase):
