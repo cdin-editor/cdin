@@ -127,6 +127,17 @@ class _TrustedAPIHostRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, file_pointer, code, message, headers, new_url)
 
 
+def github_api_token_from_environment() -> str:
+    """Select a cross-repository read token without reusing Actions' repo token."""
+    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+        token = os.environ.get(name, "").strip()
+        if token:
+            return token
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return ""
+    return os.environ.get("GITHUB_TOKEN", "").strip()
+
+
 class GitHubReleaseClient:
     """Small bounded GitHub client; no shell, Git executable or Go toolchain is used."""
 
@@ -152,10 +163,9 @@ class GitHubReleaseClient:
             "User-Agent": "cdin-registry-bootstrap/1",
             "X-GitHub-Api-Version": "2022-11-28",
         }
-        # The hosted matrix shares GitHub's anonymous REST quota. Prefer the
-        # workflow-scoped token for API requests, but never send it to asset
-        # download hosts or redirects outside api.github.com.
-        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        # This client reads the Registry repository from a CDIN workflow.
+        # Do not send Actions' repository-scoped GITHUB_TOKEN cross-repository.
+        token = github_api_token_from_environment()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         request = urllib.request.Request(url, headers=headers)
