@@ -104,13 +104,16 @@ def github_api_token_from_environment() -> str:
     while this bootstrap reads the Kernel Release from a separate repository.
     Outside Actions, GITHUB_TOKEN remains a convenient local-shell fallback.
     """
-    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+    token = os.environ.get("CDIN_GITHUB_API_TOKEN", "").strip()
+    if token:
+        return token
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return ""
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
         token = os.environ.get(name, "").strip()
         if token:
             return token
-    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
-        return ""
-    return os.environ.get("GITHUB_TOKEN", "").strip()
+    return ""
 
 
 def fetch_github_json(url: str) -> dict:
