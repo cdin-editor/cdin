@@ -351,9 +351,9 @@ class SmokeRuntimeRootResolutionTests(unittest.TestCase):
     def _configure_runtime(self, runtime_root: Path) -> None:
         runtime_entry = runtime_root / "lua" / "cdin" / "runtime.lua"
         runtime_entry.parent.mkdir(parents=True, exist_ok=True)
-        runtime_entry.write_text("return {}\\n", encoding="utf-8")
+        runtime_entry.write_text("return {}\n", encoding="utf-8")
         self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
             encoding="utf-8",
         )
 
@@ -387,14 +387,14 @@ class SmokeRuntimeRootResolutionTests(unittest.TestCase):
         module_dir = runtime_root / "lua" / "cdin"
         module_dir.mkdir(parents=True)
         external = self.root / "outside.lua"
-        external.write_text("return {}\\n", encoding="utf-8")
+        external.write_text("return {}\n", encoding="utf-8")
         module = module_dir / "runtime.lua"
         try:
             module.symlink_to(external)
         except (OSError, NotImplementedError) as error:
             self.skipTest(f"symlink creation is unavailable: {error}")
         self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
             encoding="utf-8",
         )
         with patch.object(smoke_support, "ROOT", self.root):
