@@ -11,7 +11,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Select explicit, least-privilege cross-repository GitHub API credentials for Kernel SDK, Registry and SDL3 release/tag discovery. Ignore the automatically scoped Actions `GITHUB_TOKEN` when reading component repositories; preserve local-shell fallback and anonymous public API operation when no optional read token is configured.
+- Select explicit, least-privilege cross-repository GitHub API credentials for Kernel SDK, Registry and SDL3 release/tag discovery. Ignore the automatically scoped Actions `GITHUB_TOKEN` when reading component repositories; require the dedicated read token in hosted CI/Product Acceptance matrices, while preserving local-shell fallback and anonymous public API access for local one-off operations.
 - Keep the dedicated read-only Actions secret separate from `GH_TOKEN`, so same-repository GitHub CLI operations retain their normal permissions. Warn when the cross-repository secret is absent instead of failing before public API fallback; actual API calls still enforce immutable tag, descriptor, digest, size and archive validation.
 
 - Validate the split Frontend graph with the shared Core dependency in both immutable artifact and developer Registry-source modes. Resolve component delivery from the actual Manifest instead of assuming that a source-built Registry implies source-built components.
