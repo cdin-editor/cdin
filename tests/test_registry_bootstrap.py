@@ -329,7 +329,14 @@ class RegistryPinSeparationTests(unittest.TestCase):
             registry_pin(development=True),
             ("https://github.com/cdin-editor/registry.git", "9fac913ada29a33a650f1b17c27fb2e6c657ae15"),
         )
-        self.assertNotEqual(consumer["revision"], development["revision"])
+        # The developer source build and consumer binary are deliberately
+        # built from the same immutable Registry release commit. Their lock
+        # sections remain separate because they represent different delivery
+        # modes, not different source identities.
+        self.assertEqual(consumer["revision"], development["revision"])
+        self.assertIn("release_descriptor_sha256", consumer)
+        self.assertNotIn("release_tag", development)
+        self.assertNotIn("release_descriptor_sha256", development)
 
 
 
