@@ -7,6 +7,7 @@ import os
 import platform
 import sys
 import tempfile
+import tomllib
 import unittest
 import zipfile
 from pathlib import Path
@@ -228,19 +229,60 @@ class InstalledDistributionTests(unittest.TestCase):
             {"org.cdin.kernel-abi", "org.lua.puc-lua-c-api", "org.m-mdy-m.log-c-api"},
         )
 
-    def test_gui_sdl_build_info_records_pinned_sdl3_source_identity(self) -> None:
+    def write_sdl3_sdk_fixture(self) -> None:
+        lock = tomllib.loads((ROOT / "deps.lock").read_text(encoding="utf-8"))
+        source = lock["tooling"]["sdl3"]
+        sdk_pin = lock["dependencies"]["sdl3_sdk"]
+        target_os = "macos" if self.target["os"] == "darwin" else self.target["os"]
+        metadata = {
+            "schema": "cdin.sdl3-sdk.v1",
+            "version": sdk_pin["version"],
+            "target": {
+                "os": target_os,
+                "architecture": self.target["architecture"],
+                "abi": self.target["abi"],
+            },
+            "source": {"url": source["archive"], "sha256": source["sha256"]},
+            "linkage": "static",
+            "cmake_package": "SDL3",
+        }
+        manifest = self.prefix / "share" / "cdin" / "sdl3-sdk.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(metadata, sort_keys=True) + "\n", encoding="utf-8")
+        library = self.prefix / "lib" / (
+            "SDL3-static.lib" if self.target["os"] == "windows" else "libSDL3.a"
+        )
+        library.parent.mkdir(parents=True, exist_ok=True)
+        library.write_bytes(b"verified prebuilt SDL3 SDK fixture")
+
+    def test_gui_sdl_build_info_records_pinned_prebuilt_sdl3_sdk_identity(self) -> None:
         self.write_manifest("gui-sdl")
-        library = self.prefix / "lib" / "libSDL3.a"
-        library.parent.mkdir(parents=True)
-        library.write_bytes(b"pinned SDL3 SDK fixture")
+        self.write_sdl3_sdk_fixture()
         result = self.package(profile="gui-sdl", run_smoke=False)
         with tempfile.TemporaryDirectory(prefix="cdin-package-sdl-info-") as temporary:
             extracted = safe_extract(Path(result["archive"]), Path(temporary))
             build_info = json.loads((extracted / "BUILD-INFO.json").read_text(encoding="utf-8"))
         sdl = build_info["build_dependencies"]["sdl3"]
         self.assertEqual(sdl["version"], "3.4.16")
-        self.assertEqual(sdl["delivery"], "pinned-source-build")
-        self.assertEqual(len(sdl["source_archive_sha256"]), 64)
+        self.assertEqual(sdl["tag"], "sdl3-sdk-v3.4.16")
+        self.assertEqual(sdl["source_revision"], "d249122c51acbab7262a6cd1e675922fd043bac7")
+        self.assertEqual(sdl["delivery"], "prebuilt-sdk")
+        self.assertEqual(sdl["asset"]["file_name"], f"sdl3-sdk-3.4.16-{self.target['os'] if self.target['os'] != 'darwin' else 'macos'}-{self.target['architecture']}.tar.gz")
+        self.assertEqual(len(sdl["asset"]["sha256"]), 64)
+        self.assertEqual(len(sdl["sidecar"]["sha256"]), 64)
+        self.assertEqual(sdl["source"]["archive_sha256"], "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68")
+
+    def test_gui_sdl_distribution_rejects_mismatched_sdk_manifest(self) -> None:
+        self.write_manifest("gui-sdl")
+        self.write_sdl3_sdk_fixture()
+        manifest = self.prefix / "share" / "cdin" / "sdl3-sdk.json"
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+        metadata["target"]["architecture"] = (
+            "arm64" if self.target["architecture"] == "x86_64" else "x86_64"
+        )
+        manifest.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(DistributionError, "does not match the pinned immutable SDK"):
+            self.package(profile="gui-sdl", run_smoke=False)
 
     def test_rejects_missing_immutable_artifact_provenance(self) -> None:
         manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))
