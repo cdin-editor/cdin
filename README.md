@@ -35,6 +35,7 @@ metadata, respectively.
 
 ### Product integration state
 
+- Registry `v1.0.0` is published, but clean-consumer CI exposed a correctness regression: artifact delivery overwrites a provenance-bearing Resolved Manifest schema `1.2.0` with `1.1.0`. Registry [PR #74](https://github.com/cdin-editor/registry/pull/74) fixes the downgrade and adds a full Resolver→artifact-policy regression test. CDIN must move both Registry pins to the immutable `v1.0.1` Release after that patch is merged and published; do not treat the existing `1.0.0` pin as product-accepted.
 - CDIN PR [#148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 tag during recovery and makes live smoke tests resolve the Runtime package selected by the active CMake configuration.
 - CDIN PR [#149](https://github.com/cdin-editor/cdin/pull/149) carries the artifact-first consumer refresh: Registry `1.0.0` with its immutable dynamic Catalog, Backend/Frontend `1.2.2`, Runtime `1.0.0`, the exact five-target SDL3 SDK pin, dynamic Backend artifact validation, and stable Product Definition prerelease policy. Its exact-head CI and Product Acceptance are still required before merge.
 - The TUI Product Definition does not declare or acquire SDL3. The GUI-SDL Product Definition declares the external SDL3 SDK contract.
