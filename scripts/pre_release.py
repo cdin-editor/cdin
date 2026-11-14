@@ -51,6 +51,15 @@ def main() -> int:
     ]
     if len(component_keys) != len(components) or len(set(component_keys)) != len(component_keys):
         raise SystemExit("Resolved Manifest contains malformed or duplicate component/variant identities")
+    frontend_entries = [
+        item for item in components
+        if isinstance(item, dict) and item.get("component_id") == "frontend"
+    ]
+    frontend_artifact_delivery = any(
+        item.get("delivery") == "artifact"
+        or isinstance(item.get("selected_artifact"), dict)
+        for item in frontend_entries
+    )
     expected_component_keys = {
         ("runtime", "default"),
         ("backend", "default"),
@@ -58,6 +67,8 @@ def main() -> int:
     }
     if profile == "gui-sdl":
         expected_component_keys.add(("frontend", "gui-sdl"))
+    if frontend_artifact_delivery:
+        expected_component_keys.add(("frontend", "core"))
     if set(component_keys) != expected_component_keys:
         raise SystemExit(
             f"Resolved Manifest component identities are {sorted(component_keys)}, "
@@ -87,6 +98,8 @@ def main() -> int:
         if item.get("component_id") == "frontend"
     }
     expected_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    if frontend_artifact_delivery:
+        expected_variants.add("core")
     if frontend_variants != expected_variants:
         raise SystemExit(
             f"Resolved Manifest Frontend variants are {sorted(frontend_variants)}, "
