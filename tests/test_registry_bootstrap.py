@@ -1052,9 +1052,9 @@ class SmokeRuntimeRootResolutionTests(unittest.TestCase):
     def _configure_runtime(self, runtime_root: Path) -> None:
         runtime_entry = runtime_root / "lua/cdin/runtime.lua"
         runtime_entry.parent.mkdir(parents=True, exist_ok=True)
-        runtime_entry.write_text("return {}\\n", encoding="utf-8")
+        runtime_entry.write_text("return {}\n", encoding="utf-8")
         self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
             encoding="utf-8",
         )
 
@@ -1088,10 +1088,10 @@ class SmokeRuntimeRootResolutionTests(unittest.TestCase):
         runtime_root.mkdir()
         (runtime_root / "lua/cdin").mkdir(parents=True)
         outside = self.root / "outside.lua"
-        outside.write_text("return {}\\n", encoding="utf-8")
+        outside.write_text("return {}\n", encoding="utf-8")
         (runtime_root / "lua/cdin/runtime.lua").symlink_to(outside)
         self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\\n",
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
             encoding="utf-8",
         )
         with patch.object(smoke_support, "ROOT", self.root):
