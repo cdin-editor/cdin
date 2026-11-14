@@ -303,22 +303,27 @@ def verify_workspace(
         if item["component_id"] == "frontend"
     }
     required_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
-    # The split Frontend package contract makes Core a transitive dependency
-    # of each adapter. Artifact consumers must resolve it exactly once. The
-    # explicit developer source mode may still consume a legacy source unit
-    # without a separate Core variant, but if Registry selects Core it is
-    # validated as an ordinary source/artifact component below.
-    if manifest.get("resolution", {}).get("delivery_mode") == "artifact":
-        expected_variants = required_variants | {"core"}
-        if frontend_variants != expected_variants:
-            raise RuntimeError(
-                f"Registry selected Frontend variants {sorted(frontend_variants)}, "
-                f"expected {sorted(expected_variants)}"
-            )
-    elif frontend_variants - {"core"} != required_variants:
+    frontend_entries = [
+        item for item in manifest["components"]
+        if item["component_id"] == "frontend"
+    ]
+    # Registry Manifest v1.1 records delivery on each selected component
+    # rather than requiring a product-wide delivery_mode. A product may be
+    # hybrid while every Frontend variant is artifact-delivered. Determine
+    # Core coalescing from the selected Frontend artifacts themselves.
+    frontend_artifact_delivery = any(
+        item.get("delivery") == "artifact"
+        or isinstance(item.get("selected_artifact"), dict)
+        for item in frontend_entries
+    )
+    expected_variants = required_variants | (
+        {"core"} if frontend_artifact_delivery else set()
+    )
+    if frontend_variants != expected_variants:
         raise RuntimeError(
             f"Registry selected Frontend variants {sorted(frontend_variants)}, "
-            f"expected {sorted(required_variants)} with optional shared Core"
+            f"expected {sorted(expected_variants)} "
+            f"(Frontend artifact delivery={frontend_artifact_delivery})"
         )
 
     by_key = {
