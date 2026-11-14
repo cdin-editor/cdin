@@ -218,19 +218,30 @@ def main() -> int:
     if not isinstance(target, dict) or set(target) != {"os", "architecture", "abi"}:
         fail("Resolved Manifest target tuple is missing or malformed")
 
-    expected = {
+    required = {
         ("runtime", "default"),
         ("backend", "default"),
         ("frontend", "tui"),
     }
     if args.profile == "gui-sdl":
-        expected.add(("frontend", "gui-sdl"))
-    if not args.developer_source_components:
-        expected.add(("frontend", "core"))
-    if set(components) != expected:
-        fail(
-            f"resolved component graph mismatch: {sorted(components)} != {sorted(expected)}"
-        )
+        required.add(("frontend", "gui-sdl"))
+    if args.developer_source_components:
+        # New split-package Catalogs select the shared Core dependency even
+        # in explicit source mode. Older developer source Catalogs may still
+        # materialize the adapter from one source unit without a Core variant.
+        actual_without_optional_core = set(components) - {("frontend", "core")}
+        if actual_without_optional_core != required:
+            fail(
+                "resolved developer component graph mismatch: "
+                f"{sorted(components)}; required adapters={sorted(required)} "
+                "with optional shared Frontend Core"
+            )
+    else:
+        expected = required | {("frontend", "core")}
+        if set(components) != expected:
+            fail(
+                f"resolved component graph mismatch: {sorted(components)} != {sorted(expected)}"
+            )
 
     for key, component in components.items():
         if not SEMVER.fullmatch(component.get("version", "")):
@@ -398,7 +409,7 @@ def main() -> int:
         else "source-delivered Runtime/Frontend developer inputs"
     )
     print(
-        "Registry product E2E passed: Backend 1.2.1 artifact + pinned Kernel/logger SDK + "
+        f"Registry product E2E passed: Backend {backend['version']} artifact + pinned Kernel/logger SDK + "
         f"{delivery_summary}, frontend={args.profile}, target={target}"
     )
     return 0
