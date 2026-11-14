@@ -27,10 +27,10 @@ GitHub Actions' automatic `GITHUB_TOKEN` is scoped to the workflow repository. T
 - CDIN `scripts/deps.py` and `scripts/sdl3_artifact.py` read `CDIN_GITHUB_API_TOKEN`, then `GH_TOKEN`; they ignore the automatic Actions `GITHUB_TOKEN` in CI and retain a `GITHUB_TOKEN` fallback for local shells.
 - CDIN's Registry bootstrap reads `REGISTRY_GITHUB_API_TOKEN`, then `CDIN_GITHUB_API_TOKEN`, then `GH_TOKEN`; it likewise ignores the automatic Actions token in CI and preserves the local-shell fallback.
 - Registry CLI reads `REGISTRY_GITHUB_API_TOKEN`, then explicit `GH_TOKEN`; it ignores the automatic Actions `GITHUB_TOKEN` in CI and preserves the local-shell fallback. Both normal prepare/resolve and Manifest update discovery pass the selected credential into the API client.
-- The workflows map Actions secret `CDIN_GITHUB_READ_TOKEN` into the two dedicated variables without overriding `GH_TOKEN`, which remains available for same-repository GitHub CLI operations. The secret is optional: absence emits a warning and public API calls continue anonymously. Parallel matrix jobs may still exhaust the lower anonymous API quota.
+- The workflows map Actions secret `CDIN_GITHUB_READ_TOKEN` into the two dedicated variables without overriding `GH_TOKEN`, which remains available for same-repository GitHub CLI operations. The secret is required for hosted CI, sanitizer and Product Acceptance matrices; missing configuration now fails at preflight. Anonymous public API access remains available for local one-off use only.
 - Recommended secret: fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. No write permission is required. The connected GitHub integration cannot create repository Actions secrets; the secret must be configured by a repository administrator.
 
-The earlier CI log showed the new dedicated secret was absent in the runner environment. The workflow was changed from fail-fast to an explicit warning plus anonymous public API fallback, so absence of a secret is no longer itself a deterministic test failure. That fallback does not guarantee immunity from GitHub rate limiting.
+The Product Acceptance run `43649329733` proved that anonymous fallback is insufficient for the parallel matrix: Linux x86_64 GUI-SDL validated the Registry binary/Catalog and Product Definition, resolved the stable Backend/Frontend/Runtime packages, then failed in `prepare` with `GITHUB_RATE_LIMIT_EXHAUSTED` while resolving Kernel tag `v1.2.3`. The workflows were therefore restored to fail-fast preflight when the read token is absent. Local one-off anonymous API use remains possible but is not CI acceptance evidence.
 
 ### Latest exact-head workflow state
 
@@ -44,7 +44,7 @@ The earlier CI log showed the new dedicated secret was absent in the runner envi
 | Registry #78 | [Security #43648857785](https://github.com/cdin-editor/registry/actions/runs/43648857785) | Queued. |
 | Registry #78 | [Workspace native platforms #43648864459](https://github.com/cdin-editor/registry/actions/runs/43648864459) | Queued on the latest branch tip. |
 
-An earlier CDIN run failed only at the missing-secret preflight, which has since been made optional. An earlier Registry Linux test caught a duplicate test name and then a Go token-precedence defect; the duplicate test file was removed and the existing token test now covers local and Actions selection. Those historical failures are not evidence of a failure on the latest head, but neither are the newly queued runs evidence of success.
+The CDIN run above demonstrates that a missing read token must be configured before the matrix can pass; the latest workflows fail fast with a clear message instead of spending runner time on anonymous rate-limited requests. Registry's duplicate test name and Go token-precedence regressions were also fixed on PR #78. Queued checks are not evidence of success.
 
 ### Stable release gates — unchanged
 
