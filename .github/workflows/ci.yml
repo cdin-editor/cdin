@@ -149,8 +149,9 @@ jobs:
       - name: Verify cross-repository GitHub read token
         run: |
           if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
-            echo "::error::Configure Actions secret CDIN_GITHUB_READ_TOKEN with read-only Contents access to the CDIN component repositories."
-            exit 1
+            echo "::warning::CDIN_GITHUB_READ_TOKEN is not configured; public GitHub API requests will use the anonymous rate limit. Configure a read-only cross-repository token to improve reliability."
+          else
+            echo "Cross-repository GitHub API read credential is configured."
           fi
       - name: Run SDK, Registry and SDL3 artifact bootstrap tests
         run: |
@@ -321,8 +322,9 @@ jobs:
         shell: bash
         run: |
           if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
-            echo "::error::Configure Actions secret CDIN_GITHUB_READ_TOKEN with read-only Contents access to the CDIN component repositories."
-            exit 1
+            echo "::warning::CDIN_GITHUB_READ_TOKEN is not configured; public GitHub API requests will use the anonymous rate limit. Configure a read-only cross-repository token to improve reliability."
+          else
+            echo "Cross-repository GitHub API read credential is configured."
           fi
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
