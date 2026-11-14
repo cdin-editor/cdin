@@ -18,6 +18,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Resolve Runtime paths in live extension/TUI smoke tests from the exact `CDIN_RUNTIME_SOURCE_DIR` in the active CMake cache. Artifact-first consumers and explicit developer-source builds now test the same Runtime package selected by the Manifest.
 - Pin the developer Registry source-build path to the exact `v0.2.0-dev.3` Catalog commit so source-build CI and normal consumer bootstrap use the same immutable release inventory.
 - Declare GUI-SDL's external SDL3 SDK contract and pin the published five-target SDL3 3.4.16 SDK Release, including its exact tag-resolved commit, archive sizes and SHA-256 digests. TUI remains SDL3-free.
+- Pin the exact size and GitHub SHA-256 digest of all five SDL3 checksum sidecars. Verify sidecar bytes and the archive checksum line exactly while accepting only the published LF or CRLF line-ending form.
 - Disable component prerelease selection in both stable product definitions; stable CDIN profiles now resolve stable component releases only.
 
 - Pin the artifact-first Registry consumer to the published immutable `v0.2.0-dev.3` Release, including its exact tag-resolved source commit and release-descriptor SHA-256/size. Keep the developer-only Registry source pin separate from normal installation.
