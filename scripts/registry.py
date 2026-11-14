@@ -281,6 +281,32 @@ def verify_backend_artifact(
     return backend_package
 
 
+def expected_frontend_variants(
+    profile: str,
+    components: list[dict],
+) -> set[str]:
+    """Return the resolved Frontend dependency closure for one product profile.
+
+    Manifest v1.1 can represent a mixed product delivery set while each
+    Frontend variant is artifact-delivered. Detect shared Core from the
+    selected Frontend entries themselves, not a product-wide delivery flag.
+    """
+    if profile not in {"tui", "gui-sdl"}:
+        raise ValueError(f"unsupported Frontend product profile: {profile}")
+    required = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    frontend_entries = [
+        item for item in components
+        if item.get("component_id") == "frontend"
+    ]
+    variants = {item.get("variant") for item in frontend_entries}
+    artifact_delivery = any(
+        item.get("delivery") == "artifact"
+        or isinstance(item.get("selected_artifact"), dict)
+        for item in frontend_entries
+    )
+    return required | ({"core"} if artifact_delivery else set())
+
+
 def verify_workspace(
     binary: Path,
     profile: str,
@@ -302,28 +328,11 @@ def verify_workspace(
         item["variant"] for item in manifest["components"]
         if item["component_id"] == "frontend"
     }
-    required_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
-    frontend_entries = [
-        item for item in manifest["components"]
-        if item["component_id"] == "frontend"
-    ]
-    # Registry Manifest v1.1 records delivery on each selected component
-    # rather than requiring a product-wide delivery_mode. A product may be
-    # hybrid while every Frontend variant is artifact-delivered. Determine
-    # Core coalescing from the selected Frontend artifacts themselves.
-    frontend_artifact_delivery = any(
-        item.get("delivery") == "artifact"
-        or isinstance(item.get("selected_artifact"), dict)
-        for item in frontend_entries
-    )
-    expected_variants = required_variants | (
-        {"core"} if frontend_artifact_delivery else set()
-    )
+    expected_variants = expected_frontend_variants(profile, manifest["components"])
     if frontend_variants != expected_variants:
         raise RuntimeError(
             f"Registry selected Frontend variants {sorted(frontend_variants)}, "
-            f"expected {sorted(expected_variants)} "
-            f"(Frontend artifact delivery={frontend_artifact_delivery})"
+            f"expected {sorted(expected_variants)}"
         )
 
     by_key = {
