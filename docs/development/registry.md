@@ -26,7 +26,7 @@ Configure an Actions secret named `CDIN_GITHUB_READ_TOKEN` as a fine-grained per
 - `cdin-editor/frontend`
 - `cdin-editor/registry`
 
-The CI and Product Acceptance workflows expose this secret as `GH_TOKEN`. Do not grant write permissions. The value is used only for GitHub API Release/tag discovery, is never printed, and is not embedded in artifacts or distributed with CDIN. The application bootstrap still verifies exact tag commits, API asset digest/size, archive contents and package identities; authentication does not replace those checks.
+The CI and Product Acceptance workflows expose this secret as `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN`. `GH_TOKEN` remains available for ordinary GitHub CLI operations that act on the CDIN repository and must not be repurposed as the cross-repository read credential. Do not grant write permissions. The value is used only for GitHub API Release/tag discovery, is never printed, and is not embedded in artifacts or distributed with CDIN. The application bootstrap still verifies exact tag commits, API asset digest/size, archive contents and package identities; authentication does not replace those checks.
 
 For a local developer run, set `GH_TOKEN` to a credential with the same read scope. The SDK bootstrap also accepts `CDIN_GITHUB_API_TOKEN`; Registry accepts `REGISTRY_GITHUB_API_TOKEN`. A local-shell `GITHUB_TOKEN` fallback remains available outside GitHub Actions. The Actions-provided repository token is deliberately ignored by these cross-repository readers.
 
