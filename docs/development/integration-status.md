@@ -17,7 +17,7 @@
 
 ### Existing PRs — continue here; do not fork parallel work
 
-- CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains open, non-draft, based on `main` at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`, exact current head `2b9deadbf5e2d2ab3c8a1c73eba85df1c3f8b9b0` (27 files). It carries the artifact-first lock/Product Definitions, developer-vs-consumer Registry pin separation, SDL3 SDK consumption, dynamic dependency validation, two unused-local review fixes, cross-repository API credential selection, token-selection tests, pipeline registration and the refreshed dependency/integration documents. Both previously open review threads about unused locals have been replied to and resolved. The PR has not been merged.
+- CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains open, non-draft, based on `main` at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`, exact current head `da913e0c31159425d3ba1d91825373ef331e0534` (27 files). It carries the artifact-first lock/Product Definitions, developer-vs-consumer Registry pin separation, SDL3 SDK consumption, dynamic dependency validation, two unused-local review fixes, cross-repository API credential selection, token-selection tests, pipeline registration and the refreshed dependency/integration documents. Both previously open review threads about unused locals have been replied to and resolved. The PR has not been merged.
 - Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) remains open as a draft, based on Registry main `34e91f26f81cc89489c97b36ad52051af4aca59a`, exact current head `8a7f75fc152ded0d5a9f3180d287840ea6d6e706`. It makes the cross-repository API credential contract explicit in Registry's normal resolve and Manifest-discovery paths, adds tests and documentation, and preserves the local-shell fallback. An earlier run caught a test-formatting issue and then a token-selection order regression; both are fixed on the branch. The newest CI, Security, Docs/YAML and Workspace runs have been queued; do not treat them as passing until their exact-head conclusions are green.
 
 ### Credential contract and observed CI blocker
@@ -36,9 +36,9 @@ The earlier CI log showed the new dedicated secret was absent in the runner envi
 
 | Repository / PR | Workflow run | Latest observed state |
 |---|---|---|
-| CDIN #149 | [CI #43648793382](https://github.com/cdin-editor/cdin/actions/runs/43648793382) | Queued; 11 jobs, not yet verified. |
-| CDIN #149 | [Product Acceptance #43648793341](https://github.com/cdin-editor/cdin/actions/runs/43648793341) | Queued; ten installed-product target/profile jobs, not yet verified. |
-| CDIN #149 | [SDL3 SDK #43648793360](https://github.com/cdin-editor/cdin/actions/runs/43648793360) | Five SDK target jobs queued; the immutable-release check skipped because the SDK Release already exists. |
+| CDIN #149 | [CI #43649062422](https://github.com/cdin-editor/cdin/actions/runs/43649062422) | Queued; 11 jobs, not yet verified. |
+| CDIN #149 | [Product Acceptance #43649062334](https://github.com/cdin-editor/cdin/actions/runs/43649062334) | Queued; ten installed-product target/profile jobs, not yet verified. |
+| CDIN #149 | [SDL3 SDK #43649062349](https://github.com/cdin-editor/cdin/actions/runs/43649062349) | Five SDK target jobs queued; the immutable-release check skipped because the SDK Release already exists. |
 | Registry #78 | [CI #43648857849](https://github.com/cdin-editor/registry/actions/runs/43648857849) | Queued; exact current head `8a7f75f...`. |
 | Registry #78 | [Docs/YAML #43648857851](https://github.com/cdin-editor/registry/actions/runs/43648857851) | Queued. |
 | Registry #78 | [Security #43648857785](https://github.com/cdin-editor/registry/actions/runs/43648857785) | Queued. |
