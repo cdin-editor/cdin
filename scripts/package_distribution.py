@@ -345,7 +345,8 @@ def build_dependency_summary(target: dict[str, str], profile: str) -> dict[str, 
                 f"deps.lock has no complete immutable prebuilt SDL3 SDK asset for GUI-SDL/{asset_key}"
             )
         if (
-            sdl.get("tag") != f"sdl3-sdk-v{sdl['version']}"
+            sdl.get("repository") != "https://github.com/cdin-editor/cdin"
+            or sdl.get("tag") != f"sdl3-sdk-v{sdl['version']}"
             or sdl.get("version") != source.get("version")
             or sdl_asset.get("file_name") != f"sdl3-sdk-{sdl['version']}-{asset_key}.tar.gz"
             or sdl_asset.get("format") != "tar.gz"
@@ -661,6 +662,23 @@ def package_distribution(
     if profile == "gui-sdl" and not sdl_files:
         raise DistributionError("GUI-SDL distribution does not contain its pinned SDL3 SDK")
     if profile == "gui-sdl":
+        sdl_required = (
+            prefix / "include" / "SDL3" / "SDL.h",
+            prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake",
+            prefix / "share" / "cdin" / "sdl3-sdk.json",
+            prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt",
+        )
+        for required in sdl_required:
+            if required.is_symlink() or not required.is_file():
+                raise DistributionError(
+                    f"GUI-SDL distribution is missing a required verified SDK file: {required.relative_to(prefix)}"
+                )
+        static_libraries = (
+            prefix / "lib" / "libSDL3.a",
+            prefix / "lib" / "SDL3-static.lib",
+        )
+        if not any(item.is_file() and not item.is_symlink() for item in static_libraries):
+            raise DistributionError("GUI-SDL distribution is missing its target-native static SDL3 library")
         sdk_manifest_path = prefix / "share" / "cdin" / "sdl3-sdk.json"
         sdk_manifest = read_json(sdk_manifest_path, "staged SDL3 SDK manifest")
         sdl_pin = build_dependencies["sdl3"]
