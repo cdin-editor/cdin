@@ -13,6 +13,7 @@ on:
       - "scripts/package_distribution.py"
       - "scripts/registry.py"
       - "scripts/registry_artifact.py"
+      - "tests/test_ci_matrix.py"
       - "tests/test_package_distribution.py"
       - "tests/test_registry_artifact.py"
   push:
@@ -164,6 +165,7 @@ jobs:
 
       - name: Verify artifact-first bootstrap contracts
         run: |
+          python -m unittest discover -s tests -p test_ci_matrix.py
           python -m unittest discover -s tests -p test_deps.py
           python -m unittest discover -s tests -p test_registry_artifact.py
           python -m unittest discover -s tests -p "test_*sdl3*.py"
