@@ -83,7 +83,11 @@ class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
     def test_does_not_send_actions_repository_token_to_registry(self) -> None:
         with patch.dict(
             os.environ,
-            {"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": "repo-scoped-token"},
+            {
+                "GITHUB_ACTIONS": "true",
+                "GH_TOKEN": "same-repository-write-token",
+                "GITHUB_TOKEN": "repo-scoped-token",
+            },
             clear=True,
         ):
             self.assertEqual(github_api_token_from_environment(), "")
