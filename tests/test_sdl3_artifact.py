@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tarfile
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -146,6 +147,44 @@ class TargetAndPinTests(unittest.TestCase):
             sdk.validate_pin({"tooling": {"sdl3": {
                 "version": "3.4.16", "archive": SOURCE_URL, "sha256": SOURCE_SHA
             }}}, "linux-x86_64")
+
+    def test_committed_lock_matches_the_published_five_target_sdk_release(self) -> None:
+        lock = tomllib.loads(sdk.LOCK.read_text(encoding="utf-8"))
+        pin = lock["dependencies"]["sdl3_sdk"]
+        self.assertEqual(pin["repository"], "https://github.com/cdin-editor/cdin")
+        self.assertEqual(pin["tag"], "sdl3-sdk-v3.4.16")
+        self.assertEqual(pin["version"], "3.4.16")
+        self.assertEqual(pin["revision"], "d249122c51acbab7262a6cd1e675922fd043bac7")
+
+        expected = {
+            "linux-x86_64": (
+                "sdl3-sdk-3.4.16-linux-x86_64.tar.gz", 2711768,
+                "dfb692b98c3a249ef7606286062f6fb9da5b808635324c2cbdffb8b8bba2776a",
+            ),
+            "linux-arm64": (
+                "sdl3-sdk-3.4.16-linux-arm64.tar.gz", 2677647,
+                "75123f596aafc6c331bc7286020049bce8ca11468b7b80b422d6d2e907263441",
+            ),
+            "macos-x86_64": (
+                "sdl3-sdk-3.4.16-macos-x86_64.tar.gz", 2168788,
+                "d596b2625521dace0f80fa7f2ce55e7b7657916ef2e4ea0027d0f659fae2c59f",
+            ),
+            "macos-arm64": (
+                "sdl3-sdk-3.4.16-macos-arm64.tar.gz", 2165743,
+                "f41bc805fe3a900232b7d89f23f317b40811996e8ad086bd10fc5f713beb6619",
+            ),
+            "windows-x86_64": (
+                "sdl3-sdk-3.4.16-windows-x86_64.tar.gz", 2665888,
+                "66440cb77ddd3accb42ba7f3b19f261c7f31b1247660f817cd2eedcbe99f6667",
+            ),
+        }
+        self.assertEqual(set(pin["assets"]), set(sdk.TARGETS))
+        for target, (filename, size, digest) in expected.items():
+            with self.subTest(target=target):
+                asset = pin["assets"][target]
+                self.assertEqual(asset["file_name"], filename)
+                self.assertEqual(asset["size_bytes"], size)
+                self.assertEqual(asset["sha256"], digest)
 
     def test_validates_semver_source_version(self) -> None:
         sdk.validate_pin(make_lock(), "linux-x86_64")
