@@ -249,6 +249,15 @@ class InstalledDistributionTests(unittest.TestCase):
         manifest = self.prefix / "share" / "cdin" / "sdl3-sdk.json"
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text(json.dumps(metadata, sort_keys=True) + "\n", encoding="utf-8")
+        header = self.prefix / "include" / "SDL3" / "SDL.h"
+        header.parent.mkdir(parents=True, exist_ok=True)
+        header.write_text("/* SDL3 SDK fixture */\n", encoding="utf-8")
+        cmake = self.prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
+        cmake.parent.mkdir(parents=True, exist_ok=True)
+        cmake.write_text("# SDL3 CMake SDK fixture\n", encoding="utf-8")
+        license_file = self.prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt"
+        license_file.parent.mkdir(parents=True, exist_ok=True)
+        license_file.write_text("SDL3 license fixture\n", encoding="utf-8")
         library = self.prefix / "lib" / (
             "SDL3-static.lib" if self.target["os"] == "windows" else "libSDL3.a"
         )
@@ -267,7 +276,11 @@ class InstalledDistributionTests(unittest.TestCase):
         self.assertEqual(sdl["tag"], "sdl3-sdk-v3.4.16")
         self.assertEqual(sdl["source_revision"], "d249122c51acbab7262a6cd1e675922fd043bac7")
         self.assertEqual(sdl["delivery"], "prebuilt-sdk")
-        self.assertEqual(sdl["asset"]["file_name"], f"sdl3-sdk-3.4.16-{self.target['os'] if self.target['os'] != 'darwin' else 'macos'}-{self.target['architecture']}.tar.gz")
+        target_os = "macos" if self.target["os"] == "darwin" else self.target["os"]
+        self.assertEqual(
+            sdl["asset"]["file_name"],
+            f"sdl3-sdk-3.4.16-{target_os}-{self.target['architecture']}.tar.gz",
+        )
         self.assertEqual(len(sdl["asset"]["sha256"]), 64)
         self.assertEqual(len(sdl["sidecar"]["sha256"]), 64)
         self.assertEqual(sdl["source"]["archive_sha256"], "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68")
