@@ -268,6 +268,7 @@ class ReleaseWorkflowPermissionTests(unittest.TestCase):
         )
         prepare = workflow.split("  prepare-main-release:", 1)[1].split("\n  build:", 1)[0]
         self.assertIn("source_sha: ${{ steps.check.outputs.source_sha }}", prepare)
+        self.assertIn("SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}", prepare)
         self.assertIn('git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"', prepare)
         self.assertIn('git rev-parse --verify "$TAG_NAME^{commit}"', prepare)
         self.assertIn('git merge-base --is-ancestor "$release_sha" "$SOURCE_SHA"', prepare)
