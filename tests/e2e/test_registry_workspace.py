@@ -238,8 +238,11 @@ def main() -> int:
 
         delivery = component.get("delivery", "source")
         if key == ("backend", "default"):
-            if component["version"] != "1.2.1" or delivery != "artifact":
-                fail("Backend 1.2.1 must be delivered as a native Registry artifact")
+            if delivery != "artifact":
+                fail(
+                    f"Backend {component['version']} must be delivered as a native "
+                    "Registry artifact; source fallback is forbidden"
+                )
             artifact = component.get("selected_artifact")
             if not isinstance(artifact, dict):
                 fail("Backend's selected artifact descriptor is missing")
