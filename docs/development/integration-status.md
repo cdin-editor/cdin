@@ -17,7 +17,7 @@
 
 ### Existing PRs — continue here; do not fork parallel work
 
-- CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains open, non-draft, based on `main` at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`, exact current head `47427330726c0f78a9a7f50bfc4027c4442fc4d9` (29 files). It carries the artifact-first lock/Product Definitions, developer-vs-consumer Registry pin separation, SDL3 SDK consumption, dynamic dependency validation, two unused-local review fixes, cross-repository API credential selection, token-selection tests, mandatory CI credential preflight, a regression test for both workflow YAMLs, Pipeline registration and refreshed dependency/integration documentation. The CI preflight now runs immediately after checkout, before OS toolchain setup or remote artifact requests. Both previously open review threads about unused locals have been replied to and resolved. The PR has not been merged.
+- CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains open, non-draft, based on `main` at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`, exact current head `a90652039f00ff568b4d852df78debe58c6a39d9` (29 files). It carries the artifact-first lock/Product Definitions, developer-vs-consumer Registry pin separation, SDL3 SDK consumption, dynamic dependency validation, two unused-local review fixes, cross-repository API credential selection, token-selection tests, mandatory CI credential preflight, regression coverage for both workflow YAMLs, Product Acceptance's inclusion of the matrix guard, Pipeline registration and refreshed dependency/integration documentation. CI checks its token immediately after checkout; Product Acceptance runs the same matrix guard in its bootstrap-contract test step. Both previously open review threads about unused locals have been replied to and resolved. The PR has not been merged.
 - Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) remains open as a draft, based on Registry main `34e91f26f81cc89489c97b36ad52051af4aca59a`, exact current head `00e076dbb4dc19defd59ec1171ecd95de2c68de2`. It makes the cross-repository API credential contract explicit in Registry's normal resolve and Manifest-discovery paths, adds tests and documentation, and preserves the local-shell fallback. An earlier run caught a test-formatting issue and then a token-selection order regression; both are fixed on the branch. The newest CI, Security, Docs/YAML and Workspace runs have been queued; do not treat them as passing until their exact-head conclusions are green.
 
 ### Credential contract and observed CI blocker
@@ -36,9 +36,9 @@ The Product Acceptance run `43649329733` proved that anonymous fallback is insuf
 
 | Repository / PR | Workflow run | Latest observed state |
 |---|---|---|
-| CDIN #149 | [CI #43650691869](https://github.com/cdin-editor/cdin/actions/runs/43650691869) | Queued; 11 jobs, not yet verified. |
-| CDIN #149 | [Product Acceptance #43650063450](https://github.com/cdin-editor/cdin/actions/runs/43650063450) | Queued; ten installed-product target/profile jobs, not yet verified. |
-| CDIN #149 | [SDL3 SDK #43650063459](https://github.com/cdin-editor/cdin/actions/runs/43650063459) | Five SDK target jobs queued; the immutable-release check skipped because the SDK Release already exists. |
+| CDIN #149 | [CI #43650900271](https://github.com/cdin-editor/cdin/actions/runs/43650900271) | Queued; 11 jobs, not yet verified. |
+| CDIN #149 | [Product Acceptance #43650900266](https://github.com/cdin-editor/cdin/actions/runs/43650900266) | Queued; ten installed-product target/profile jobs, not yet verified. |
+| CDIN #149 | [SDL3 SDK #43650900229](https://github.com/cdin-editor/cdin/actions/runs/43650900229) | Five SDK target jobs queued; the immutable-release check skipped because the SDK Release already exists. |
 | Registry #78 | [CI #43649479004](https://github.com/cdin-editor/registry/actions/runs/43649479004) | Queued; exact current head `00e076d...`. |
 | Registry #78 | [Docs/YAML #43649478929](https://github.com/cdin-editor/registry/actions/runs/43649478929) | Queued. |
 | Registry #78 | [Security #43649478998](https://github.com/cdin-editor/registry/actions/runs/43649478998) | Queued. |
