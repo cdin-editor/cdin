@@ -258,13 +258,16 @@ class _AssetRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 def github_api_token_from_environment() -> str:
     """Select a cross-repository read token without reusing Actions' repo token."""
-    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+    token = os.environ.get("CDIN_GITHUB_API_TOKEN", "").strip()
+    if token:
+        return token
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return ""
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
         token = os.environ.get(name, "").strip()
         if token:
             return token
-    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
-        return ""
-    return os.environ.get("GITHUB_TOKEN", "").strip()
+    return ""
 
 
 def fetch_github_json(path: str) -> dict[str, Any]:
