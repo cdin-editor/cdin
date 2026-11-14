@@ -252,6 +252,8 @@ class InstalledDistributionTests(unittest.TestCase):
         header = self.prefix / "include" / "SDL3" / "SDL.h"
         header.parent.mkdir(parents=True, exist_ok=True)
         header.write_text("/* SDL3 SDK fixture */\n", encoding="utf-8")
+        version_header = self.prefix / "include" / "SDL3" / "SDL_version.h"
+        version_header.write_text("#define SDL3_VERSION 30416\n", encoding="utf-8")
         cmake = self.prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
         cmake.parent.mkdir(parents=True, exist_ok=True)
         cmake.write_text("# SDL3 CMake SDK fixture\n", encoding="utf-8")
