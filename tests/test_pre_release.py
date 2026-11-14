@@ -120,6 +120,41 @@ class PreReleaseManifestTests(unittest.TestCase):
         self.assertEqual(runtime["source_revisions"], ["b" * 64])
         self.assertNotIn("kernel", {item["component_id"] for item in report["components"]})
 
+    def test_artifact_frontend_manifest_includes_shared_core(self) -> None:
+        self.manifest["components"].append({
+            "component_id": "frontend", "variant": "core", "version": "1.2.2",
+            "delivery": "artifact",
+            "selected_artifact": {
+                "artifact_id": "frontend-core-linux-x86_64",
+                "source_provenance": [{
+                    "source_unit_id": "frontend-source",
+                    "revision": "c" * 40,
+                }],
+            },
+        })
+        self.manifest["components"] = [
+            item if item.get("component_id") != "frontend" or item.get("variant") != "tui"
+            else {
+                **item,
+                "delivery": "artifact",
+                "selected_artifact": {
+                    "artifact_id": "frontend-tui-linux-x86_64",
+                    "source_provenance": [{
+                        "source_unit_id": "frontend-source",
+                        "revision": "c" * 40,
+                    }],
+                },
+            }
+            for item in self.manifest["components"]
+        ]
+        self.write_manifest()
+        report = self.run_report()
+        frontend = {
+            item["variant"] for item in report["components"]
+            if item["component_id"] == "frontend"
+        }
+        self.assertEqual(frontend, {"core", "tui"})
+
     def test_gui_profile_requires_both_frontend_adapters(self) -> None:
         self.manifest["components"].append({
             "component_id": "frontend", "variant": "gui-sdl", "version": "1.0.2",
