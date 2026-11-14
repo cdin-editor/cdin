@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 import urllib.request
@@ -20,6 +21,7 @@ from scripts.registry_artifact import (
     detect_target,
     verify_binary_target,
     _api_asset_identity,
+    _validate_pin,
 )
 
 
@@ -251,6 +253,20 @@ class FakeGitHubClient:
 
 
 class RegistryArtifactBootstrapTests(unittest.TestCase):
+    def test_committed_registry_pin_matches_the_published_immutable_release(self) -> None:
+        lock_path = Path(__file__).resolve().parents[1] / "deps.lock"
+        lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+        pin = lock["tooling"]["registry"]
+        revision, version, tag, descriptor_sha, descriptor_size = _validate_pin(pin)
+        self.assertEqual(revision, "9fac913ada29a33a650f1b17c27fb2e6c657ae15")
+        self.assertEqual(version, "0.2.0-dev.3")
+        self.assertEqual(tag, "v0.2.0-dev.3")
+        self.assertEqual(
+            descriptor_sha,
+            "040ce9cf92a269486ee6e59d0a7459aeecda41d8d909c0ec40962d16a43a5fba",
+        )
+        self.assertEqual(descriptor_size, 1645)
+
     def _pin(self, client: FakeGitHubClient) -> dict:
         return {
             "repository": "https://github.com/cdin-editor/registry.git",
