@@ -370,7 +370,7 @@ class RegistryPinSeparationTests(unittest.TestCase):
         )
         self.assertEqual(registry_pin(), (expected_repository, expected_revision))
 
-        development_revision = "e4e722f33990828c5d9e37e0c8a0e8d5028d06db"
+        development_revision = "b7aa6c99600eb31f89ca2c4734f326030dfe4fe4"
         self.assertEqual(development["version"], "1.0.1")
         self.assertEqual(development["revision"], development_revision)
         self.assertEqual(registry_pin(development=True), (expected_repository, development_revision))
