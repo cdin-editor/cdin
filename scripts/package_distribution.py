@@ -664,6 +664,7 @@ def package_distribution(
     if profile == "gui-sdl":
         sdl_required = (
             prefix / "include" / "SDL3" / "SDL.h",
+            prefix / "include" / "SDL3" / "SDL_version.h",
             prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake",
             prefix / "share" / "cdin" / "sdl3-sdk.json",
             prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt",
