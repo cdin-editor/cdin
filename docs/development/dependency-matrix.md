@@ -47,7 +47,7 @@ Normal installation must use the immutable Registry executable and artifact-deli
 
 ## Cross-repository CI credential
 
-The GitHub Actions `GITHUB_TOKEN` belongs to the CDIN repository and cannot be treated as a credential for the Kernel, Runtime, Backend, Frontend or Registry repositories. CDIN PR #149 now expects the Actions secret `CDIN_GITHUB_READ_TOKEN` to be exposed as `GH_TOKEN` in both CI and Product Acceptance. It must be a fine-grained PAT or GitHub App installation token with `Contents: read` only on the selected repositories documented in `docs/development/registry.md`. No write permissions are required, and the secret value must never be committed or printed.
+The GitHub Actions `GITHUB_TOKEN` belongs to the CDIN repository and cannot be treated as a credential for the Kernel, Runtime, Backend, Frontend or Registry repositories. CDIN PR #149 now expects the Actions secret `CDIN_GITHUB_READ_TOKEN` to be exposed as `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN` in both CI and Product Acceptance, keeping the standard `GH_TOKEN` namespace free for same-repository CLI operations. It must be a fine-grained PAT or GitHub App installation token with `Contents: read` only on the selected repositories documented in `docs/development/registry.md`. No write permissions are required, and the secret value must never be committed or printed.
 
 The secret's presence cannot be inferred from source files. The workflows now fail early with an explicit configuration error when it is missing. Consumers outside GitHub Actions may use anonymous public API access or supply `GH_TOKEN`; the token is not distributed with CDIN and does not replace commit, asset-digest, size or package validation.
 
