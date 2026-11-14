@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from scripts.build_stack import (
     runtime_module_package_root,
+    runtime_root_for_stack,
     stage_cmake_prefix,
     stage_frontend_variant_prefix,
     stage_kernel_sdk_prefix,
@@ -962,6 +963,56 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         }
         with patch("scripts.build_stack.WORKSPACE", self.workspace):
             self.assertEqual(runtime_module_package_root(manifest), root)
+
+    def test_developer_registry_mode_still_uses_a_selected_runtime_artifact(self) -> None:
+        root = (
+            self.workspace / "components/runtime/default/package"
+            / "cdin-runtime-1.0.0"
+        )
+        entry = root / "lua/cdin/runtime.lua"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("return {}\\n", encoding="utf-8")
+        manifest = {
+            "components": [{
+                "component_id": "runtime",
+                "variant": "default",
+                "version": "1.0.0",
+                "delivery": "artifact",
+                "selected_artifact": {
+                    "kind": "runtime-module-archive",
+                    "layout": "lua-module-tree-v1",
+                    "target": {"os": "any", "architecture": "any", "abi": "none"},
+                    "workspace_path": "components/runtime/default/package",
+                },
+            }]
+        }
+        with patch("scripts.build_stack.WORKSPACE", self.workspace):
+            with patch("scripts.build_stack.DEPS", self.workspace / "src"):
+                self.assertEqual(
+                    runtime_root_for_stack(manifest, developer_source_components=True),
+                    root,
+                )
+
+    def test_developer_source_runtime_is_used_only_when_manifest_selects_source(self) -> None:
+        source_root = self.workspace / "src/runtime"
+        entry = source_root / "lua/cdin/runtime.lua"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("return {}\\n", encoding="utf-8")
+        manifest = {
+            "components": [{
+                "component_id": "runtime",
+                "variant": "default",
+                "version": "1.0.0",
+                "delivery": "source",
+            }]
+        }
+        with patch("scripts.build_stack.DEPS", self.workspace / "src"):
+            self.assertEqual(
+                runtime_root_for_stack(manifest, developer_source_components=True),
+                source_root,
+            )
+            with self.assertRaisesRegex(RuntimeError, "normal CDIN installation"):
+                runtime_root_for_stack(manifest, developer_source_components=False)
 
     def test_rejects_a_non_universal_runtime_package_target(self) -> None:
         manifest = {
