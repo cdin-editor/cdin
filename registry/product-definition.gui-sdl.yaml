@@ -22,4 +22,4 @@ environment_contracts:
   - contract_id: org.cdin.sdl3-sdk
     version: "3.4.16"
 policy:
-  allow_prerelease: true
+  allow_prerelease: false
