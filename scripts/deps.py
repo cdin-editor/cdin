@@ -140,7 +140,7 @@ def fetch_github_json(url: str) -> dict:
     # A cross-repository read token is explicit because Actions' automatic
     # GITHUB_TOKEN cannot read a different repository's private API resources.
     token = github_api_token_from_environment()
-    if any(character in token for character in "\\r\\n"):
+    if any(character in token for character in "\r\n"):
         raise SDKBootstrapError("cross-repository GitHub API token contains invalid header characters")
     if token:
         headers["Authorization"] = f"Bearer {token}"
