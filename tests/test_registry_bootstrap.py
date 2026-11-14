@@ -41,6 +41,7 @@ from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
+    verify_backend_artifact,
 )
 
 
@@ -329,6 +330,86 @@ class RegistryPinSeparationTests(unittest.TestCase):
         self.assertNotEqual(consumer["revision"], development["revision"])
 
 
+
+
+class BackendArtifactCompatibilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.workspace = Path(self.temporary.name).resolve()
+        self.target = {
+            "os": "linux",
+            "architecture": "x86_64",
+            "abi": "gnu-glibc-2.39",
+        }
+        self.package = self.workspace / "components/backend/default/package"
+        self.package.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _backend(self, version: str = "1.2.2") -> dict:
+        return {
+            "component_id": "backend",
+            "variant": "default",
+            "version": version,
+            "delivery": "artifact",
+            "selected_artifact": {
+                "artifact_id": f"backend-{version}-linux-x86_64",
+                "kind": "native-development-package",
+                "layout": "cmake-prefix-v1",
+                "target": self.target,
+                "workspace_path": "components/backend/default/package",
+            },
+        }
+
+    def test_accepts_a_registry_selected_backend_1_2_2_artifact(self) -> None:
+        result = verify_backend_artifact(self._backend("1.2.2"), self.workspace, self.target)
+        self.assertEqual(result, self.package)
+
+    def test_accepts_a_later_compatible_backend_version_without_source_edit(self) -> None:
+        result = verify_backend_artifact(self._backend("1.3.0"), self.workspace, self.target)
+        self.assertEqual(result, self.package)
+
+    def test_rejects_source_delivery_without_fallback(self) -> None:
+        backend = self._backend()
+        backend["delivery"] = "source"
+        with self.assertRaisesRegex(RuntimeError, "source fallback"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+    def test_rejects_wrong_target_and_noncanonical_package_layout(self) -> None:
+        backend = self._backend()
+        backend["selected_artifact"]["target"] = {
+            "os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"
+        }
+        with self.assertRaisesRegex(RuntimeError, "does not match host"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+        backend = self._backend()
+        backend["selected_artifact"]["workspace_path"] = "components/backend/default/other"
+        with self.assertRaisesRegex(RuntimeError, "workspace path is not canonical"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+    def test_rejects_symlinked_backend_package(self) -> None:
+        real = self.workspace / "real-backend-package"
+        real.mkdir()
+        self.package.rmdir()
+        self.package.symlink_to(real, target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, "missing or unsafe"):
+            verify_backend_artifact(self._backend(), self.workspace, self.target)
+
+
+class ProductEnvironmentContractTests(unittest.TestCase):
+    def test_gui_sdl_declares_its_external_sdl3_sdk_provider(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "registry" / "product-definition.gui-sdl.yaml").read_text(
+            encoding="utf-8"
+        )
+        tui = (root / "registry" / "product-definition.tui.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('contract_id: org.cdin.sdl3-sdk', gui)
+        self.assertIn('version: "3.4.16"', gui)
+        self.assertNotIn('contract_id: org.cdin.sdl3-sdk', tui)
 
 
 class RegistryTargetDetectionTests(unittest.TestCase):

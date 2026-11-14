@@ -11,6 +11,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Pin the artifact-first Registry consumer to the published immutable `v0.2.0-dev.3` Release, including its exact tag-resolved source commit and release-descriptor SHA-256/size. Keep the developer-only Registry source pin separate from normal installation.
+- Update TUI and GUI-SDL Product Definitions to the artifact-ready Backend 1.2.2 and Frontend TUI/GUI-SDL 1.2.2 releases selected by the same-tag Registry Catalog; the previous Backend 1.2.1 / Frontend 1.0.2 entries had no target-native artifacts for the clean consumer.
+
 - Constrain SDK cache/extraction directories to repository or OS-temporary roots, reject traversal and symlinks below the trusted root, and resolve the trusted root before walking components so macOS `/var` aliases remain supported. Preserve rejection of symlink destinations and archive member links, traversal and special files. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
 
 

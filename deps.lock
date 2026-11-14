@@ -49,9 +49,11 @@ sha256 = "d0ced8272c80c1e5df886441c67493a25cca0e3a95a7c0e81be515282cb6364a"
 
 [tooling.registry]
 repository = "https://github.com/cdin-editor/registry.git"
-revision = "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"
-version = "0.1.0-dev"
-release_tag = "v0.1.0-dev"
+revision = "9fac913ada29a33a650f1b17c27fb2e6c657ae15"
+version = "0.2.0-dev.3"
+release_tag = "v0.2.0-dev.3"
+release_descriptor_sha256 = "040ce9cf92a269486ee6e59d0a7459aeecda41d8d909c0ec40962d16a43a5fba"
+release_descriptor_size = 1645
 
 # Exact source pin used only by explicit contributor/CI source-build targets.
 # This is not a consumer release pin and must never be used by normal make install.
