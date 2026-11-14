@@ -42,6 +42,7 @@ from scripts.registry import (
     detect_target_tuple,
     registry_go_environment,
     verify_backend_artifact,
+    expected_frontend_variants,
 )
 from scripts.smoke_support import resolve_runtime_root
 import scripts.smoke_support as smoke_support
@@ -365,6 +366,61 @@ class RegistryCTestBootstrapTests(unittest.TestCase):
         self.assertIn("--verify-workspace", cmake)
         self.assertIn("CDIN_DEVELOPER_SOURCE_COMPONENTS", cmake)
         self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry"', cmake)
+
+
+class FrontendArtifactDependencyClosureTests(unittest.TestCase):
+    @staticmethod
+    def selected(variant: str, *, artifact: bool) -> dict:
+        item = {"component_id": "frontend", "variant": variant}
+        if artifact:
+            item["selected_artifact"] = {"artifact_id": f"frontend-{variant}-1.2.2"}
+        return item
+
+    def test_tui_artifact_resolves_shared_core_exactly_once(self) -> None:
+        components = [
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"core", "tui"},
+        )
+
+    def test_gui_artifacts_resolve_tui_gui_and_one_shared_core(self) -> None:
+        components = [
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+            self.selected("gui-sdl", artifact=True),
+        ]
+        self.assertEqual(
+            expected_frontend_variants("gui-sdl", components),
+            {"core", "tui", "gui-sdl"},
+        )
+
+    def test_hybrid_product_uses_frontend_artifact_delivery_not_global_mode(self) -> None:
+        components = [
+            {"component_id": "backend", "variant": "default", "delivery": "artifact"},
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+            {"component_id": "runtime", "variant": "default", "delivery": "source"},
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"core", "tui"},
+        )
+
+    def test_legacy_frontend_source_delivery_does_not_require_split_core(self) -> None:
+        components = [
+            {"component_id": "frontend", "variant": "tui", "delivery": "source"}
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"tui"},
+        )
+
+    def test_rejects_unknown_profile(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported Frontend"):
+            expected_frontend_variants("headless", [])
 
 
 class SmokeRuntimeRootResolutionTests(unittest.TestCase):
