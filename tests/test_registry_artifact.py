@@ -38,7 +38,7 @@ def elf64(machine: int = 62) -> bytes:
 
 
 class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
-    def test_uses_workflow_token_only_for_the_github_api_origin(self) -> None:
+    def test_uses_explicit_read_token_only_for_the_github_api_origin(self) -> None:
         captured = {}
 
         class FakeResponse:
@@ -62,15 +62,38 @@ class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
                 captured["timeout"] = timeout
                 return FakeResponse()
 
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-registry-test"}, clear=True), \
-             patch("scripts.registry_artifact.urllib.request.build_opener", return_value=FakeOpener()):
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_ACTIONS": "true",
+                "CDIN_GITHUB_API_TOKEN": "fine-grained-read-token",
+                "GITHUB_TOKEN": "repo-scoped-token",
+            },
+            clear=True,
+        ), patch("scripts.registry_artifact.urllib.request.build_opener", return_value=FakeOpener()):
             value = GitHubReleaseClient().get_json(
                 "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
             )
 
         self.assertEqual(value["tag_name"], "v0.2.0-dev.1")
-        self.assertEqual(captured["authorization"], "Bearer ghs-registry-test")
+        self.assertEqual(captured["authorization"], "Bearer fine-grained-read-token")
         self.assertEqual(captured["timeout"], 30)
+
+    def test_does_not_send_actions_repository_token_to_registry(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"GITHUB_ACTIONS": "true", "GITHUB_TOKEN": "repo-scoped-token"},
+            clear=True,
+        ):
+            self.assertEqual(github_api_token_from_environment(), "")
+
+    def test_preserves_local_shell_github_token_fallback(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"GITHUB_ACTIONS": "", "GITHUB_TOKEN": " local-token "},
+            clear=True,
+        ):
+            self.assertEqual(github_api_token_from_environment(), "local-token")
 
 class RegistryAPIHostRedirectTests(unittest.TestCase):
     def setUp(self) -> None:
