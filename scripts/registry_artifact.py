@@ -129,7 +129,7 @@ class _TrustedAPIHostRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 def github_api_token_from_environment() -> str:
     """Select a cross-repository read token without reusing Actions' repo token."""
-    for name in ("CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
+    for name in ("REGISTRY_GITHUB_API_TOKEN", "CDIN_GITHUB_API_TOKEN", "GH_TOKEN"):
         token = os.environ.get(name, "").strip()
         if token:
             return token
