@@ -33,12 +33,18 @@ jobs:
       contents: read
     outputs:
       build_required: ${{ steps.check.outputs.build_required }}
+      source_sha: ${{ steps.check.outputs.source_sha }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
       - name: Check the pinned SDK release
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ needs.prepare-main-release.outputs.source_sha }}
           TAG_NAME: sdl3-sdk-v3.4.16
         shell: bash
         run: |
@@ -46,10 +52,24 @@ jobs:
           if gh release view "$TAG_NAME" --repo "$REPOSITORY" >/dev/null 2>&1; then
             echo "The immutable SDL3 SDK release already exists; no rebuild is required."
             echo "build_required=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "The SDL3 SDK release is missing; build and publish it from this verified main commit."
-            echo "build_required=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if git ls-remote --exit-code origin "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"
+            release_sha="$(git rev-parse --verify "$TAG_NAME^{commit}")"
+            if ! git merge-base --is-ancestor "$release_sha" "$SOURCE_SHA"; then
+              echo "Existing immutable $TAG_NAME target $release_sha is not an ancestor of trusted main CI commit $SOURCE_SHA." >&2
+              exit 1
+            fi
+            echo "The SDK tag already exists; rebuilding the missing Release from its exact immutable source commit $release_sha."
+          else
+            release_sha="$SOURCE_SHA"
+            echo "The SDK tag is absent; the first publication will bind it to the trusted main commit $release_sha."
+          fi
+          echo "build_required=true" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$release_sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: SDL3 SDK / ${{ matrix.target }}
@@ -84,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ github.event_name == 'workflow_run' && needs.prepare-main-release.outputs.source_sha || github.ref }}
           fetch-depth: 0
       - if: runner.os == 'Windows'
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
