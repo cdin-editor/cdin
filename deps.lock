@@ -57,8 +57,8 @@ release_tag = "v0.1.0-dev"
 # This is not a consumer release pin and must never be used by normal make install.
 [tooling.registry.development]
 repository = "https://github.com/cdin-editor/registry.git"
-revision = "9c5a2960c77985a3fb7c7a535635c3f1b6093baa"
-version = "0.2.0-dev.2"
+revision = "c30ab313638a53d82b1bc63e67af90b1e111551d"
+version = "0.2.0-dev.3"
 
 # This source archive is for explicit developer/CI fallback only.
 # Normal GUI-SDL consumers use scripts/sdl3_artifact.py and require a complete

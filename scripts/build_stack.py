@@ -283,6 +283,40 @@ def runtime_module_package_root(manifest: dict) -> Path:
     return root
 
 
+def runtime_root_for_stack(
+    manifest: dict,
+    *,
+    developer_source_components: bool,
+) -> Path:
+    """Choose the Lua module root from the selected immutable Runtime delivery."""
+    matches = [
+        item for item in manifest.get("components", [])
+        if item.get("component_id") == "runtime" and item.get("variant") == "default"
+    ]
+    if len(matches) != 1:
+        raise RuntimeError("Resolved Manifest must select exactly one Runtime package")
+    runtime = matches[0]
+    delivery = runtime.get("delivery")
+    if delivery == "artifact":
+        # A Registry CLI source build does not imply that Runtime itself should
+        # be rebuilt from source. Prefer the selected, verified module archive.
+        return runtime_module_package_root(manifest)
+    if delivery != "source" or not developer_source_components:
+        raise RuntimeError(
+            "normal CDIN installation requires a published Runtime module archive; "
+            "source delivery is permitted only in explicit developer source mode"
+        )
+
+    source_root = DEPS / "runtime"
+    for candidate in (DEPS, source_root, source_root / "lua", source_root / "lua" / "cdin"):
+        if candidate.is_symlink():
+            raise RuntimeError(f"developer Runtime source tree contains a symlink: {candidate}")
+    entry = source_root / "lua" / "cdin" / "runtime.lua"
+    if not source_root.is_dir() or entry.is_symlink() or not entry.is_file():
+        raise RuntimeError(f"developer Runtime source modules are missing or unsafe: {entry}")
+    return source_root
+
+
 def require_sdl3_sdk(prefix: Path, target: dict[str, str]) -> None:
     """Fail closed unless the exact target-native, prebuilt SDL3 SDK is staged."""
     sdk = prefix / "share" / "cdin" / "sdl3-sdk.json"
@@ -625,10 +659,8 @@ def main() -> int:
             "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
         ]
         cmake_component("frontend", frontend, options=frontend_options, env=env)
-        runtime_root = DEPS / "runtime"
         frontend_prefixes: tuple[Path, ...] = ()
     else:
-        runtime_root = runtime_module_package_root(manifest)
         selected_variants = ("core", "tui", "gui-sdl") if gui_enabled else ("core", "tui")
         staged_prefixes: list[Path] = []
         for variant in selected_variants:
@@ -664,6 +696,10 @@ def main() -> int:
                 f"-DCDIN_FRONTEND_GUI_SDL_PACKAGE_VERSION={pinned_package_version('frontend', 'gui-sdl')}"
             )
 
+    runtime_root = runtime_root_for_stack(
+        manifest,
+        developer_source_components=args.registry_source_build,
+    )
     run(["cmake", "-S", str(ROOT), "-B", str(root_build),
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",

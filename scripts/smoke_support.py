@@ -10,7 +10,7 @@ from typing import Pattern
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_BIN = ROOT / "build" / "stack" / "cdin"
 INSTALL_BIN = ROOT / ".deps" / "install" / "bin"
-RUNTIME_LUA = ROOT / ".deps" / "src" / "runtime" / "lua"
+CMAKE_CACHE = ROOT / "build" / "stack" / "cdin" / "CMakeCache.txt"
 
 
 def resolve_cdin_executable() -> Path:
@@ -31,12 +31,56 @@ def resolve_cdin_executable() -> Path:
 
 
 def resolve_runtime_root() -> Path:
-    """Return only the pinned Runtime Lua tree inside this repository."""
-    expected = Path(os.path.abspath(os.fspath(RUNTIME_LUA)))
-    runtime_root = RUNTIME_LUA.resolve(strict=True)
-    if runtime_root != expected or not runtime_root.is_dir():
-        raise ValueError("pinned Runtime Lua directory must not be a symlink or missing")
-    return runtime_root
+    """Return the Runtime Lua tree selected by the active Composition Root build.
+
+    The configured CMake cache records the exact Runtime package root chosen
+    from the verified Registry Manifest. This works for both immutable module
+    archives and explicit developer-source builds; it never assumes that a
+    Runtime Git checkout exists in normal artifact-first mode.
+    """
+    if CMAKE_CACHE.is_symlink() or not CMAKE_CACHE.is_file():
+        raise FileNotFoundError(f"CDIN CMake cache is missing or unsafe: {CMAKE_CACHE}")
+    try:
+        cache_lines = CMAKE_CACHE.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise RuntimeError(f"cannot read CDIN CMake cache: {error}") from error
+    values = [
+        line.split("=", 1)[1]
+        for line in cache_lines
+        if line.startswith("CDIN_RUNTIME_SOURCE_DIR:PATH=")
+    ]
+    if len(values) != 1 or not values[0]:
+        raise RuntimeError(
+            "CDIN CMake cache must contain exactly one CDIN_RUNTIME_SOURCE_DIR:PATH entry"
+        )
+
+    configured = Path(values[0])
+    if not configured.is_absolute():
+        raise RuntimeError("configured Runtime package root must be absolute")
+    expected = Path(os.path.abspath(os.fspath(configured)))
+    deps_root = ROOT / ".deps"
+    if deps_root.is_symlink() or not deps_root.is_dir():
+        raise RuntimeError("CDIN dependency root is missing or unsafe")
+    deps_resolved = deps_root.resolve(strict=True)
+
+    # Reject symlinks in every path component, including ancestors, before
+    # resolving the selected package and checking its containment.
+    for path in (configured, configured / "lua", configured / "lua" / "cdin",
+                 configured / "lua" / "cdin" / "runtime.lua"):
+        current = path
+        while current != ROOT.parent and current != current.parent:
+            if current.is_symlink():
+                raise RuntimeError(f"configured Runtime package contains a symlink: {current}")
+            current = current.parent
+
+    runtime_root = configured.resolve(strict=True)
+    if runtime_root != expected or not runtime_root.is_relative_to(deps_resolved):
+        raise RuntimeError("configured Runtime package must be a real path inside CDIN .deps")
+    lua_root = runtime_root / "lua"
+    entry = lua_root / "cdin" / "runtime.lua"
+    if not lua_root.is_dir() or entry.is_symlink() or not entry.is_file():
+        raise RuntimeError(f"configured Runtime Lua modules are missing or unsafe: {entry}")
+    return lua_root.resolve(strict=True)
 
 
 def scratch_file_from_output(output: bytes, working: Path, pattern: Pattern[bytes]) -> Path:
