@@ -392,6 +392,9 @@ class RegistryCTestBootstrapTests(unittest.TestCase):
         self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"', cmake)
         self.assertIn("--verify-workspace", cmake)
         self.assertIn("CDIN_DEVELOPER_SOURCE_COMPONENTS", cmake)
+        self.assertIn("set(CDIN_REGISTRY_WORKSPACE", cmake)
+        self.assertIn("${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}", cmake)
+        self.assertIn('--workspace "${CDIN_REGISTRY_WORKSPACE}"', cmake)
         self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry"', cmake)
 
 
