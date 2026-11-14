@@ -1,55 +1,54 @@
 # Dependency and delivery matrix
 
-## Release inventory versus CDIN selection — 2026-11-13
+## Current artifact-first candidate — 2026-11-15
 
-The table below separates the latest published component Release from the exact identity selected by the current CDIN Catalog/lock. A published package is not automatically adopted. A package is admissible only after its exact tag/commit, canonical ADR-0028 Metadata asset, artifact URIs, target tuple, size/digest and downstream consumer tests agree.
+This page describes the dependency graph proposed by [CDIN PR #149](https://github.com/cdin-editor/cdin/pull/149). It is not yet the merged `main` selection. A published component Release is not automatically product-accepted: the exact package, metadata identity, target tuple, API/ABI contracts and downstream consumer evidence must agree.
 
-| Component | Currently selected by CDIN | Latest observed Release | Admissibility for a future pin |
-| --- | --- | --- | --- |
-| Kernel | 1.2.1 (lock, five target asset pins; ABI 1.1.0) | [1.2.3](https://github.com/cdin-editor/kernel/releases/tag/v1.2.3), five target-native CMake-prefix packages plus `kernel-1.2.3.json` | Published candidate; create a Catalog/Manifest update only after dependency/ABI compatibility and clean-prefix consumer tests. |
-| Backend | 1.2.1 (static Catalog native artifact) | [1.2.2](https://github.com/cdin-editor/backend/releases/tag/v1.2.2), five target archives plus `backend-1.2.2.json` | Published candidate; still requires exact Manifest pin, CMake consumer verification and live-stack integration. Backend #35 remains open. |
-| Runtime | 1.0.0-rc.2 (source unit) | RC3 is prepared, but `v1.0.0-rc.3` has no Release | Not artifact-consumable yet; keep source development path separate and do not invent a tag or asset digest. |
-| Frontend Core/TUI/GUI-SDL | 1.0.2 source units | [1.2.0](https://github.com/cdin-editor/frontend/releases/tag/v1.2.0) exists, but its Metadata references 15 direct package archives that are absent from the 11-asset Release inventory | **Reject for Registry/CDIN artifact resolution.** Keep v1.2.0 immutable; PR [Frontend #54](https://github.com/cdin-editor/frontend/pull/54) corrects future flat asset publication. |
-| Registry CLI/Catalog | Consumer pin is `v0.1.0-dev` (invalid target mapping, descriptor identity absent); developer source separately pins dev.2 | `v0.2.0-dev.2` has publisher preparation but no tag/Release | Normal consumer acquisition remains fail-closed; do not use old dev.1 or v0.1.0-dev assets. Registry #58 remains open. |
-| SDL3 SDK | No `[dependencies.sdl3_sdk]` immutable pin; developer source archive 3.4.16 | No `sdl3-sdk-v3.4.16` Release | GUI-SDL artifact consumer remains fail-closed until five target archives and real digests exist. TUI remains SDL-free. |
+| Component / environment | Candidate identity | Delivery and scope | Immutable source / release identity | Acceptance state |
+| --- | --- | --- | --- | --- |
+| Kernel | Package `1.2.3`; C ABI `1.1.0` | Five target-specific SDK archives pinned in `deps.lock`; also supplies the separately versioned logger SDK | [Kernel v1.2.3](https://github.com/cdin-editor/kernel/releases/tag/v1.2.3), tag commit `2fb09f52dc1a9963cf358ec54d584c520e174e67` | Existing package baseline reused; no new Kernel packaging work is part of CDIN #122. |
+| m-mdy-m/log.c | C API `0.1.0` | Bundled with the Kernel SDK; not a private Backend dependency | Kernel v1.2.3 SDK assets | Existing package baseline reused. |
+| Runtime | Package `1.0.0`; Extension Contract `1.0.0` | Platform-neutral Lua 5.4 module archive; Registry artifact | [Runtime v1.0.0](https://github.com/cdin-editor/runtime/releases/tag/v1.0.0), tag commit `eb48a511ea6d5085db38e501784290d80cb03947`; metadata asset `runtime-1.0.0.json` | Published. Runtime #16 remains open for exact clean-consumer/CDIN verification. |
+| Backend | Package `1.2.2`; Runtime Host API `1.0.0` | Five target-native `cmake-prefix-v1` development packages; Registry artifact | [Backend v1.2.2](https://github.com/cdin-editor/backend/releases/tag/v1.2.2), tag commit `41681388d8294efeb371b0d337b426a72c19aeae`; metadata asset `backend-1.2.2.json` | Published. Backend #35 remains open for downstream Manifest, link and product-consumer evidence. |
+| Frontend Core | Package `1.2.2`; Frontend Protocol `1.0.0` | Shared native package, resolved once for either profile | [Frontend v1.2.2](https://github.com/cdin-editor/frontend/releases/tag/v1.2.2), tag commit `728406c1e677d601c55b82b4fbf1a77eecfd8581`; metadata asset `frontend-core-1.2.2.json` | Published; clean-prefix coalescing and product consumption remain to be proven. |
+| Frontend TUI | Package `1.2.2` | Native TUI adapter; no SDL3 dependency | Same Frontend v1.2.2 tag; metadata asset `frontend-tui-1.2.2.json` | Published; real terminal launch/input/restore acceptance remains open. |
+| Frontend GUI-SDL | Package `1.2.2` | Native GUI adapter; SDL3 SDK is an external GUI-only dependency | Same Frontend v1.2.2 tag; metadata asset `frontend-gui-sdl-1.2.2.json` | Published; renderer, shaping, bidi and interactive product acceptance remain incomplete. |
+| Registry consumer | CLI/package `1.0.0` | Five native executables plus same-tag dynamic Catalog and release descriptor | [Registry v1.0.0](https://github.com/cdin-editor/registry/releases/tag/v1.0.0), tag commit `c5b6900319cebe22f2d035a6c3b23a32f06a48b5`; descriptor SHA-256 `b47030a2f6ebba6a3ccfe88ca28437111f1e71b0c0ae5e8fbcb6a6eeaf78e495`, size 1,633 bytes; Catalog SHA-256 `92d6d837d2dfa94c516036e406e2b7b12c3398a94acb8bfc4d26726bc47f60e0`, size 1,538 bytes | Published but not product-acceptable: this immutable binary has the Manifest schema-floor regression and lacks authenticated API discovery. Do not bypass schema validation or silently fall back to source. |
+| Registry developer source | `1.0.1` source pin | Explicit developer/CI source-build path only; never the normal consumer path | Registry `main` commit `34e91f26f81cc89489c97b36ad52051af4aca59a` | Contains the merged Manifest and scoped API-authentication fixes. It is not an immutable Release and cannot replace the consumer binary pin. |
+| SDL3 SDK | `3.4.16` | Five target-specific prebuilt SDKs; GUI-SDL only | [SDK Release](https://github.com/cdin-editor/cdin/releases/tag/sdl3-sdk-v3.4.16), tag commit `d249122c51acbab7262a6cd1e675922fd043bac7`; exact archive and sidecar sizes/digests are pinned in `deps.lock` | Published and pinned by PR #149; clean configure/link and extracted-product validation remain in CDIN #124. |
 
-The current selected identities in the table above are the ones documented in the existing dependency rows below. Do not replace them with newer Releases until the Catalog/Product Definitions and generated `registry-manifest.json` are deliberately updated and exact replay/consumer tests pass.
+## Version and contract boundaries
 
+| Identity | Candidate value | Notes |
+| --- | --- | --- |
+| Specification | Stable `v1.4.0`; Registry Data Contract `1.4.0` | ADR-0028 is accepted. Spec tag and newer Spec `main` source are distinct identities. |
+| Kernel C ABI | `1.1.0` | Independent of Kernel package `1.2.3`. |
+| Logger C API | `0.1.0` | Independent of Kernel package version. |
+| Runtime Host API | `1.0.0` | Backend-to-Runtime contract; not the Runtime package version. |
+| Runtime Extension Contract | `1.0.0` | Runtime package `1.0.0` does not determine this value. |
+| Frontend Protocol | `1.0.0` | Backend/Frontend wire compatibility is checked separately from package SemVer. |
+| Lua C API | `5.4.0` | External host dependency declared by both Product Definitions. |
+| SDL3 SDK | `3.4.16` | GUI-SDL external environment contract only. |
+| CDIN project | `0.2.0` on current `main` | The project version is not yet `1.0.0`; do not create a product tag until the Stable gates pass. |
 
-Component versions/revisions remain selected by the Registry Catalog and the Product Definitions, then recorded in the generated `registry-manifest.json`. `deps.lock` holds the separate immutable Kernel/logger SDK asset pin, the Registry consumer/development pins and developer tooling; it is not a second component-version resolver.
+## Product profile dependency closure
 
-This table describes the current **hybrid developer/CI inventory**. It is not the normal consumer delivery policy: normal Product Definitions are resolved with `delivery_mode: artifact` and reject source-only Runtime/Frontend entries. The developer/CI path opts into `artifact-or-source` explicitly.
+- **TUI:** Kernel/logger SDK, Runtime, Backend, Frontend Core and Frontend TUI. It must not download, build, link or stage SDL3.
+- **GUI-SDL:** the same common dependencies plus Frontend GUI-SDL and the pinned SDL3 SDK. Frontend Core is resolved and installed once even though the profile has multiple Frontend adapters.
+- Both stable Product Definitions set `allow_prerelease: false`. Registry resolves component SemVer and contract compatibility; CDIN consumes the exact Resolved Manifest and must not duplicate component version maps.
 
-| Component/tool | Current selected identity | Current delivery in the CDIN development stack | Notes |
-| --- | --- | --- | --- |
-| Kernel | `1.2.1`, source revision `f4875b6eb59bd76878e7ff486b6114abd9bb1329` | Existing immutable GitHub Release SDK package | Five target archive hashes/sizes are in `[dependencies.kernel_sdk]`. Provides Kernel ABI `1.1.0`. No new Kernel packaging work is part of CDIN #122. |
-| m-mdy-m/log.c | `0.1.0`, source commit `c9b53e9901dc7103eb50be282ae055fe16e98f9a` | Bundled in the existing Kernel 1.2.1 SDK package | Static library, header, pkg-config and CMake package config/targets are installed together with Kernel. |
-| Backend | `1.2.1`, source revision `b6a54e43313add7e73399b040569874d30d32611` | Registry native `cmake-prefix-v1` artifact | Five target packages are declared by the existing Backend 1.2.1 metadata and selected by exact target tuple. |
-| Runtime | `1.0.0-rc.2`, source revision `49f3ab78fc115cd453294de561790ca9881c31a2` | Source unit | Current Catalog metadata is source-only. The next publisher identity/RC3 still needs its immutable module Release and matching Catalog metadata. |
-| Frontend TUI | `1.0.2`, source revision `5bbeac3e3301d34fc7ad7041dc8b369992cc8462` | Source unit | Current Catalog metadata is source-only; a separate Core/TUI package Release is still required. |
-| Frontend GUI-SDL | `1.0.2`, source revision `5bbeac3e3301d34fc7ad7041dc8b369992cc8462` | Source unit | Selected as a separate Registry variant; a separate GUI-SDL package Release is still required. |
-| Registry consumer executable | `0.1.0-dev`, source pin `cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4` | Not consumable | The existing tag has incorrect architecture-to-binary mappings. Descriptor digest/size are intentionally absent, so normal acquisition fails closed. |
-| Registry development source | `0.2.0-dev.1`, commit `ff317e458a57dd9d8b8a2be8f7439ba860c99f10` | Explicit developer/CI source build only | Separate from the consumer pin; this exact source contains the current artifact delivery support. |
-| SDL3 | `3.4.16`, archive SHA-256 `7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68` | Source build for GUI-SDL development only | The SDK publisher implementation is merged, but the actual five-target SDK Release and digests are still missing. TUI never installs SDL3. |
-| Pipeline | `79169afc4f9f74ee46c52be2bf6974f8544c7db1` | Local/CI task runner | Developer tooling only. |
-| PSX | `e4f12e85725e1ebd44c7f3a4e18fcbaa893b30df` | Repository structure validation | Developer tooling only. |
-| Gix | `9f0867923177cef3cd36d980cc2b356a35bee507` | Git branch workflow | Developer tooling only. |
+Runtime is a transitive Backend dependency selected from the Registry Catalog. Frontend Core is a shared adapter dependency. Kernel and logger are provisioned through the existing target SDK lock, not repackaged by CDIN.
 
-## Target package pins
+## Registry and artifact-delivery policy
 
-The exact Kernel SDK release assets, SHA-256 digests and byte sizes are recorded under `dependencies.kernel_sdk.assets` in `deps.lock` for Linux x86_64/ARM64, macOS x86_64/ARM64 and Windows x86_64 UCRT64. The package also provides the independently versioned logger SDK.
+The Registry v1.0.0 Release carries the dynamic Catalog used by PR #149. Under accepted Spec ADR-0028 / Registry Data Contract 1.4.0, that Catalog declares stable `release_sources`; Registry discovers complete eligible GitHub Release inventories, validates canonical per-variant metadata assets and tag/source provenance, resolves SemVer deterministically, and records exact release identities in the Manifest. Component publishers generate metadata JSON as GitHub Release Assets; new per-version metadata files must not be added under component `registry/releases/` directories.
 
-Backend 1.2.1's five exact native artifact descriptors and their target tuples are resolved from Registry's static Catalog. CDIN does not reproduce Backend URLs or hashes in a second table or code path; the Resolved Manifest records the selected artifact identity and staged package path.
+Normal installation must use the immutable Registry executable and artifact-delivered component packages. Registry/component source builds and SDL3 source compilation remain explicit developer/producer workflows only. A selected artifact that fails identity, digest, layout or extraction validation must fail closed; it must not trigger a source fallback.
 
-## Compatibility and build checks
+## Current readiness boundary
 
-- Registry resolves the Backend dependency closure and contract graph before artifact selection.
-- CDIN checks the Kernel SDK pin against the Manifest's Kernel package version and `org.cdin.kernel-abi` provider.
-- Backend's exact target tuple must match the host; its selected artifact must be `native-development-package` / `cmake-prefix-v1`.
-- The private install prefix merges Kernel/logger and Backend files only after symlink/special-file checks and collision preflight. Existing differing files are never overwritten.
-- Runtime and Frontend remain source-delivered until their immutable package releases and Catalog metadata are published.
-- SDL3 remains GUI-SDL-only; its source archive is a development/CI workaround, not the final consumer SDK flow.
+Registry v1.0.1 is the immediate external dependency blocker. Its Manifest schema-floor fix (Registry PR #75) and authenticated GitHub Release API access (Registry PR #77) are merged on Registry `main`, but the immutable `v1.0.1` tag and Release are not yet published. Until the five target executables, same-tag Catalog, descriptor and checksums are published and verified, CDIN must retain the v1.0.0 consumer pin and Product Acceptance is expected to fail on its known defects.
 
-## Readiness boundary
+CDIN PR #149 contains the candidate lock, Product Definition and bootstrap changes. Its artifact-first path still needs the exact Registry v1.0.1 Release, all ten installed-product jobs, clean-prefix extraction, warm/offline cache and Manifest replay. CDIN #118 and #111 separately gate live IME/PaneTree behavior, supported TUI/GUI-SDL interaction, Unicode shaping and Persian/Arabic text, lifecycle/recovery, performance, security and real product distributions.
 
-The Registry executable Release is still blocked by Registry #58. A real corrected Registry descriptor/tag/asset pin must be published before the ordinary binary bootstrap can run. Even after that, the product migration is incomplete until Runtime, Frontend and GUI-SDL SDK assets are published, verified, and consumed from a clean prefix. CDIN #122 remains open.
+**Current product state: DEVELOPMENT / NOT PRODUCT READY.** No CDIN `v1.0.0` Stable tag or Release is authorized by the evidence recorded here.
