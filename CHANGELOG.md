@@ -11,6 +11,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Validate the split Frontend graph with the shared Core dependency in both immutable artifact and developer Registry-source modes. Resolve component delivery from the actual Manifest instead of assuming that a source-built Registry implies source-built components.
+- Run CTest Manifest verification through the pinned Registry bootstrap. Normal consumers now use the verified cached Registry executable/Catalog; developer CI uses the explicit pinned source build. Neither path assumes a Registry binary at the old `build/tools/registry` location.
+- Make the developer stack consume published Frontend and SDL3 SDK packages when the Manifest selects artifacts. Building Registry from source no longer forces Runtime/Frontend source builds or SDL3 source compilation.
 - Remove the Backend package-version hardcode from Registry Manifest validation. CDIN now validates the selected immutable Backend artifact's delivery mode, package kind, CMake layout, target tuple, canonical workspace path and symlink safety while allowing Registry to select any compatible Backend SemVer.
 - Resolve Runtime paths in live extension/TUI smoke tests from the exact `CDIN_RUNTIME_SOURCE_DIR` in the active CMake cache. Artifact-first consumers and explicit developer-source builds now test the same Runtime package selected by the Manifest.
 - Pin the developer Registry source-build path to the exact `v0.2.0-dev.3` Catalog commit so source-build CI and normal consumer bootstrap use the same immutable release inventory.
