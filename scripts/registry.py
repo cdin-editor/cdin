@@ -94,6 +94,24 @@ def checkout_registry(*, development: bool = False) -> None:
         raise RuntimeError(f"Registry source pin mismatch: expected {revision}, found {actual}")
 
 
+def registry_source_build_ldflags(version: str, revision: str) -> str:
+    """Bind a source-built Registry CLI to the exact locked release identity."""
+    if re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+        r"(?:-(?:dev(?:\.[0-9]+)?|(?:alpha|beta|rc)\.[0-9]+))?",
+        version,
+    ) is None:
+        raise RuntimeError(f"pinned Registry source version is not valid SemVer: {version!r}")
+    if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise RuntimeError("pinned Registry source revision must be a full lowercase commit SHA")
+    return (
+        "-X github.com/cdin-editor/registry/internal/buildinfo.Version="
+        + version
+        + " -X github.com/cdin-editor/registry/internal/buildinfo.Commit="
+        + revision
+    )
+
+
 def build_registry(
     *,
     run_tests: bool = True,
@@ -117,7 +135,12 @@ def build_registry(
         raise RuntimeError(
             "Registry source builds are developer-only and require Git and Go 1.27.3 or newer"
         )
+    development_pin = load_lock()["tooling"]["registry"]["development"]
     _, revision = registry_pin(development=True)
+    version = development_pin.get("version")
+    if not isinstance(version, str):
+        raise RuntimeError("deps.lock Registry development pin is missing its SemVer version")
+    ldflags = registry_source_build_ldflags(version, revision)
     if run_tests or not REGISTRY_SOURCE.exists():
         checkout_registry(development=True)
     else:
@@ -131,14 +154,18 @@ def build_registry(
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
     binary = REGISTRY_BUILD / ("registry.exe" if os.name == "nt" else "registry")
     stamp = REGISTRY_BUILD / "registry-source.sha"
+    stamp_value = revision + "\n" + version + "\n"
     if (
         run_tests
         or not binary.is_file()
         or not stamp.is_file()
-        or stamp.read_text(encoding="utf-8").strip() != revision
+        or stamp.read_text(encoding="utf-8") != stamp_value
     ):
-        run_registry_go(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"])
-        stamp.write_text(revision + "\n", encoding="utf-8")
+        run_registry_go([
+            "go", "build", "-trimpath", "-ldflags", ldflags,
+            "-o", str(binary), "./cmd/registry",
+        ])
+        stamp.write_text(stamp_value, encoding="utf-8")
     return binary
 
 
