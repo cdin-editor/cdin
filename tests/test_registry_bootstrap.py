@@ -41,6 +41,7 @@ from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
+    registry_source_build_ldflags,
     verify_backend_artifact,
     expected_frontend_variants,
 )
@@ -199,6 +200,31 @@ class KernelSDKReleasePinTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(SDKBootstrapError, "digest differs from deps.lock"):
                 verify_release_asset_identity(self.pin, self.asset)
+
+
+class RegistrySourceBuildMetadataTests(unittest.TestCase):
+    def test_source_build_embeds_the_locked_semver_and_commit(self) -> None:
+        flags = registry_source_build_ldflags(
+            "1.0.0",
+            "c5b6900319cebe22f2d035a6c3b23a32f06a48b5",
+        )
+        self.assertIn(
+            "-X github.com/cdin-editor/registry/internal/buildinfo.Version=1.0.0",
+            flags,
+        )
+        self.assertIn(
+            "-X github.com/cdin-editor/registry/internal/buildinfo.Commit="
+            "c5b6900319cebe22f2d035a6c3b23a32f06a48b5",
+            flags,
+        )
+
+    def test_source_build_rejects_non_semver_development_version(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "not valid SemVer"):
+            registry_source_build_ldflags("development", "c5b6900319cebe22f2d035a6c3b23a32f06a48b5")
+
+    def test_source_build_rejects_abbreviated_commit_identity(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "full lowercase commit SHA"):
+            registry_source_build_ldflags("1.0.0", "c5b6900")
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
