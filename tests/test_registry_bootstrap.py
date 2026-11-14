@@ -311,35 +311,48 @@ class RegistryMakeTargetTests(unittest.TestCase):
 class RegistryPinSeparationTests(unittest.TestCase):
     def test_consumer_release_and_developer_source_pins_are_separate(self) -> None:
         from scripts.registry import registry_pin
+
         lock = Path(__file__).resolve().parents[1] / "deps.lock"
         import tomllib
 
         data = tomllib.loads(lock.read_text(encoding="utf-8"))
         consumer = data["tooling"]["registry"]
         development = consumer["development"]
-        self.assertEqual(consumer["release_tag"], "v0.1.0-dev")
-        self.assertNotIn("release_descriptor_sha256", consumer)
-        self.assertNotIn("release_descriptor_size", consumer)
+
+        expected_repository = "https://github.com/cdin-editor/registry.git"
+        expected_revision = "9fac913ada29a33a650f1b17c27fb2e6c657ae15"
+        self.assertEqual(consumer["release_tag"], "v0.2.0-dev.3")
+        self.assertEqual(consumer["version"], "0.2.0-dev.3")
+        self.assertEqual(consumer["revision"], expected_revision)
+        self.assertEqual(consumer["release_descriptor_size"], 1645)
         self.assertEqual(
-            registry_pin(),
-            ("https://github.com/cdin-editor/registry.git", "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"),
+            consumer["release_descriptor_sha256"],
+            "040ce9cf92a269486ee6e59d0a7459aeecda41d8d909c0ec40962d16a43a5fba",
         )
+        self.assertEqual(registry_pin(), (expected_repository, expected_revision))
+
         self.assertEqual(development["version"], "0.2.0-dev.3")
-        self.assertEqual(
-            registry_pin(development=True),
-            ("https://github.com/cdin-editor/registry.git", "9fac913ada29a33a650f1b17c27fb2e6c657ae15"),
-        )
-        # The developer source build and consumer binary are deliberately
-        # built from the same immutable Registry release commit. Their lock
-        # sections remain separate because they represent different delivery
-        # modes, not different source identities.
+        self.assertEqual(development["revision"], expected_revision)
+        self.assertEqual(registry_pin(development=True), (expected_repository, expected_revision))
+
+        # The consumer binary and developer source build intentionally use
+        # the same immutable source identity, while their lock sections stay
+        # separate because they represent different delivery modes.
         self.assertEqual(consumer["revision"], development["revision"])
-        self.assertIn("release_descriptor_sha256", consumer)
         self.assertNotIn("release_tag", development)
         self.assertNotIn("release_descriptor_sha256", development)
+        self.assertNotIn("release_descriptor_size", development)
 
 
+class RegistryCTestBootstrapTests(unittest.TestCase):
+    def test_manifest_verification_uses_the_pinned_registry_bootstrap(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
 
+        self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"', cmake)
+        self.assertIn("--verify-workspace", cmake)
+        self.assertIn("CDIN_DEVELOPER_SOURCE_COMPONENTS", cmake)
+        self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry"', cmake)
 
 
 class SmokeRuntimeRootResolutionTests(unittest.TestCase):
