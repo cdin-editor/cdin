@@ -11,6 +11,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Remove the Backend package-version hardcode from Registry Manifest validation. CDIN now validates the selected immutable Backend artifact's delivery mode, package kind, CMake layout, target tuple, canonical workspace path and symlink safety while allowing Registry to select any compatible Backend SemVer.
+- Resolve Runtime paths in live extension/TUI smoke tests from the exact `CDIN_RUNTIME_SOURCE_DIR` in the active CMake cache. Artifact-first consumers and explicit developer-source builds now test the same Runtime package selected by the Manifest.
+- Pin the developer Registry source-build path to the exact `v0.2.0-dev.3` Catalog commit so source-build CI and normal consumer bootstrap use the same immutable release inventory.
+- Declare GUI-SDL's external SDL3 SDK contract and pin the published five-target SDL3 3.4.16 SDK Release, including its exact tag-resolved commit, archive sizes and SHA-256 digests. TUI remains SDL3-free.
+- Disable component prerelease selection in both stable product definitions; stable CDIN profiles now resolve stable component releases only.
+
 - Pin the artifact-first Registry consumer to the published immutable `v0.2.0-dev.3` Release, including its exact tag-resolved source commit and release-descriptor SHA-256/size. Keep the developer-only Registry source pin separate from normal installation.
 - Update TUI and GUI-SDL Product Definitions to the artifact-ready Backend 1.2.2 and Frontend TUI/GUI-SDL 1.2.2 releases selected by the same-tag Registry Catalog; the previous Backend 1.2.1 / Frontend 1.0.2 entries had no target-native artifacts for the clean consumer.
 
