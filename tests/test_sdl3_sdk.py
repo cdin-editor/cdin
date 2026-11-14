@@ -259,8 +259,23 @@ class ReleaseWorkflowPermissionTests(unittest.TestCase):
         self.assertIn('gh run download "${GITHUB_RUN_ID}"', publish)
         self.assertIn('gh release create "$TAG_NAME"', publish)
         self.assertIn('TAG_NAME: ${{ startsWith(github.ref, \'refs/tags/sdl3-sdk-v\')', publish)
-        self.assertIn('SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}', publish)
+        self.assertIn('SOURCE_SHA: ${{ needs.prepare-main-release.outputs.source_sha }}', publish)
         self.assertIn('tag_commit" != "$SOURCE_SHA"', publish)
+
+    def test_missing_release_reuses_the_exact_existing_immutable_tag_commit(self) -> None:
+        workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sdl3-sdk.yml").read_text(
+            encoding="utf-8"
+        )
+        prepare = workflow.split("  prepare-main-release:", 1)[1].split("\n  build:", 1)[0]
+        self.assertIn("source_sha: ${{ steps.check.outputs.source_sha }}", prepare)
+        self.assertIn("SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}", prepare)
+        self.assertIn('git fetch origin "refs/tags/$TAG_NAME:refs/tags/$TAG_NAME"', prepare)
+        self.assertIn('git rev-parse --verify "$TAG_NAME^{commit}"', prepare)
+        self.assertIn('git merge-base --is-ancestor "$release_sha" "$SOURCE_SHA"', prepare)
+        build = workflow.split("  build:", 1)[1].split("\n  publish:", 1)[0]
+        self.assertIn("needs.prepare-main-release.outputs.source_sha", build)
+        self.assertIn('release_sha="$SOURCE_SHA"', prepare)
+
 
 
 if __name__ == "__main__":
