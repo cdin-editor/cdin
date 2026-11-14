@@ -61,7 +61,7 @@ release_descriptor_size = 1633
 # verified prebuilt Registry executable above.
 [tooling.registry.development]
 repository = "https://github.com/cdin-editor/registry.git"
-revision = "e4e722f33990828c5d9e37e0c8a0e8d5028d06db"
+revision = "b7aa6c99600eb31f89ca2c4734f326030dfe4fe4"
 version = "1.0.1"
 
 # Immutable GUI-SDL SDK Release. The five target archives and their
