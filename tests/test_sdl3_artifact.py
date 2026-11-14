@@ -241,7 +241,8 @@ class ReleaseIdentityTests(unittest.TestCase):
             })
             release_assets.append({
                 "name": pinned["file_name"] + ".sha256",
-                "size": 100,
+                "size": pinned["sidecar_size_bytes"],
+                "digest": "sha256:" + pinned["sidecar_sha256"],
             })
         release = {
             "tag_name": pin["tag"],
@@ -279,7 +280,9 @@ class ReleaseIdentityTests(unittest.TestCase):
                 item["digest"] = "sha256:" + pinned["sha256"]
             release_assets.append(item)
             release_assets.append({
-                "name": pinned["file_name"] + ".sha256", "size": 100,
+                "name": pinned["file_name"] + ".sha256",
+                "size": pinned["sidecar_size_bytes"],
+                "digest": "sha256:" + pinned["sidecar_sha256"],
             })
         release = {
             "tag_name": pin["tag"], "draft": False, "prerelease": True,
@@ -301,11 +304,14 @@ class ReleaseIdentityTests(unittest.TestCase):
                 "digest": "sha256:" + pinned["sha256"],
             })
             release_assets.append({
-                "name": pinned["file_name"] + ".sha256", "size": 100,
+                "name": pinned["file_name"] + ".sha256",
+                "size": pinned["sidecar_size_bytes"],
+                "digest": "sha256:" + pinned["sidecar_sha256"],
             })
-        release_assets.remove({
-            "name": asset["file_name"] + ".sha256", "size": 100,
-        })
+        release_assets = [
+            item for item in release_assets
+            if item["name"] != asset["file_name"] + ".sha256"
+        ]
         release = {
             "tag_name": pin["tag"], "draft": False, "prerelease": True,
             "assets": release_assets,
@@ -327,7 +333,8 @@ class ReleaseIdentityTests(unittest.TestCase):
             })
             release_assets.append({
                 "name": pinned["file_name"] + ".sha256",
-                "size": 100,
+                "size": pinned["sidecar_size_bytes"],
+                "digest": "sha256:" + pinned["sidecar_sha256"],
             })
         release_assets.append({"name": "source.zip", "size": 10})
         release = {
