@@ -21,20 +21,17 @@ class GitHubAPITokenSelectionTests(unittest.TestCase):
         ):
             self.assertEqual(github_api_token_from_environment(), "cdin-read-token")
 
-    def test_gh_token_is_used_in_actions(self) -> None:
+    def test_gh_token_is_not_used_in_actions(self) -> None:
         with patch.dict(
             os.environ,
             {
                 "GITHUB_ACTIONS": "true",
-                "GH_TOKEN": "cross-repository-read-token",
+                "GH_TOKEN": "same-repository-write-token",
                 "GITHUB_TOKEN": "repo-scoped-token",
             },
             clear=True,
         ):
-            self.assertEqual(
-                github_api_token_from_environment(),
-                "cross-repository-read-token",
-            )
+            self.assertEqual(github_api_token_from_environment(), "")
 
     def test_automatic_actions_token_is_not_used_for_kernel_api(self) -> None:
         with patch.dict(
