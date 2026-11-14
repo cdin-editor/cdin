@@ -11,7 +11,7 @@ components:
     version_constraint: "1.2.2"
   - component_id: frontend
     variant: gui-sdl
-    version_constraint: "1.0.2"
+    version_constraint: "1.2.2"
 environment_contracts:
   - contract_id: org.cdin.kernel-abi
     version: "1.1.0"
