@@ -396,6 +396,8 @@ class RegistryCTestBootstrapTests(unittest.TestCase):
         self.assertIn("${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}", cmake)
         self.assertIn('--workspace "${CDIN_REGISTRY_WORKSPACE}"', cmake)
         self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry"', cmake)
+        stack_script = (root / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+        self.assertIn('f"-DCDIN_REGISTRY_WORKSPACE={WORKSPACE}"', stack_script)
 
 
 class FrontendArtifactDependencyClosureTests(unittest.TestCase):
