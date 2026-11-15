@@ -85,22 +85,21 @@ jobs:
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.sha }}
       GH_TOKEN: ${{ github.token }}
-      CDIN_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
-      REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
+            REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
 
-      - name: Verify cross-repository GitHub read token
+      - name: Verify Registry Release discovery token
         shell: bash
         run: |
-          if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
-            echo "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix. Configure a fine-grained token with Contents: read for CDIN, Kernel, Runtime, Backend, Frontend and Registry."
+          if [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
+            echo "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery."
             exit 1
           fi
-          echo "Cross-repository GitHub API read credential is configured."
+          echo "Registry cross-repository Release discovery credential is configured."
 
       - name: Set up MSYS2 UCRT64 (Windows)
         if: runner.os == 'Windows'
