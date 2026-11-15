@@ -1119,12 +1119,14 @@ class KernelSDKCacheTests(unittest.TestCase):
         self.cache.mkdir(parents=True)
         cached = self.cache / self.asset["file_name"]
         cached.write_bytes(self.payload)
-        with patch("scripts.deps.CACHE", self.cache), \\
-             patch.dict(os.environ, {}, clear=True), \\
-             patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("consumer install must not query GitHub's Releases API"),
-             ):
+        with (
+            patch("scripts.deps.CACHE", self.cache),
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "scripts.deps.verify_release_asset_identity",
+                side_effect=AssertionError("consumer install must not query GitHub's Releases API"),
+            ),
+        ):
             result = download_asset(self.pin, self.asset)
         self.assertEqual(result, cached)
         self.assertEqual(result.read_bytes(), self.payload)
