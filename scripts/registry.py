@@ -25,7 +25,10 @@ REGISTRY_SOURCE = ROOT / ".deps" / "tools" / "registry"
 REGISTRY_CATALOG = REGISTRY_SOURCE / "catalogs" / "cdin-components" / "catalog-index.json"
 REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
+# Keep Registry's private metadata/API cache separate from the executable
+# distribution cache: Registry secures its cache tree recursively.
 REGISTRY_CACHE = WORKSPACE_ROOT / "cache" / "registry"
+REGISTRY_API_CACHE = WORKSPACE_ROOT / "cache" / "registry-api"
 
 
 def run(
@@ -419,7 +422,7 @@ def registry_prepare_command(
     cache_dir: Path | None = None,
 ) -> list[str]:
     """Build one cached Registry prepare invocation for a product workspace."""
-    cache_root = REGISTRY_CACHE if cache_dir is None else cache_dir
+    cache_root = REGISTRY_API_CACHE if cache_dir is None else cache_dir
     return [
         str(binary),
         "prepare",
@@ -479,7 +482,7 @@ def prepare(
             "--input", str(manifest_path),
             "--output", str(replay),
             "--allow-host", "github.com",
-            "--cache-dir", str(REGISTRY_CACHE),
+            "--cache-dir", str(REGISTRY_API_CACHE),
         ])
         replay_manifest = replay / "registry-manifest.json"
         run([str(binary), "manifest", "verify", "--input", str(replay_manifest)])
