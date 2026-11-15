@@ -13,6 +13,7 @@ from scripts.registry_artifact import (
     REGISTRY_REPOSITORY_URI,
     RegistryBootstrapError,
     TARGETS,
+    GitHubReleaseClient,
     _public_release_asset_url,
     acquire_registry_artifact,
     detect_target,
@@ -59,6 +60,21 @@ class RegistryPublicReleaseURLTests(unittest.TestCase):
         self.assertNotIn("api.github.com", source)
         self.assertNotIn("REGISTRY_GITHUB_API_TOKEN", source)
         self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
+
+
+    def test_downloader_rejects_noncanonical_urls_before_network(self) -> None:
+        client = GitHubReleaseClient()
+        untrusted_urls = [
+            "http://github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://example.invalid/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://github.com:444/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://user@github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64?token=bad",
+        ]
+        for url in untrusted_urls:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(RegistryBootstrapError, "untrusted Registry asset URL"):
+                    client.download(url, maximum=1024)
 
 
 class FakeGitHubClient:
