@@ -18,6 +18,7 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - target: linux-x86_64
