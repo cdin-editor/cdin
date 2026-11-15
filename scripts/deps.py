@@ -462,10 +462,10 @@ def download_asset(pin: dict, asset: dict) -> Path:
             "offline Kernel SDK installation requires a previously verified exact-pin archive cache"
         )
 
-    # Online use rechecks the annotated Git tag and GitHub's immutable asset
-    # digest/size even on a local cache hit. Offline use relies only on the
-    # lock-pinned archive bytes and never attempts a network request.
-    verify_release_asset_identity(pin, asset)
+    # This public, versioned dependency has its source commit and exact
+    # asset size/SHA-256 pinned in deps.lock. Byte verification is authoritative
+    # for downloads and cache hits, so consumer installs must not query the
+    # Releases/Git refs API again on every platform runner.
     if cached:
         return destination
 
