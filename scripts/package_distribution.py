@@ -113,8 +113,14 @@ def validate_target(target: Any) -> dict[str, str]:
         actual = re.match(r"^(\d+)\.(\d+)", version)
         if not match or libc.lower() not in {"glibc", "gnu libc"} or not actual:
             raise DistributionError(f"unsupported Linux ABI for distribution: {libc}/{version}/{abi}")
-        if tuple(map(int, actual.groups())) < tuple(map(int, match.groups())):
-            raise DistributionError(f"runner glibc {version} is older than package baseline {abi}")
+        actual_version = tuple(map(int, actual.groups()))
+        package_baseline = tuple(map(int, match.groups()))
+        if actual_version != package_baseline:
+            relation = "newer than" if actual_version > package_baseline else "older than"
+            raise DistributionError(
+                f"runner glibc {version} is {relation} package baseline {abi}; "
+                "rebuild Linux distributions on the pinned Ubuntu 24.04/glibc 2.39 runner"
+            )
     elif host_os == "darwin":
         match = re.match(r"^macos-(\d+)$", abi)
         actual = re.match(r"^(\d+)", platform.mac_ver()[0])
