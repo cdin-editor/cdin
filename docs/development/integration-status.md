@@ -17,12 +17,9 @@
 
 ## Existing active PR and exact-head CI
 
-CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `e2e70b06f7610db67f9b146f8556d9183dddeadf`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged and its immutable `v1.0.1` Release is published from exact Registry commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
+CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its exact current head and required checks are exposed by the PR itself; each branch update starts a fresh exact-head CI, Product Acceptance and SDL3 SDK run. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged and its immutable `v1.0.1` Release is published from exact Registry commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
 
-Latest exact-head workflows for PR #149 commit `e2e70b06f7610db67f9b146f8556d9183dddeadf` have been created and are queued:
-- [CI run 43749610253](https://github.com/cdin-editor/cdin/actions/runs/43749610253)
-- [Product Acceptance run 43749610281](https://github.com/cdin-editor/cdin/actions/runs/43749610281)
-- [SDL3 SDK run 43749610278](https://github.com/cdin-editor/cdin/actions/runs/43749610278)
+Only results attached to the latest PR head count for merge readiness. Older runs from prior commits may be cancelled when a new commit is pushed; use the PR Checks tab for the current run set rather than treating an earlier green/queued result as evidence for a newer head.
 
 The read-only `CDIN_GITHUB_READ_TOKEN` is now present in hosted job environments (logs show both dedicated token variables masked as `***`). Earlier Windows CI jobs [132914707178](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707178) and [132914707202](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707202) failed because the token preflight inherited `msys2 {0}` before MSYS2 setup; commit `5abf4b87f2440782a6085862e123bac030915b12` gives that preflight an explicit Bash shell. The new exact-head run must verify the correction.
 
@@ -33,7 +30,7 @@ The configured `CDIN_GITHUB_READ_TOKEN` is a fine-grained PAT or GitHub App inst
 ## Immediate dependency order
 
 1. Registry `v1.0.1` is published and CDIN PR #149 now pins the immutable release descriptor/tag commit in `deps.lock`; the published `v1.0.0` remains untouched.
-2. Wait for exact-head CI/Product Acceptance/SDL3 runs 43749442629, 43749442686 and 43749442681 to complete. These must verify the newly published Registry binaries, not the earlier v1.0.0 consumer.
+2. Require the latest exact-head CI, SDL3 SDK and all ten Product Acceptance jobs to pass against the newly published Registry binaries; older runs on prior commits do not count.
 3. Keep Linux release builds pinned to Ubuntu 24.04/glibc 2.39. GitHub is migrating `ubuntu-latest` to Ubuntu 26.04 between October 19 and November 19, 2026; CDIN now pins x86_64 and sanitizer CI to `ubuntu-24.04`, and build/package guards reject a host that does not match the declared glibc baseline. See the [GitHub runner migration announcement](https://github.blog/changelog/2026-09-17-ubuntu-26-generally-available-and-latest-migration/).
 4. Continue CDIN #118 live IME/PaneTree E2E, production Unicode shaping/bidi and Persian/Arabic acceptance, supported TUI/GUI interaction, extension lifecycle, disconnect/recovery, resource/performance soak, secure installation/upgrade/uninstall and real runnable distribution gates.
 
