@@ -1,70 +1,54 @@
+"""Tests for the public Kernel SDK Release bootstrap contract."""
 from __future__ import annotations
 
-import os
 import unittest
-from unittest.mock import patch
 
-from scripts.deps import github_api_token_from_environment
+from scripts.deps import (
+    SDKBootstrapError,
+    release_asset_download_url,
+    verify_locked_asset_identity,
+)
 
 
-class GitHubAPITokenSelectionTests(unittest.TestCase):
-    def test_explicit_cdin_token_has_priority(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "GITHUB_ACTIONS": "true",
-                "CDIN_GITHUB_API_TOKEN": "cdin-read-token",
-                "GH_TOKEN": "generic-read-token",
-                "GITHUB_TOKEN": "repo-scoped-token",
-            },
-            clear=True,
-        ):
-            self.assertEqual(github_api_token_from_environment(), "cdin-read-token")
+class PublicKernelReleaseURLTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.pin = {
+            "repository": "https://github.com/cdin-editor/kernel",
+            "tag": "v1.2.3",
+            "version": "1.2.3",
+            "revision": "2fb09f52dc1a9963cf358ec54d584c520e174e67",
+        }
+        self.asset = {
+            "file_name": "cdin-kernel-1.2.3-linux-x86_64.tar.gz",
+            "format": "tar.gz",
+            "size_bytes": 381038,
+            "sha256": "48a82eb7f4c1fac57c7661f070c1338eb17c10d709eff0d87bb0229b87e46013",
+        }
 
-    def test_gh_token_is_not_used_in_actions(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "GITHUB_ACTIONS": "true",
-                "GH_TOKEN": "same-repository-write-token",
-                "GITHUB_TOKEN": "repo-scoped-token",
-            },
-            clear=True,
-        ):
-            self.assertEqual(github_api_token_from_environment(), "")
+    def test_uses_the_public_release_download_endpoint(self) -> None:
+        self.assertEqual(
+            release_asset_download_url(self.pin, self.asset),
+            "https://github.com/cdin-editor/kernel/releases/download/"
+            "v1.2.3/cdin-kernel-1.2.3-linux-x86_64.tar.gz",
+        )
 
-    def test_automatic_actions_token_is_not_used_for_kernel_api(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "GITHUB_ACTIONS": "true",
-                "GITHUB_TOKEN": "cdin-repository-token",
-            },
-            clear=True,
-        ):
-            self.assertEqual(github_api_token_from_environment(), "")
+    def test_refuses_a_release_from_another_repository(self) -> None:
+        pin = dict(self.pin, repository="https://example.invalid/kernel")
+        with self.assertRaisesRegex(SDKBootstrapError, "repository pin is invalid"):
+            verify_locked_asset_identity(pin, self.asset)
 
-    def test_local_github_token_fallback_is_preserved(self) -> None:
-        with patch.dict(
-            os.environ,
-            {"GITHUB_TOKEN": " local-personal-token "},
-            clear=True,
-        ):
-            self.assertEqual(
-                github_api_token_from_environment(),
-                "local-personal-token",
-            )
+    def test_refuses_a_tag_or_commit_that_does_not_match_the_versioned_pin(self) -> None:
+        pin = dict(self.pin, tag="v1.2.2")
+        with self.assertRaisesRegex(SDKBootstrapError, "tag/version/source revision pin is invalid"):
+            verify_locked_asset_identity(pin, self.asset)
 
-    def test_gh_token_precedes_local_github_token(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "GH_TOKEN": "gh-cli-token",
-                "GITHUB_TOKEN": "local-github-token",
-            },
-            clear=True,
-        ):
-            self.assertEqual(github_api_token_from_environment(), "gh-cli-token")
+    def test_refuses_path_traversal_and_bad_digests(self) -> None:
+        bad_path = dict(self.asset, file_name="../archive.tar.gz")
+        with self.assertRaisesRegex(SDKBootstrapError, "locked asset identity is malformed"):
+            verify_locked_asset_identity(self.pin, bad_path)
+        bad_digest = dict(self.asset, sha256="not-a-sha256")
+        with self.assertRaisesRegex(SDKBootstrapError, "locked asset identity is malformed"):
+            verify_locked_asset_identity(self.pin, bad_digest)
 
 
 if __name__ == "__main__":
