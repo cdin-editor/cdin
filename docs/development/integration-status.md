@@ -1,6 +1,6 @@
-# Live audit correction — 2026-11-15 (Registry PR #78 merged; CDIN credential preflight)
+# Live audit correction — 2026-11-15 (Registry v1.0.1 published; CDIN runner and Windows preflight fixes)
 
-**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes the previous dated snapshot below wherever it lists Registry PR #78 as open, reports CDIN PR #149 workflows as queued, or identifies the older Registry main commit as current.
+**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes earlier snapshots below for Registry publication, CDIN PR #149's current head, CI credentials and runner compatibility. Registry publication does not itself prove CDIN product acceptance.
 
 ## Verified repository state
 
@@ -11,28 +11,30 @@
 | Runtime | `v1.0.0`, commit `eb48a511ea6d5085db38e501784290d80cb03947` | Published platform-neutral Lua module package; downstream acceptance remains open. |
 | Backend | `v1.2.2`, commit `5d6371e8ca9ce1ee236d961181c259b3dfe72158` on current main; published release commit is recorded in the dependency matrix | Published target packages; Backend #35 retains downstream acceptance. |
 | Frontend | `v1.2.2`, commit `b28b8e80b48483c04a33c64832bafcd9da062897` on current main; the release tag/metadata identity remains separately pinned | Core/TUI/GUI-SDL variants are published; product rendering and clean-consumer gates remain open. |
-| Registry | Current main `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`; `CHANGELOG.md` contains `1.0.1` | PR #78 is merged. Exact-main CI, native Workspace (Linux/Windows/macOS), Code Quality, Docs/YAML and Security all pass. Immutable `v1.0.1` tag/Release is not yet published. |
+| Registry | Stable `v1.0.1`, annotated tag resolves to `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27` | [Immutable Release published](https://github.com/cdin-editor/registry/releases/tag/v1.0.1) with five target executables, same-tag Catalog, descriptor and SHA256SUMS. Includes Manifest schema-floor and cross-repository API authentication fixes. |
 | SDL3 SDK | `3.4.16`, tag commit `d249122c51acbab7262a6cd1e675922fd043bac7` | Immutable five-target SDK published. |
 | CDIN | Main `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`; CMake project version `0.2.0` | No product `v1.0.0` tag or stable application release. |
 
 ## Existing active PR and exact-head CI
 
-CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `d4c1bd5842933f021260f29475a1919c69f91a3c`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged into Registry main at `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
+CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `ee1e4920b5e895c0c8afd4a1ee7d705c8f09d8d3`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged and its immutable `v1.0.1` Release is published from exact Registry commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
 
-Latest observed PR #149 runs on the current head:
-- CDIN [CI run 43676702188](https://github.com/cdin-editor/cdin/actions/runs/43676702188) completed with failure. All 11 matrix/sanitizer jobs failed only at `Verify cross-repository GitHub read token`; no component installation, compilation or product E2E ran.
-- CDIN [Product Acceptance run 43676702187](https://github.com/cdin-editor/cdin/actions/runs/43676702187) completed with failure at the same credential preflight. The ten installed-product jobs did not run.
-- CDIN [SDL3 SDK run 43676702255](https://github.com/cdin-editor/cdin/actions/runs/43676702255) was still in progress at the 2026-11-15 04:28 UTC audit; the previous exact five-target SDL3 run [43652599390](https://github.com/cdin-editor/cdin/actions/runs/43652599390) passed.
+Latest exact-head workflows for PR #149 commit `ee1e4920b5e895c0c8afd4a1ee7d705c8f09d8d3` have been created and are queued:
+- [CI run 43749442629](https://github.com/cdin-editor/cdin/actions/runs/43749442629)
+- [Product Acceptance run 43749442686](https://github.com/cdin-editor/cdin/actions/runs/43749442686)
+- [SDL3 SDK run 43749442681](https://github.com/cdin-editor/cdin/actions/runs/43749442681)
 
-The preflight's exact error is that the repository Actions secret `CDIN_GITHUB_READ_TOKEN` is absent: both `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN` are empty. The current-head job log is [132698311427](https://github.com/cdin-editor/cdin/actions/runs/43676702188/job/132698311427). This is a credential/configuration blocker, not yet evidence of a failing compiler or product test.
+The read-only `CDIN_GITHUB_READ_TOKEN` is now present in hosted job environments (logs show both dedicated token variables masked as `***`). Earlier Windows CI jobs [132914707178](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707178) and [132914707202](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707202) failed because the token preflight inherited `msys2 {0}` before MSYS2 setup; commit `5abf4b87f2440782a6085862e123bac030915b12` gives that preflight an explicit Bash shell. The new exact-head run must verify the correction.
+
+The original empty-secret preflight failure is resolved. New Product Acceptance logs on the preceding exact head showed both cross-repository token variables present as masked secrets. The present CI gate is waiting for the exact-head workflows above; do not infer success until their native and product jobs finish.
 
 The required secret must be a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the two dedicated API-token variables; same-repository `GH_TOKEN` remains separate. The connected GitHub integration cannot provision repository Actions secrets; an owner/admin must add it, then rerun all current-head workflows.
 
 ## Immediate dependency order
 
-1. Publish immutable Registry `v1.0.1` from exact Registry main commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, after the already-green exact-main checks. The existing immutable `v1.0.0` release must not be rewritten. Generate/publish its five executables, same-tag Catalog, descriptor and checksums through the Registry release workflow; only then copy real API-reported descriptor and executable asset identities into CDIN `deps.lock`.
-2. Keep the Registry consumer pin on published `v1.0.0` until `v1.0.1` release assets exist. The developer-only source pin in PR #149 is now aligned to the exact merged Registry main source commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`; its lock assertion is updated in the same PR.
-3. Configure `CDIN_GITHUB_READ_TOKEN` with the read-only scope above; rerun CI and all ten Product Acceptance target/profile jobs on the latest PR #149 head.
+1. Registry `v1.0.1` is published and CDIN PR #149 now pins the immutable release descriptor/tag commit in `deps.lock`; the published `v1.0.0` remains untouched.
+2. Wait for exact-head CI/Product Acceptance/SDL3 runs 43749442629, 43749442686 and 43749442681 to complete. These must verify the newly published Registry binaries, not the earlier v1.0.0 consumer.
+3. Keep Linux release builds pinned to Ubuntu 24.04/glibc 2.39. GitHub is migrating `ubuntu-latest` to Ubuntu 26.04 between October 19 and November 19, 2026; CDIN now pins x86_64 and sanitizer CI to `ubuntu-24.04`, and build/package guards reject a host that does not match the declared glibc baseline. See the [GitHub runner migration announcement](https://github.blog/changelog/2026-09-17-ubuntu-26-generally-available-and-latest-migration/).
 4. Continue CDIN #118 live IME/PaneTree E2E, production Unicode shaping/bidi and Persian/Arabic acceptance, supported TUI/GUI interaction, extension lifecycle, disconnect/recovery, resource/performance soak, secure installation/upgrade/uninstall and real runnable distribution gates.
 
 Do not merge PR #149, close CDIN #111/#118/#121/#122/#124, or publish CDIN `v1.0.0` from preflight-skipped checks. Published component artifacts, a green SDK matrix or an accepted Spec contract do not establish integrated PRODUCT READY status.
