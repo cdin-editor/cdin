@@ -70,6 +70,21 @@ class NativeProductMatrixTests(unittest.TestCase):
         self.assertIn("target: linux-x86_64\n            os: ubuntu-24.04", acceptance)
         self.assertIn("target: linux-arm64\n            os: ubuntu-24.04-arm", acceptance)
 
+    def test_cross_repository_token_preflight_uses_bash_before_msys2(self) -> None:
+        for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
+            with self.subTest(workflow=path.name):
+                content = path.read_text(encoding="utf-8")
+                start = content.index("      - name: Verify cross-repository GitHub read token")
+                next_step = content.find("\n      - ", start + 8)
+                step = content[start:] if next_step < 0 else content[start:next_step]
+                self.assertIn("\n        shell: bash\n", step)
+                self.assertLess(step.index("shell: bash"), step.index("run: |"))
+                if path == WORKFLOW:
+                    self.assertLess(
+                        content.index("Verify cross-repository GitHub read token"),
+                        content.index("Set up MSYS2 toolchain (Windows)"),
+                    )
+
     def test_each_matrix_job_verifies_its_actual_host_and_windows_abi(self) -> None:
         self.assertIn("CDIN_EXPECTED_TARGET: ${{ matrix.target }}", self.workflow)
         self.assertIn("Verify native runner target identity", self.workflow)
