@@ -4,31 +4,29 @@ CDIN uses Registry as an independent build-time dependency resolver and artifact
 
 The normative boundary is defined by the [Spec Registry contracts](https://github.com/cdin-editor/spec/blob/main/docs/architecture/registry-contracts.md), [ADR-0025 — Immutable Target Artifact Delivery](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md), [ADR-0028 — GitHub Release Metadata Discovery](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0028-github-release-metadata-discovery.md), and the [module ownership boundaries](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md).
 
-## Current artifact-first and API-authentication status — 2026-11-15
+## Current artifact-first and API-authentication status — 2026-11-16
 
 Use the [dependency and delivery matrix](dependency-matrix.md) for the exact candidate versions, immutable source identities, metadata assets, target packages and acceptance state. This section supersedes the older dated implementation notes below wherever they describe previous package pins or a Registry executable that had not yet been published.
 
 - Kernel/logger SDK 1.2.3, Runtime 1.0.0, Backend 1.2.2, Frontend Core/TUI/GUI-SDL 1.2.2 and SDL3 SDK 3.4.16 have published immutable package identities. Their publication does not by itself complete CDIN product acceptance.
-- Registry stable `v1.0.0` is published with five executables, a same-tag Catalog and descriptor. It is not accepted by a clean consumer: Manifest schema 1.2.0 is required when ADR-0028 discovery provenance is present, while the immutable v1.0.0 executable serializes schema 1.1.0. Registry PR #75 fixes that regression; PR #77 adds authenticated Release discovery. Both are merged on Registry main, but the corrected immutable `v1.0.1` Release has not yet been published.
+- Registry stable `v1.0.1` is published with five executables, a same-tag Catalog and descriptor. It includes the Manifest schema-floor fix and authenticated cross-repository Release discovery. The earlier immutable `v1.0.0` binary remains unchanged and is not used by this consumer.
 - CDIN PR #149 is the active artifact-first candidate. It is not merged and its ten target/profile Product Acceptance jobs must pass on the exact PR head before #121/#122/#124 can be closed.
 - Product integration remains incomplete independently of packaging: live IME/PaneTree E2E, production Unicode shaping and bidirectional text (including Persian/Arabic), real TUI/GUI editing, lifecycle/recovery, performance/soak, security and installed distribution gates remain under CDIN #111/#118.
 
-### Cross-repository GitHub API credential for CI
+### Cross-repository GitHub API credential for Registry runtime discovery
 
-The CDIN workflows discover immutable Releases from several repositories. The automatic GitHub Actions `GITHUB_TOKEN` is intentionally limited to the repository running the workflow and must not be used as the credential for the Kernel, Runtime, Backend, Frontend or Registry APIs.
+The Registry executable resolves component `release_sources` across several repositories and therefore needs a dedicated read credential for its runtime GitHub Release discovery. The automatic GitHub Actions `GITHUB_TOKEN` is scoped to the repository running the workflow and must not be repurposed for those cross-repository reads. In contrast, the Python bootstrap that acquires the pinned Kernel SDK and Registry executable downloads public Release assets directly and makes no GitHub REST API requests.
 
 Configure an Actions secret named `CDIN_GITHUB_READ_TOKEN` as a fine-grained personal access token or GitHub App installation token with **Contents: read only** for the selected repositories:
 
-- `cdin-editor/cdin`
-- `cdin-editor/kernel`
 - `cdin-editor/runtime`
 - `cdin-editor/backend`
 - `cdin-editor/frontend`
 - `cdin-editor/registry`
 
-The CI and Product Acceptance workflows expose this secret as `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN`. `GH_TOKEN` remains available for ordinary GitHub CLI operations that act on the CDIN repository and must not be repurposed as the cross-repository read credential. Do not grant write permissions. The value is used only for GitHub API Release/tag discovery, is never printed, and is not embedded in artifacts or distributed with CDIN. The application bootstrap still verifies exact tag commits, API asset digest/size, archive contents and package identities; authentication does not replace those checks.
+The CI and Product Acceptance workflows expose this secret to the Registry CLI as `REGISTRY_GITHUB_API_TOKEN`. Do not grant write permissions. The token is used only for Registry's component Release discovery; it is never printed, embedded in artifacts or distributed with CDIN. Kernel and Registry executable bootstraps do not receive or use this credential: they fetch public browser-download URLs and verify lock-pinned/descriptor-pinned bytes locally. `GH_TOKEN` remains available for ordinary GitHub CLI operations and must not be substituted for the Registry cross-repository read credential.
 
-For hosted CI, sanitizer and Product Acceptance, configure `CDIN_GITHUB_READ_TOKEN`; the workflow preflight fails when it is missing because parallel anonymous discovery has exhausted GitHub's unauthenticated rate limit. For a local one-off developer run, set `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN` (or `GH_TOKEN`) to a credential with the same read scope; anonymous public API access can also work but remains subject to the lower unauthenticated rate limit. The SDK bootstrap and Registry client use the dedicated variables first and ignore the automatic Actions `GITHUB_TOKEN` when running in CI. The SDK bootstrap also accepts `CDIN_GITHUB_API_TOKEN`; Registry accepts `REGISTRY_GITHUB_API_TOKEN`. A local-shell `GITHUB_TOKEN` fallback remains available outside GitHub Actions. The Actions-provided repository token is deliberately ignored by these cross-repository readers.
+For hosted CI and Product Acceptance, configure the Actions secret `CDIN_GITHUB_READ_TOKEN`; the workflow maps it only to `REGISTRY_GITHUB_API_TOKEN` for Registry's component-release discovery. A local Registry CLI run may set `REGISTRY_GITHUB_API_TOKEN` (or the documented local `GH_TOKEN`/`GITHUB_TOKEN` fallback) with read access to the component repositories. The Kernel SDK bootstrap and the Registry executable bootstrap need no API token and do not make GitHub REST calls.
 
 ## Ownership
 
@@ -56,7 +54,7 @@ Canonical asset names:
 - Default variant: `<component-id>-<version>.json`.
 - Non-default variant: `<component-id>-<variant>-<version>.json`, for example `frontend-tui-1.1.1.json`.
 
-The metadata's `publication` object binds the exact repository URI, release tag, full tag-resolved commit and metadata asset basename. GitHub Release Asset API size/digest identify the metadata bytes themselves. Package descriptors separately bind immutable artifact URI, target, format, layout, source/toolchain provenance, SHA-256 and exact byte size.
+The metadata's `publication` object binds the exact repository URI, release tag, full tag-resolved commit and metadata asset basename. Registry's runtime discovery verifies the metadata asset's digest/size and publication identity before resolving the component. Package descriptors separately bind immutable artifact URI, target, format, layout, source/toolchain provenance, SHA-256 and exact byte size.
 
 Registry validates those publication identities before a candidate reaches the normal SemVer/dependency/contract resolver. A moved tag, missing/duplicate asset, missing digest, size/digest mismatch, invalid source revision, malformed metadata, ambiguous release identity or exhausted pagination/retry budget is a hard failure. A corrupted discovered release must not silently fall back to a source build. Resolved Manifests preserve the exact release/asset identity so replay does not discover a newer version.
 
@@ -79,11 +77,11 @@ The bootstrap selects one of the five supported executable targets:
 | `darwin-arm64` | `registry-darwin-arm64` |
 | `windows-amd64` | `registry-windows-amd64.exe` (MSYS2 UCRT64) |
 
-It then verifies the exact GitHub Release tag and its resolved commit (including annotated tags), the prerelease flag, the lock-pinned descriptor bytes, the five-target descriptor inventory, GitHub's asset digests/sizes, the Catalog identity/schema/digest/size, and the selected executable's actual ELF/Mach-O/PE architecture. The Catalog and Registry executable therefore come from one pinned Registry release identity.
+It downloads the descriptor directly from the pinned public Release URL and verifies its lock-pinned SHA-256 and exact size. The descriptor must bind the repository, version, tag and full source commit from `deps.lock`, and must list exactly five target binaries with their digests and sizes. The bootstrap downloads the Catalog and selected executable from the same public Release URL, verifies their bytes against the descriptor, and inspects the executable's ELF/Mach-O/PE architecture. No Release or Git-ref REST API lookup is needed.
 
 The cache key binds the Registry version, target, and descriptor digest. Every cache hit is re-verified. Offline use is allowed only for a previously verified cache of the exact same pin and target. Corrupt or incomplete cache content is never executed or reused. The normal bootstrap does not clone the Registry source repository, install Go, run Registry Go tests or compile Registry on the consumer machine.
 
-**Historical state (superseded 2026-11-15):** The old `v0.1.0-dev`/`0.2.0-dev.1` warning below predates the immutable Registry `v1.0.0` Release. The current blocker is the schema/authentication defect in that immutable `v1.0.0` consumer and the absence of the corrected immutable `v1.0.1` Release. See the current artifact-first status and dependency matrix above; do not substitute `latest` or an unpublished source commit.
+**Historical state (superseded 2026-11-16):** The old `v0.1.0-dev`/`0.2.0-dev.1` warning below predates the stable Registry `v1.0.1` Release. The separate `v1.0.0` schema-floor defect was fixed in `v1.0.1`. Current consumer status and exact pins are documented above; do not substitute `latest` or an unpublished source commit.
 
 ## Developer source mode
 
@@ -100,7 +98,7 @@ The current PR #149 candidate pins the published Kernel 1.2.3 plus logger 0.1.0 
 
 The PR #149 candidate consumes the published Runtime 1.0.0 Lua module package and Frontend Core/TUI/GUI-SDL 1.2.2 artifacts. The five-target SDL3 SDK 3.4.16 Release is also published and pinned for the GUI-SDL profile. TUI remains SDL-free. Clean-prefix consumption, target compatibility, and real installed-product interaction tests remain mandatory; package publication alone does not complete #122 or #124.
 
-Registry `v1.0.0` and its same-tag Catalog/descriptor are published and pinned in the PR #149 candidate, but the binary fails the current Manifest schema floor when ADR-0028 provenance is serialized. Registry #75/#77 fixes are on Registry `main`; the immutable `v1.0.1` release remains required before the normal consumer pin can advance. CDIN #122 still requires clean target-specific installation, secure extraction, cache/offline replay and a Composition-Root-only build.
+Registry `v1.0.1` and its same-tag Catalog/descriptor are published and pinned in the PR #149 candidate. The ordinary consumer bootstrap validates the lock-pinned descriptor, Catalog and selected target executable from public Release URLs. CDIN #122 still requires clean target-specific installation, secure extraction, cache/offline replay and a Composition-Root-only build.
 
 ## Product profiles
 
@@ -138,7 +136,7 @@ The resolved Registry Manifest is authoritative for selected component versions 
 
 ## Verification and current product readiness
 
-The Registry artifact bootstrap has isolated tests for target selection, annotated tag resolution, release/descriptor identity, Catalog pairing, executable architecture, cache corruption and offline reuse. The full Registry executable tests remain in the Registry repository's own release workflow; ordinary consumer installation does not run them.
+The Registry artifact bootstrap has isolated tests for target selection, canonical public Release URLs, descriptor/source identity, Catalog pairing, executable architecture, cache corruption and offline reuse. The full Registry executable tests remain in the Registry repository's own release workflow; ordinary consumer installation does not run them.
 
 A valid Registry resolution is not proof that CDIN is integrated or usable. CDIN still needs to:
 
