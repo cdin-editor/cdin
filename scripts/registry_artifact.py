@@ -107,11 +107,19 @@ class GitHubReleaseClient:
 
     def download(self, url: str, *, maximum: int) -> bytes:
         parsed = urllib.parse.urlparse(url)
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise RegistryBootstrapError("Registry asset URL has an invalid port") from error
         if (
             parsed.scheme != "https"
             or parsed.hostname != "github.com"
+            or port not in (None, 443)
             or parsed.username is not None
             or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.startswith("/cdin-editor/registry/releases/download/")
         ):
             raise RegistryBootstrapError(f"untrusted Registry asset URL: {url!r}")
         request = urllib.request.Request(
