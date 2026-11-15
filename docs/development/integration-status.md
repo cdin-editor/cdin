@@ -1,3 +1,42 @@
+# Live audit correction — 2026-11-15 (Registry PR #78 merged; CDIN credential preflight)
+
+**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes the previous dated snapshot below wherever it lists Registry PR #78 as open, reports CDIN PR #149 workflows as queued, or identifies the older Registry main commit as current.
+
+## Verified repository state
+
+| Area | Current immutable identity | Verified status |
+|---|---|---|
+| Spec | Stable release `v1.4.0`; current main `274f84f0ca08378db9c4a5cf6820065256f31d5a` | ADR-0028 is accepted; keep stable Spec release and newer main source identities distinct. |
+| Kernel | `v1.2.3`, commit `2fb09f52dc1a9963cf358ec54d584c520e174e67` | Published five-target SDK; ABI `1.1.0`. |
+| Runtime | `v1.0.0`, commit `eb48a511ea6d5085db38e501784290d80cb03947` | Published platform-neutral Lua module package; downstream acceptance remains open. |
+| Backend | `v1.2.2`, commit `5d6371e8ca9ce1ee236d961181c259b3dfe72158` on current main; published release commit is recorded in the dependency matrix | Published target packages; Backend #35 retains downstream acceptance. |
+| Frontend | `v1.2.2`, commit `b28b8e80b48483c04a33c64832bafcd9da062897` on current main; the release tag/metadata identity remains separately pinned | Core/TUI/GUI-SDL variants are published; product rendering and clean-consumer gates remain open. |
+| Registry | Current main `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`; `CHANGELOG.md` contains `1.0.1` | PR #78 is merged. Exact-main CI, native Workspace (Linux/Windows/macOS), Code Quality, Docs/YAML and Security all pass. Immutable `v1.0.1` tag/Release is not yet published. |
+| SDL3 SDK | `3.4.16`, tag commit `d249122c51acbab7262a6cd1e675922fd043bac7` | Immutable five-target SDK published. |
+| CDIN | Main `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`; CMake project version `0.2.0` | No product `v1.0.0` tag or stable application release. |
+
+## Existing active PR and exact-head CI
+
+CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; do not open a duplicate PR. Its exact head is `09ac62b7e0428de5bb7c3741512ed653befd7b3e`. Registry PR [#78](https://github.com/cdin-editor/registry/pull/78) is merged into Registry main; the latest Registry PR merge commit is also the current main SHA above.
+
+- CDIN [CI run 43652599396](https://github.com/cdin-editor/cdin/actions/runs/43652599396) completed with failure. All matrix jobs stopped at the explicit cross-repository credential preflight before compiler/toolchain setup.
+- CDIN [Product Acceptance run 43652599460](https://github.com/cdin-editor/cdin/actions/runs/43652599460) completed with failure at the same preflight; no installed-product acceptance result was produced.
+- The failure is specifically missing Actions secret `CDIN_GITHUB_READ_TOKEN`: the job log shows empty `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN`. Example: [job log 132624141670](https://github.com/cdin-editor/cdin/actions/runs/43652599396/job/132624141670).
+- CDIN [SDL3 SDK run 43652599390](https://github.com/cdin-editor/cdin/actions/runs/43652599390) passed all five target jobs.
+
+The required secret must be a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the dedicated API-token variables; same-repository `GH_TOKEN` remains separate. The connected GitHub integration cannot provision repository Actions secrets; an owner/admin must add it before exact-head CI and the ten installed-product target/profile jobs can pass.
+
+## Immediate dependency order
+
+1. Publish immutable Registry `v1.0.1` from exact Registry main commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, after the already-green exact-main checks. The existing immutable `v1.0.0` release must not be rewritten. Generate/publish its five executables, same-tag Catalog, descriptor and checksums through the Registry release workflow; only then copy real API-reported descriptor and executable asset identities into CDIN `deps.lock`.
+2. Keep the Registry consumer pin on published `v1.0.0` until `v1.0.1` release assets exist. The developer-only source pin in PR #149 is now aligned to the exact merged Registry main source commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`; its lock assertion is updated in the same PR.
+3. Configure `CDIN_GITHUB_READ_TOKEN` with the read-only scope above; rerun CI and all ten Product Acceptance target/profile jobs on the latest PR #149 head.
+4. Continue CDIN #118 live IME/PaneTree E2E, production Unicode shaping/bidi and Persian/Arabic acceptance, supported TUI/GUI interaction, extension lifecycle, disconnect/recovery, resource/performance soak, secure installation/upgrade/uninstall and real runnable distribution gates.
+
+Do not merge PR #149, close CDIN #111/#118/#121/#122/#124, or publish CDIN `v1.0.0` from preflight-skipped checks. Published component artifacts, a green SDK matrix or an accepted Spec contract do not establish integrated PRODUCT READY status.
+
+---
+
 ## Current integration update — 2026-11-15 (artifact-first and cross-repository API authentication)
 
 **Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This top section is the current status snapshot. The dated 2026-11-14 and earlier sections below are historical evidence and must not be read as the latest PR head, credential design or CI state.
