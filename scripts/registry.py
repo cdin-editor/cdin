@@ -206,9 +206,13 @@ def detect_target_tuple(
                 f"unsupported Linux C runtime {libc_name!r}; CDIN artifacts require glibc >= 2.39"
             )
         match = re.match(r"^(\d+)\.(\d+)", libc_version)
-        if not match or tuple(map(int, match.groups())) < (2, 39):
+        if not match:
+            raise RuntimeError(f"cannot determine Linux glibc version: {libc_version or 'unknown'}")
+        detected_glibc = tuple(map(int, match.groups()))
+        if detected_glibc != (2, 39):
             raise RuntimeError(
-                f"Linux glibc {libc_version or 'unknown'} is older than the supported 2.39 baseline"
+                f"CDIN Linux distributions must be built against the pinned glibc 2.39 baseline; "
+                f"this host provides {libc_version or 'unknown'}. Use an Ubuntu 24.04 build runner."
             )
         return {"os": "linux", "architecture": architecture, "abi": "gnu-glibc-2.39"}
 
