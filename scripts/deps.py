@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import tomllib
 import unicodedata
 import urllib.error
@@ -117,7 +118,7 @@ def github_api_token_from_environment() -> str:
 
 
 def fetch_github_json(url: str) -> dict:
-    """Fetch bounded JSON from the exact public GitHub API host."""
+    """Fetch bounded JSON from the exact GitHub API host with bounded rate-limit retries."""
     parsed = urllib.parse.urlsplit(url)
     try:
         port = parsed.port
@@ -149,46 +150,84 @@ def fetch_github_json(url: str) -> dict:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)
     opener = urllib.request.build_opener(_GitHubAPIRedirectHandler())
-    try:
-        with opener.open(request, timeout=30) as response:
-            final_url = urllib.parse.urlsplit(response.geturl())
-            if (
-                response.status != 200
-                or final_url.scheme != "https"
-                or final_url.hostname != "api.github.com"
-                or final_url.port not in (None, 443)
-                or final_url.username is not None
-                or final_url.password is not None
-                or final_url.query
-                or final_url.fragment
-            ):
-                raise SDKBootstrapError("Kernel SDK GitHub API response came from an untrusted origin")
-            data = response.read(2 * 1024 * 1024 + 1)
-    except urllib.error.HTTPError as error:
-        # GitHub's bare HTTPError string omits the JSON message and the
-        # permission hint that explain most 401/403 failures. Surface only
-        # GitHub's response message and accepted-permission header; never
-        # include request headers or the credential itself.
+
+    for attempt in range(5):
         try:
-            payload = json.loads(error.read(64 * 1024).decode("utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            payload = {}
-        message = payload.get("message") if isinstance(payload, dict) else None
-        accepted = error.headers.get("X-Accepted-GitHub-Permissions", "")
-        details = []
-        if isinstance(message, str) and message:
-            details.append(message)
-        if accepted:
-            details.append(f"accepted permissions: {accepted}")
-        suffix = "; ".join(details) if details else error.reason
-        raise SDKBootstrapError(
-            f"GitHub API rejected Kernel SDK Release identity request "
-            f"(HTTP {error.code}): {suffix}"
-        ) from error
-    except (OSError, urllib.error.URLError) as error:
-        raise SDKBootstrapError(
-            f"cannot verify immutable Kernel SDK Release identity: {error}"
-        ) from error
+            with opener.open(request, timeout=30) as response:
+                final_url = urllib.parse.urlsplit(response.geturl())
+                if (
+                    response.status != 200
+                    or final_url.scheme != "https"
+                    or final_url.hostname != "api.github.com"
+                    or final_url.port not in (None, 443)
+                    or final_url.username is not None
+                    or final_url.password is not None
+                    or final_url.query
+                    or final_url.fragment
+                ):
+                    raise SDKBootstrapError("Kernel SDK GitHub API response came from an untrusted origin")
+                data = response.read(2 * 1024 * 1024 + 1)
+            break
+        except urllib.error.HTTPError as error:
+            # GitHub returns 403 for both permission denials and secondary
+            # rate limits. Preserve the distinction and retry only when its
+            # message/headers identify a throttling response.
+            try:
+                payload = json.loads(error.read(64 * 1024).decode("utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            message = payload.get("message") if isinstance(payload, dict) else None
+            message = message if isinstance(message, str) else ""
+            retry_after_header = error.headers.get("Retry-After", "")
+            remaining = error.headers.get("X-RateLimit-Remaining", "")
+            reset = error.headers.get("X-RateLimit-Reset", "")
+            lower_message = message.lower()
+            rate_limited = (
+                error.code == 429
+                or (error.code == 403 and (
+                    "rate limit" in lower_message
+                    or bool(retry_after_header)
+                    or remaining == "0"
+                ))
+            )
+            delay: float | None = None
+            if rate_limited:
+                try:
+                    delay = max(0.0, float(retry_after_header)) if retry_after_header else None
+                except ValueError:
+                    delay = None
+                if delay is None and remaining == "0":
+                    try:
+                        delay = max(0.0, float(reset) - time.time()) if reset else None
+                    except ValueError:
+                        delay = None
+                if delay is None:
+                    delay = min(2.0 ** (attempt + 1), 30.0)
+
+            if rate_limited and attempt < 4 and delay is not None and delay <= 120:
+                time.sleep(delay)
+                continue
+
+            accepted = error.headers.get("X-Accepted-GitHub-Permissions", "")
+            details = []
+            if message:
+                details.append(message)
+            if accepted:
+                details.append(f"accepted permissions: {accepted}")
+            if rate_limited:
+                details.append("GitHub rate limit retry budget exhausted")
+            suffix = "; ".join(details) if details else error.reason
+            raise SDKBootstrapError(
+                f"GitHub API rejected Kernel SDK Release identity request "
+                f"(HTTP {error.code}): {suffix}"
+            ) from error
+        except (OSError, urllib.error.URLError) as error:
+            raise SDKBootstrapError(
+                f"cannot verify immutable Kernel SDK Release identity: {error}"
+            ) from error
+    else:
+        raise SDKBootstrapError("GitHub API retry loop ended without a response")
+
     if len(data) > 2 * 1024 * 1024:
         raise SDKBootstrapError("Kernel SDK GitHub API response exceeds 2 MiB")
     try:
