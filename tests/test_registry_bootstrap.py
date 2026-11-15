@@ -30,13 +30,12 @@ FRONTEND_PACKAGE_FILES = _REGISTRY_E2E["FRONTEND_PACKAGE_FILES"]
 from scripts.deps import (
     CACHE as SDK_CACHE,
     SDKBootstrapError,
-    _GitHubAPIRedirectHandler,
     install_sdk_atomically,
     parse_kernel_abi,
     parse_build_info,
     download_asset,
-    fetch_github_json,
-    verify_release_asset_identity,
+    release_asset_download_url,
+    verify_locked_asset_identity,
     load_pin,
 )
 from scripts.registry import (
@@ -56,30 +55,7 @@ import scripts.smoke_support as smoke_support
 
 
 
-class KernelSDKAPIRedirectTests(unittest.TestCase):
-    def test_rejects_release_identity_api_redirect_to_another_host(self) -> None:
-        handler = _GitHubAPIRedirectHandler()
-        request = urllib.request.Request(
-            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        )
-        with self.assertRaisesRegex(SDKBootstrapError, "left the trusted API origin"):
-            handler.redirect_request(
-                request, None, 302, "Found", {}, "https://example.invalid/redirect"
-            )
-
-    def test_rejects_malformed_api_redirect_port(self) -> None:
-        handler = _GitHubAPIRedirectHandler()
-        request = urllib.request.Request(
-            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        )
-        with self.assertRaisesRegex(SDKBootstrapError, "invalid port"):
-            handler.redirect_request(
-                request, None, 302, "Found", {}, "https://api.github.com:not-a-port/redirect"
-            )
-
-
 class KernelSDKReleasePinTests(unittest.TestCase):
-
     def test_repository_lock_pins_the_published_kernel_123_release_assets(self) -> None:
         pin = load_pin()
         self.assertEqual(pin["repository"], "https://github.com/cdin-editor/kernel")
@@ -103,184 +79,34 @@ class KernelSDKReleasePinTests(unittest.TestCase):
                 self.assertEqual(asset["size_bytes"], size)
                 self.assertEqual(asset["sha256"], digest)
                 self.assertEqual(asset["format"], "zip" if target.startswith("windows-") else "tar.gz")
+                verify_locked_asset_identity(pin, asset)
 
-    def test_github_api_retries_secondary_rate_limit_responses(self) -> None:
-        url = "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        error = urllib.error.HTTPError(
-            url,
-            403,
-            "Forbidden",
-            {"Retry-After": "0"},
-            io.BytesIO(b'{"message":"You have exceeded a secondary rate limit."}'),
+    def test_builds_canonical_public_release_download_url(self) -> None:
+        pin = load_pin()
+        asset = pin["assets"]["linux-x86_64"]
+        self.assertEqual(
+            release_asset_download_url(pin, asset),
+            "https://github.com/cdin-editor/kernel/releases/download/"
+            "v1.2.3/cdin-kernel-1.2.3-linux-x86_64.tar.gz",
         )
 
-        class FakeResponse:
-            status = 200
+    def test_rejects_untrusted_repository_and_asset_paths(self) -> None:
+        pin = load_pin()
+        asset = dict(pin["assets"]["linux-x86_64"])
+        bad_pin = dict(pin, repository="https://example.invalid/kernel")
+        with self.assertRaisesRegex(SDKBootstrapError, "repository pin is invalid"):
+            verify_locked_asset_identity(bad_pin, asset)
 
-            def __enter__(self):
-                return self
+        bad_asset = dict(asset, file_name="../cdin-kernel-1.2.3-linux-x86_64.tar.gz")
+        with self.assertRaisesRegex(SDKBootstrapError, "locked asset identity is malformed"):
+            release_asset_download_url(pin, bad_asset)
 
-            def __exit__(self, *_args):
-                return False
-
-            def geturl(self):
-                return url
-
-            def read(self, _limit: int) -> bytes:
-                return b'{"tag_name":"v1.2.1"}'
-
-        class FakeOpener:
-            calls = 0
-
-            def open(self, _request, timeout: int):
-                self.calls += 1
-                if self.calls == 1:
-                    raise error
-                return FakeResponse()
-
-        opener = FakeOpener()
-        with patch.dict(
-            os.environ,
-            {"CDIN_GITHUB_API_TOKEN": "fine-grained-test-token", "GITHUB_ACTIONS": "true"},
-            clear=True,
-        ), patch("scripts.deps.urllib.request.build_opener", return_value=opener), \
-             patch("scripts.deps.time.sleep") as sleep:
-            payload = fetch_github_json(url)
-
-        self.assertEqual(payload["tag_name"], "v1.2.1")
-        self.assertEqual(opener.calls, 2)
-        sleep.assert_called_once_with(0.0)
-
-    def test_github_api_permission_denials_report_github_message_without_token(self) -> None:
-        url = "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        error = urllib.error.HTTPError(
-            url,
-            403,
-            "Forbidden",
-            {"X-Accepted-GitHub-Permissions": "Contents=read"},
-            io.BytesIO(b'{"message":"Resource not accessible by personal access token"}'),
+    def test_bootstrap_has_no_github_rest_api_dependency(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "deps.py").read_text(
+            encoding="utf-8"
         )
-
-        class FakeOpener:
-            def open(self, _request, timeout: int):
-                raise error
-
-        secret = "fine-grained-test-token"
-        with patch.dict(
-            os.environ,
-            {"CDIN_GITHUB_API_TOKEN": secret, "GITHUB_ACTIONS": "true"},
-            clear=True,
-        ), patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
-            with self.assertRaisesRegex(
-                SDKBootstrapError,
-                "Resource not accessible by personal access token",
-            ) as raised:
-                fetch_github_json(url)
-
-        self.assertIn("accepted permissions: Contents=read", str(raised.exception))
-        self.assertNotIn(secret, str(raised.exception))
-
-    def test_github_api_uses_the_workflow_token_when_available(self) -> None:
-        requested = {}
-
-        class FakeResponse:
-            status = 200
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def geturl(self):
-                return "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-
-            def read(self, _limit: int) -> bytes:
-                return b'{"tag_name":"v1.2.1"}'
-
-        class FakeOpener:
-            def open(self, request, timeout: int):
-                requested["authorization"] = request.get_header("Authorization")
-                requested["timeout"] = timeout
-                return FakeResponse()
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-test-token"}, clear=True), \
-             patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
-            payload = fetch_github_json(
-                "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-            )
-
-        self.assertEqual(payload["tag_name"], "v1.2.1")
-        self.assertEqual(requested["authorization"], "Bearer ghs-test-token")
-        self.assertEqual(requested["timeout"], 30)
-
-
-    revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
-    tag_object = "a" * 40
-    asset = {
-        "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
-        "size_bytes": 268126,
-        "sha256": "05779c5a23a24b3a5cb4e978d803f8e4bd81c73dbf5ba2b47e36b34ed0ddda21",
-    }
-
-    def setUp(self) -> None:
-        self.pin = {
-            "repository": "https://github.com/cdin-editor/kernel",
-            "tag": "v1.2.1",
-            "version": "1.2.1",
-            "revision": self.revision,
-        }
-
-    def _api_responses(self, *, commit: str | None = None, digest: str | None = None):
-        commit = commit or self.revision
-        digest = digest or self.asset["sha256"]
-        release = {
-            "tag_name": "v1.2.1",
-            "draft": False,
-            "prerelease": False,
-            "assets": [{
-                "name": self.asset["file_name"],
-                "size": self.asset["size_bytes"],
-                "digest": "sha256:" + digest,
-            }],
-        }
-
-        def fetch(url: str) -> dict:
-            if url.endswith("/releases/tags/v1.2.1"):
-                return release
-            if url.endswith("/git/ref/tags/v1.2.1"):
-                return {"object": {"type": "tag", "sha": self.tag_object}}
-            if url.endswith("/git/tags/" + self.tag_object):
-                return {
-                    "sha": self.tag_object,
-                    "object": {"type": "commit", "sha": commit},
-                }
-            raise AssertionError(f"unexpected GitHub API URL: {url}")
-
-        return fetch
-
-    def test_verifies_annotated_tag_commit_and_github_asset_digest_size(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(),
-        ):
-            verify_release_asset_identity(self.pin, self.asset)
-
-    def test_rejects_tag_resolving_to_a_different_source_commit(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(commit="0" * 40),
-        ):
-            with self.assertRaisesRegex(SDKBootstrapError, "tag moved or mismatched"):
-                verify_release_asset_identity(self.pin, self.asset)
-
-    def test_rejects_github_asset_digest_that_differs_from_lock(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(digest="0" * 64),
-        ):
-            with self.assertRaisesRegex(SDKBootstrapError, "digest differs from deps.lock"):
-                verify_release_asset_identity(self.pin, self.asset)
+        self.assertNotIn("api.github.com", source)
+        self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
 
 
 class RegistrySourceBuildMetadataTests(unittest.TestCase):
@@ -1123,8 +949,8 @@ class KernelSDKCacheTests(unittest.TestCase):
             patch("scripts.deps.CACHE", self.cache),
             patch.dict(os.environ, {}, clear=True),
             patch(
-                "scripts.deps.verify_release_asset_identity",
-                side_effect=AssertionError("consumer install must not query GitHub's Releases API"),
+                "scripts.deps.urllib.request.build_opener",
+                side_effect=AssertionError("consumer install must not query the GitHub REST API"),
             ),
         ):
             result = download_asset(self.pin, self.asset)
@@ -1138,8 +964,8 @@ class KernelSDKCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache reuse must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache reuse must not access the network"),
              ):
             result = download_asset(self.pin, self.asset)
         self.assertEqual(result, cached)
@@ -1149,8 +975,8 @@ class KernelSDKCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "true"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache miss must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache miss must not access the network"),
              ):
             with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK installation requires"):
                 download_asset(self.pin, self.asset)
@@ -1162,8 +988,8 @@ class KernelSDKCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache verification must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache verification must not access the network"),
              ):
             with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK cache entry"):
                 download_asset(self.pin, self.asset)
