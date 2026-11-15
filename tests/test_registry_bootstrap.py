@@ -2,14 +2,11 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 import runpy
 import tempfile
 import unittest
-import urllib.error
-import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
