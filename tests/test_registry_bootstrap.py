@@ -347,8 +347,8 @@ class RegistryMakeTargetTests(unittest.TestCase):
 
 
 
-class RegistryPinSeparationTests(unittest.TestCase):
-    def test_consumer_release_and_developer_source_pins_are_separate(self) -> None:
+class RegistryPinAlignmentTests(unittest.TestCase):
+    def test_consumer_release_and_developer_source_pins_share_the_v101_commit(self) -> None:
         from scripts.registry import registry_pin
 
         lock = Path(__file__).resolve().parents[1] / "deps.lock"
@@ -359,27 +359,25 @@ class RegistryPinSeparationTests(unittest.TestCase):
         development = consumer["development"]
 
         expected_repository = "https://github.com/cdin-editor/registry.git"
-        expected_revision = "c5b6900319cebe22f2d035a6c3b23a32f06a48b5"
-        self.assertEqual(consumer["release_tag"], "v1.0.0")
-        self.assertEqual(consumer["version"], "1.0.0")
+        expected_revision = "ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27"
+        self.assertEqual(consumer["release_tag"], "v1.0.1")
+        self.assertEqual(consumer["version"], "1.0.1")
         self.assertEqual(consumer["revision"], expected_revision)
         self.assertEqual(consumer["release_descriptor_size"], 1633)
         self.assertEqual(
             consumer["release_descriptor_sha256"],
-            "b47030a2f6ebba6a3ccfe88ca28437111f1e71b0c0ae5e8fbcb6a6eeaf78e495",
+            "c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403",
         )
         self.assertEqual(registry_pin(), (expected_repository, expected_revision))
 
-        development_revision = "ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27"
         self.assertEqual(development["version"], "1.0.1")
-        self.assertEqual(development["revision"], development_revision)
-        self.assertEqual(registry_pin(development=True), (expected_repository, development_revision))
+        self.assertEqual(development["revision"], expected_revision)
+        self.assertEqual(registry_pin(development=True), (expected_repository, expected_revision))
 
-        # The consumer stays on the last published binary Release until
-        # Registry v1.0.1 is actually tagged and its descriptor is available.
-        # Developer CI may use the already-merged patch commit directly, but
-        # that source identity must never masquerade as a published Release.
-        self.assertNotEqual(consumer["revision"], development["revision"])
+        # Consumer artifact delivery and explicit developer source delivery
+        # identify the same immutable Registry release commit, while only the
+        # consumer pin carries the published Release descriptor identity.
+        self.assertEqual(consumer["revision"], development["revision"])
         self.assertNotIn("release_tag", development)
         self.assertNotIn("release_descriptor_sha256", development)
         self.assertNotIn("release_descriptor_size", development)
