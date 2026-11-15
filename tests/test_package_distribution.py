@@ -11,6 +11,7 @@ import tomllib
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -27,11 +28,9 @@ from package_distribution import (  # noqa: E402
 def host_target() -> dict[str, str]:
     os_name, architecture = detect_host()
     if os_name == "linux":
-        libc, version = platform.libc_ver()
-        if libc.lower() not in {"glibc", "gnu libc"} or not version:
-            raise RuntimeError(f"tests require a glibc host, got {libc}/{version}")
-        major, minor = version.split(".")[:2]
-        abi = f"gnu-glibc-{major}.{minor}"
+        # The distribution contract is deliberately pinned, not inferred from
+        # whichever newer glibc happens to be installed on the test runner.
+        abi = "gnu-glibc-2.39"
     elif os_name == "darwin":
         major = platform.mac_ver()[0].split(".")[0]
         abi = f"macos-{major}"
@@ -69,12 +68,23 @@ class InstalledDistributionTests(unittest.TestCase):
             self.executable.chmod(0o755)
         self.workspace.mkdir()
         self.target = host_target()
+        self.glibc_patcher = None
+        if self.target["os"] == "linux":
+            # Make the packaging fixtures deterministic on hosts whose system
+            # glibc is newer than the published Linux ABI baseline.
+            self.glibc_patcher = patch(
+                "package_distribution.platform.libc_ver",
+                return_value=("glibc", "2.39"),
+            )
+            self.glibc_patcher.start()
         if self.target["os"] == "windows":
             os.environ["MSYSTEM"] = "UCRT64"
         self.write_manifest("tui")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+        if self.glibc_patcher is not None:
+            self.glibc_patcher.stop()
         if self.previous_msystem is None:
             os.environ.pop("MSYSTEM", None)
         else:
@@ -195,6 +205,16 @@ class InstalledDistributionTests(unittest.TestCase):
         self.package(run_smoke=False)
         with self.assertRaisesRegex(DistributionError, "refusing to overwrite"):
             self.package(run_smoke=False)
+
+    def test_rejects_a_builder_with_glibc_newer_than_the_package_baseline(self) -> None:
+        if self.target["os"] != "linux":
+            self.skipTest("Linux glibc baseline applies only to Linux distributions")
+        with patch(
+            "package_distribution.platform.libc_ver",
+            return_value=("glibc", "2.43"),
+        ):
+            with self.assertRaisesRegex(DistributionError, "newer than package baseline"):
+                self.package(run_smoke=False)
 
     def test_rejects_a_registry_target_for_another_architecture(self) -> None:
         manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))
