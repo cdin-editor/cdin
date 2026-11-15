@@ -616,13 +616,19 @@ class RegistryTargetDetectionTests(unittest.TestCase):
         )
         self.assertEqual(
             detect_target_tuple(
-                system="Linux", machine="aarch64", libc=("glibc", "2.40")
+                system="Linux", machine="aarch64", libc=("glibc", "2.39")
             ),
             {"os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"},
         )
 
-    def test_rejects_old_or_non_gnu_linux_runtime(self) -> None:
-        for libc in (("glibc", "2.38"), ("musl", "1.2.5"), ("", "")):
+    def test_rejects_non_baseline_or_non_gnu_linux_runtime(self) -> None:
+        for libc in (
+            ("glibc", "2.38"),
+            ("glibc", "2.40"),
+            ("glibc", "2.43"),
+            ("musl", "1.2.5"),
+            ("", ""),
+        ):
             with self.subTest(libc=libc):
                 with self.assertRaises(RuntimeError):
                     detect_target_tuple(system="Linux", machine="x86_64", libc=libc)
