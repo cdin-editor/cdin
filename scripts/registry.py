@@ -410,6 +410,28 @@ def verify_workspace(
 
 
 
+def registry_prepare_command(
+    binary: Path,
+    product: Path,
+    catalog: Path,
+    workspace: Path,
+    *,
+    cache_dir: Path | None = None,
+) -> list[str]:
+    """Build one cached Registry prepare invocation for a product workspace."""
+    cache_root = REGISTRY_CACHE if cache_dir is None else cache_dir
+    return [
+        str(binary),
+        "prepare",
+        "--product", str(product),
+        "--catalog", str(catalog),
+        "--allow-host", "raw.githubusercontent.com",
+        "--allow-host", "github.com",
+        "--cache-dir", str(cache_root),
+        "--output", str(workspace),
+    ]
+
+
 def prepare(
     profile: str,
     binary: Path,
@@ -440,14 +462,10 @@ def prepare(
         )
         run([str(binary), "validate", "product-definition", str(product)])
         run([str(binary), "validate", "catalog-index", str(catalog)])
-        common = [
-            "--product", str(product),
-            "--catalog", str(catalog),
-            "--allow-host", "raw.githubusercontent.com",
-            "--allow-host", "github.com",
-        ]
-        run([str(binary), "resolve", *common])
-        run([str(binary), "prepare", *common, "--output", str(workspace)])
+        # Registry prepare performs Catalog loading, resolution and workspace
+        # preparation in one operation. A separate resolve command repeats the
+        # full public GitHub Release scan and doubles API traffic.
+        run(registry_prepare_command(binary, product, catalog, workspace))
         verify_workspace(
             binary,
             profile,
@@ -461,6 +479,7 @@ def prepare(
             "--input", str(manifest_path),
             "--output", str(replay),
             "--allow-host", "github.com",
+            "--cache-dir", str(REGISTRY_CACHE),
         ])
         replay_manifest = replay / "registry-manifest.json"
         run([str(binary), "manifest", "verify", "--input", str(replay_manifest)])
