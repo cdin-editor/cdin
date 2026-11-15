@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import runpy
 import tempfile
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch
@@ -98,6 +100,82 @@ class KernelSDKReleasePinTests(unittest.TestCase):
                 self.assertEqual(asset["size_bytes"], size)
                 self.assertEqual(asset["sha256"], digest)
                 self.assertEqual(asset["format"], "zip" if target.startswith("windows-") else "tar.gz")
+
+    def test_github_api_retries_secondary_rate_limit_responses(self) -> None:
+        url = "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+        error = urllib.error.HTTPError(
+            url,
+            403,
+            "Forbidden",
+            {"Retry-After": "0"},
+            io.BytesIO(b'{"message":"You have exceeded a secondary rate limit."}'),
+        )
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def geturl(self):
+                return url
+
+            def read(self, _limit: int) -> bytes:
+                return b'{"tag_name":"v1.2.1"}'
+
+        class FakeOpener:
+            calls = 0
+
+            def open(self, _request, timeout: int):
+                self.calls += 1
+                if self.calls == 1:
+                    raise error
+                return FakeResponse()
+
+        opener = FakeOpener()
+        with patch.dict(
+            os.environ,
+            {"CDIN_GITHUB_API_TOKEN": "fine-grained-test-token", "GITHUB_ACTIONS": "true"},
+            clear=True,
+        ), patch("scripts.deps.urllib.request.build_opener", return_value=opener), \
+             patch("scripts.deps.time.sleep") as sleep:
+            payload = fetch_github_json(url)
+
+        self.assertEqual(payload["tag_name"], "v1.2.1")
+        self.assertEqual(opener.calls, 2)
+        sleep.assert_called_once_with(0.0)
+
+    def test_github_api_permission_denials_report_github_message_without_token(self) -> None:
+        url = "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
+        error = urllib.error.HTTPError(
+            url,
+            403,
+            "Forbidden",
+            {"X-Accepted-GitHub-Permissions": "Contents=read"},
+            io.BytesIO(b'{"message":"Resource not accessible by personal access token"}'),
+        )
+
+        class FakeOpener:
+            def open(self, _request, timeout: int):
+                raise error
+
+        secret = "fine-grained-test-token"
+        with patch.dict(
+            os.environ,
+            {"CDIN_GITHUB_API_TOKEN": secret, "GITHUB_ACTIONS": "true"},
+            clear=True,
+        ), patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
+            with self.assertRaisesRegex(
+                SDKBootstrapError,
+                "Resource not accessible by personal access token",
+            ) as raised:
+                fetch_github_json(url)
+
+        self.assertIn("accepted permissions: Contents=read", str(raised.exception))
+        self.assertNotIn(secret, str(raised.exception))
 
     def test_github_api_uses_the_workflow_token_when_available(self) -> None:
         requested = {}
