@@ -77,6 +77,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Verify cross-repository GitHub read token
+        shell: bash
         run: |
           if [ -z "${CDIN_GITHUB_API_TOKEN:-}" ] || [ -z "${REGISTRY_GITHUB_API_TOKEN:-}" ]; then
             echo "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix. Configure a fine-grained token with Contents: read for CDIN, Kernel, Runtime, Backend, Frontend and Registry."
