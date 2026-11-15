@@ -17,18 +17,18 @@
 
 ## Existing active PR and exact-head CI
 
-CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `ee1e4920b5e895c0c8afd4a1ee7d705c8f09d8d3`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged and its immutable `v1.0.1` Release is published from exact Registry commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
+CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `e2e70b06f7610db67f9b146f8556d9183dddeadf`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged and its immutable `v1.0.1` Release is published from exact Registry commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
 
-Latest exact-head workflows for PR #149 commit `ee1e4920b5e895c0c8afd4a1ee7d705c8f09d8d3` have been created and are queued:
-- [CI run 43749442629](https://github.com/cdin-editor/cdin/actions/runs/43749442629)
-- [Product Acceptance run 43749442686](https://github.com/cdin-editor/cdin/actions/runs/43749442686)
-- [SDL3 SDK run 43749442681](https://github.com/cdin-editor/cdin/actions/runs/43749442681)
+Latest exact-head workflows for PR #149 commit `e2e70b06f7610db67f9b146f8556d9183dddeadf` have been created and are queued:
+- [CI run 43749610253](https://github.com/cdin-editor/cdin/actions/runs/43749610253)
+- [Product Acceptance run 43749610281](https://github.com/cdin-editor/cdin/actions/runs/43749610281)
+- [SDL3 SDK run 43749610278](https://github.com/cdin-editor/cdin/actions/runs/43749610278)
 
 The read-only `CDIN_GITHUB_READ_TOKEN` is now present in hosted job environments (logs show both dedicated token variables masked as `***`). Earlier Windows CI jobs [132914707178](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707178) and [132914707202](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707202) failed because the token preflight inherited `msys2 {0}` before MSYS2 setup; commit `5abf4b87f2440782a6085862e123bac030915b12` gives that preflight an explicit Bash shell. The new exact-head run must verify the correction.
 
 The original empty-secret preflight failure is resolved. New Product Acceptance logs on the preceding exact head showed both cross-repository token variables present as masked secrets. The present CI gate is waiting for the exact-head workflows above; do not infer success until their native and product jobs finish.
 
-The required secret must be a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the two dedicated API-token variables; same-repository `GH_TOKEN` remains separate. The connected GitHub integration cannot provision repository Actions secrets; an owner/admin must add it, then rerun all current-head workflows.
+The configured `CDIN_GITHUB_READ_TOKEN` is a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the two dedicated API-token variables; same-repository `GH_TOKEN` remains separate. Current hosted job logs show both dedicated variables are populated and masked.
 
 ## Immediate dependency order
 
