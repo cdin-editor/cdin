@@ -164,6 +164,27 @@ def fetch_github_json(url: str) -> dict:
             ):
                 raise SDKBootstrapError("Kernel SDK GitHub API response came from an untrusted origin")
             data = response.read(2 * 1024 * 1024 + 1)
+    except urllib.error.HTTPError as error:
+        # GitHub's bare HTTPError string omits the JSON message and the
+        # permission hint that explain most 401/403 failures. Surface only
+        # GitHub's response message and accepted-permission header; never
+        # include request headers or the credential itself.
+        try:
+            payload = json.loads(error.read(64 * 1024).decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            payload = {}
+        message = payload.get("message") if isinstance(payload, dict) else None
+        accepted = error.headers.get("X-Accepted-GitHub-Permissions", "")
+        details = []
+        if isinstance(message, str) and message:
+            details.append(message)
+        if accepted:
+            details.append(f"accepted permissions: {accepted}")
+        suffix = "; ".join(details) if details else error.reason
+        raise SDKBootstrapError(
+            f"GitHub API rejected Kernel SDK Release identity request "
+            f"(HTTP {error.code}): {suffix}"
+        ) from error
     except (OSError, urllib.error.URLError) as error:
         raise SDKBootstrapError(
             f"cannot verify immutable Kernel SDK Release identity: {error}"
