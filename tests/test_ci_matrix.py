@@ -100,6 +100,10 @@ class NativeProductMatrixTests(unittest.TestCase):
                     "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
+                self.assertRegex(
+                    content,
+                    r"(?m)^      REGISTRY_GITHUB_API_TOKEN: \\${\\{ secrets\\.CDIN_GITHUB_READ_TOKEN \\}\\}$",
+                )
                 self.assertIn("GH_TOKEN: ${{ github.token }}", content)
                 self.assertIn(
                     "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery.",
