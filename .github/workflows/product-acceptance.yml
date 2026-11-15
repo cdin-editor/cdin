@@ -16,6 +16,8 @@ on:
       - "tests/test_ci_matrix.py"
       - "tests/test_package_distribution.py"
       - "tests/test_registry_artifact.py"
+      - "tests/test_registry_bootstrap.py"
+      - "tests/test_deps.py"
   push:
     branches: [main]
   workflow_dispatch:
