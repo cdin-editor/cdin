@@ -100,9 +100,13 @@ class NativeProductMatrixTests(unittest.TestCase):
                     "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
-                self.assertRegex(
+                self.assertIn(
+                    "\n      REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
-                    r"(?m)^      REGISTRY_GITHUB_API_TOKEN: \\${\\{ secrets\\.CDIN_GITHUB_READ_TOKEN \\}\\}$",
+                )
+                self.assertNotIn(
+                    "\n            REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
+                    content,
                 )
                 self.assertIn("GH_TOKEN: ${{ github.token }}", content)
                 self.assertIn(
