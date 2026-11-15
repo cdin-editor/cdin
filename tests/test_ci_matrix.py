@@ -12,7 +12,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 PRODUCT_ACCEPTANCE_WORKFLOW = ROOT / ".github" / "workflows" / "product-acceptance.yml"
 
 EXPECTED_TARGETS = {
-    "linux-x86_64": "ubuntu-latest",
+    "linux-x86_64": "ubuntu-24.04",
     "linux-arm64": "ubuntu-24.04-arm",
     "macos-arm64": "macos-latest",
     "macos-x86_64": "macos-15-intel",
@@ -59,6 +59,16 @@ class NativeProductMatrixTests(unittest.TestCase):
     def test_runner_labels_match_the_declared_architecture(self) -> None:
         for target, runner, _ in self.matrix:
             self.assertEqual(runner, EXPECTED_TARGETS[target], target)
+
+    def test_linux_distribution_builds_use_the_glibc_239_baseline(self) -> None:
+        linux_x86 = {
+            runner for target, runner, _ in self.matrix if target == "linux-x86_64"
+        }
+        self.assertEqual(linux_x86, {"ubuntu-24.04"})
+
+        acceptance = PRODUCT_ACCEPTANCE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("target: linux-x86_64\n            os: ubuntu-24.04", acceptance)
+        self.assertIn("target: linux-arm64\n            os: ubuntu-24.04-arm", acceptance)
 
     def test_each_matrix_job_verifies_its_actual_host_and_windows_abi(self) -> None:
         self.assertIn("CDIN_EXPECTED_TARGET: ${{ matrix.target }}", self.workflow)
