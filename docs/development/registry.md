@@ -130,7 +130,7 @@ make stack-dev
 make check
 ```
 
-On current CDIN `main`, `make registry` continues to use its existing immutable pin. PR #149 carries the updated artifact-first candidate and remains unmerged. The next Registry pin can advance only after the corrected `v1.0.1` Release, Catalog, descriptor, five target executables and checksums have been published and independently verified.
+On current CDIN `main`, `make registry` continues to use its existing immutable pin. CDIN PR #149 now carries the updated artifact-first candidate and pins the published Registry `v1.0.1` Release at tag commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, including the descriptor digest and byte size. The Release contains the five target executables, same-tag Catalog and checksums. PR #149 remains unmerged until exact-head consumer CI verifies the published bytes, cache behavior and Manifest replay on every supported target.
 
 For a GUI-SDL source-development stack, use `make registry-gui-dev` and the explicit SDL3 developer-source opt-in provided by the GUI stack target. Ordinary GUI-SDL consumer installation must use the pinned prebuilt SDK and must not build SDL3 from source.
 
