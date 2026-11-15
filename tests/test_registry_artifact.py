@@ -286,12 +286,12 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
         lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
         pin = lock["tooling"]["registry"]
         revision, version, tag, descriptor_sha, descriptor_size = _validate_pin(pin)
-        self.assertEqual(revision, "c5b6900319cebe22f2d035a6c3b23a32f06a48b5")
-        self.assertEqual(version, "1.0.0")
-        self.assertEqual(tag, "v1.0.0")
+        self.assertEqual(revision, "ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27")
+        self.assertEqual(version, "1.0.1")
+        self.assertEqual(tag, "v1.0.1")
         self.assertEqual(
             descriptor_sha,
-            "b47030a2f6ebba6a3ccfe88ca28437111f1e71b0c0ae5e8fbcb6a6eeaf78e495",
+            "c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403",
         )
         self.assertEqual(descriptor_size, 1633)
 
