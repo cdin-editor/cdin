@@ -40,6 +40,8 @@ from scripts.deps import (
     load_pin,
 )
 from scripts.registry import (
+    REGISTRY_API_CACHE,
+    REGISTRY_CACHE,
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
@@ -307,17 +309,18 @@ class RegistrySourceBuildMetadataTests(unittest.TestCase):
 
 
 class RegistryPrepareCommandTests(unittest.TestCase):
-    def test_prepare_runs_one_resolution_pass_and_uses_a_shared_cache(self) -> None:
+    def test_prepare_runs_one_resolution_pass_and_uses_a_separate_cache(self) -> None:
         command = registry_prepare_command(
             Path("registry"),
             Path("product.yaml"),
             Path("catalog-index.json"),
             Path("workspace"),
-            cache_dir=Path("cache/registry"),
         )
         self.assertEqual(command[:2], ["registry", "prepare"])
         self.assertIn("--cache-dir", command)
-        self.assertEqual(command[command.index("--cache-dir") + 1], "cache/registry")
+        cache_dir = Path(command[command.index("--cache-dir") + 1])
+        self.assertEqual(cache_dir, REGISTRY_API_CACHE)
+        self.assertNotEqual(cache_dir, REGISTRY_CACHE)
         self.assertNotIn("resolve", command)
 
 
