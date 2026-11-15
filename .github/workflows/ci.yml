@@ -67,7 +67,7 @@ jobs:
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
       GH_TOKEN: ${{ github.token }}
-            REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
+      REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -314,7 +314,7 @@ jobs:
       contents: read
     env:
       GH_TOKEN: ${{ github.token }}
-            REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
+      REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
