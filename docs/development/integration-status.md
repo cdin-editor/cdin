@@ -17,14 +17,16 @@
 
 ## Existing active PR and exact-head CI
 
-CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; do not open a duplicate PR. Its exact head is `09ac62b7e0428de5bb7c3741512ed653befd7b3e`. Registry PR [#78](https://github.com/cdin-editor/registry/pull/78) is merged into Registry main; the latest Registry PR merge commit is also the current main SHA above.
+CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existing artifact-first implementation path; no duplicate PR was opened. Its current exact head is `d4c1bd5842933f021260f29475a1919c69f91a3c`. Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is merged into Registry main at `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`.
 
-- CDIN [CI run 43652599396](https://github.com/cdin-editor/cdin/actions/runs/43652599396) completed with failure. All matrix jobs stopped at the explicit cross-repository credential preflight before compiler/toolchain setup.
-- CDIN [Product Acceptance run 43652599460](https://github.com/cdin-editor/cdin/actions/runs/43652599460) completed with failure at the same preflight; no installed-product acceptance result was produced.
-- The failure is specifically missing Actions secret `CDIN_GITHUB_READ_TOKEN`: the job log shows empty `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN`. Example: [job log 132624141670](https://github.com/cdin-editor/cdin/actions/runs/43652599396/job/132624141670).
-- CDIN [SDL3 SDK run 43652599390](https://github.com/cdin-editor/cdin/actions/runs/43652599390) passed all five target jobs.
+Latest observed PR #149 runs on the current head:
+- CDIN [CI run 43676702188](https://github.com/cdin-editor/cdin/actions/runs/43676702188) completed with failure. All 11 matrix/sanitizer jobs failed only at `Verify cross-repository GitHub read token`; no component installation, compilation or product E2E ran.
+- CDIN [Product Acceptance run 43676702187](https://github.com/cdin-editor/cdin/actions/runs/43676702187) completed with failure at the same credential preflight. The ten installed-product jobs did not run.
+- CDIN [SDL3 SDK run 43676702255](https://github.com/cdin-editor/cdin/actions/runs/43676702255) was still in progress at the 2026-11-15 04:28 UTC audit; the previous exact five-target SDL3 run [43652599390](https://github.com/cdin-editor/cdin/actions/runs/43652599390) passed.
 
-The required secret must be a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the dedicated API-token variables; same-repository `GH_TOKEN` remains separate. The connected GitHub integration cannot provision repository Actions secrets; an owner/admin must add it before exact-head CI and the ten installed-product target/profile jobs can pass.
+The preflight's exact error is that the repository Actions secret `CDIN_GITHUB_READ_TOKEN` is absent: both `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN` are empty. The current-head job log is [132698311427](https://github.com/cdin-editor/cdin/actions/runs/43676702188/job/132698311427). This is a credential/configuration blocker, not yet evidence of a failing compiler or product test.
+
+The required secret must be a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the two dedicated API-token variables; same-repository `GH_TOKEN` remains separate. The connected GitHub integration cannot provision repository Actions secrets; an owner/admin must add it, then rerun all current-head workflows.
 
 ## Immediate dependency order
 
