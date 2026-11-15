@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
@@ -20,7 +19,6 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import time
 import tomllib
 import unicodedata
 import urllib.error
@@ -76,260 +74,58 @@ def load_pin() -> dict:
     return pin
 
 
-class _GitHubAPIRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Keep release-identity API requests on the canonical GitHub API host."""
+def verify_locked_asset_identity(pin: dict, asset: dict) -> None:
+    """Validate the public Kernel Release identity already pinned in deps.lock.
 
-    def redirect_request(self, request, fp, code, message, headers, new_url):
-        parsed = urllib.parse.urlsplit(new_url)
-        try:
-            port = parsed.port
-        except ValueError as error:
-            raise SDKBootstrapError("Kernel SDK GitHub API redirect has an invalid port") from error
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname != "api.github.com"
-            or port not in (None, 443)
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise SDKBootstrapError("Kernel SDK GitHub API redirect left the trusted API origin")
-        return super().redirect_request(request, fp, code, message, headers, new_url)
-
-
-def github_api_token_from_environment() -> str:
-    """Return an explicitly provisioned cross-repository token in CI.
-
-    GitHub Actions' automatic GITHUB_TOKEN is scoped to the workflow repository,
-    while this bootstrap reads the Kernel Release from a separate repository.
-    Outside Actions, GITHUB_TOKEN remains a convenient local-shell fallback.
+    The Kernel repository publishes its SDK Release assets publicly. The lock
+    records the immutable source revision and each exact archive's byte count
+    and SHA-256, so consumers do not need a GitHub REST API lookup per runner.
     """
-    token = os.environ.get("CDIN_GITHUB_API_TOKEN", "").strip()
-    if token:
-        return token
-    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
-        return ""
-    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
-        token = os.environ.get(name, "").strip()
-        if token:
-            return token
-    return ""
-
-
-def fetch_github_json(url: str) -> dict:
-    """Fetch bounded JSON from the exact GitHub API host with bounded rate-limit retries."""
-    parsed = urllib.parse.urlsplit(url)
-    try:
-        port = parsed.port
-    except ValueError as error:
-        raise SDKBootstrapError("Kernel SDK release identity API URL has an invalid port") from error
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != "api.github.com"
-        or port not in (None, 443)
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or not parsed.path.startswith("/repos/cdin-editor/kernel/")
-        or parsed.fragment
-    ):
-        raise SDKBootstrapError("Kernel SDK release identity API URL is not trusted")
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "CDIN-SDK-Bootstrap/1",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    # A cross-repository read token is explicit because Actions' automatic
-    # GITHUB_TOKEN cannot read a different repository's private API resources.
-    token = github_api_token_from_environment()
-    if any(character in token for character in "\r\n"):
-        raise SDKBootstrapError("cross-repository GitHub API token contains invalid header characters")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
-    opener = urllib.request.build_opener(_GitHubAPIRedirectHandler())
-
-    for attempt in range(5):
-        try:
-            with opener.open(request, timeout=30) as response:
-                final_url = urllib.parse.urlsplit(response.geturl())
-                if (
-                    response.status != 200
-                    or final_url.scheme != "https"
-                    or final_url.hostname != "api.github.com"
-                    or final_url.port not in (None, 443)
-                    or final_url.username is not None
-                    or final_url.password is not None
-                    or final_url.query
-                    or final_url.fragment
-                ):
-                    raise SDKBootstrapError("Kernel SDK GitHub API response came from an untrusted origin")
-                data = response.read(2 * 1024 * 1024 + 1)
-            break
-        except urllib.error.HTTPError as error:
-            # GitHub returns 403 for both permission denials and secondary
-            # rate limits. Preserve the distinction and retry only when its
-            # message/headers identify a throttling response.
-            try:
-                payload = json.loads(error.read(64 * 1024).decode("utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-                payload = {}
-            message = payload.get("message") if isinstance(payload, dict) else None
-            message = message if isinstance(message, str) else ""
-            retry_after_header = error.headers.get("Retry-After", "")
-            remaining = error.headers.get("X-RateLimit-Remaining", "")
-            reset = error.headers.get("X-RateLimit-Reset", "")
-            lower_message = message.lower()
-            rate_limited = (
-                error.code == 429
-                or (error.code == 403 and (
-                    "rate limit" in lower_message
-                    or bool(retry_after_header)
-                    or remaining == "0"
-                ))
-            )
-            delay: float | None = None
-            if rate_limited:
-                try:
-                    delay = max(0.0, float(retry_after_header)) if retry_after_header else None
-                except ValueError:
-                    delay = None
-                if delay is None and remaining == "0":
-                    try:
-                        delay = max(0.0, float(reset) - time.time()) if reset else None
-                    except ValueError:
-                        delay = None
-                if delay is None:
-                    delay = min(2.0 ** (attempt + 1), 30.0)
-
-            if rate_limited and attempt < 4 and delay is not None and delay <= 120:
-                time.sleep(delay)
-                continue
-
-            accepted = error.headers.get("X-Accepted-GitHub-Permissions", "")
-            details = []
-            if message:
-                details.append(message)
-            if accepted:
-                details.append(f"accepted permissions: {accepted}")
-            if rate_limited:
-                details.append("GitHub rate limit retry budget exhausted")
-            suffix = "; ".join(details) if details else error.reason
-            raise SDKBootstrapError(
-                f"GitHub API rejected Kernel SDK Release identity request "
-                f"(HTTP {error.code}): {suffix}"
-            ) from error
-        except (OSError, urllib.error.URLError) as error:
-            raise SDKBootstrapError(
-                f"cannot verify immutable Kernel SDK Release identity: {error}"
-            ) from error
-    else:
-        raise SDKBootstrapError("GitHub API retry loop ended without a response")
-
-    if len(data) > 2 * 1024 * 1024:
-        raise SDKBootstrapError("Kernel SDK GitHub API response exceeds 2 MiB")
-    try:
-        value = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise SDKBootstrapError("Kernel SDK GitHub API returned invalid JSON") from error
-    if not isinstance(value, dict):
-        raise SDKBootstrapError("Kernel SDK GitHub API response root is not an object")
-    return value
-
-
-def resolve_release_tag_commit(tag: str) -> str:
-    """Resolve lightweight and annotated tags to their immutable commit SHA."""
-    encoded = urllib.parse.quote(tag, safe="")
-    reference = fetch_github_json(
-        f"https://api.github.com/repos/cdin-editor/kernel/git/ref/tags/{encoded}"
-    )
-    obj = reference.get("object")
-    visited: set[str] = set()
-    for _ in range(8):
-        if not isinstance(obj, dict):
-            raise SDKBootstrapError("Kernel SDK Git tag has no Git object")
-        object_type = obj.get("type")
-        object_sha = obj.get("sha")
-        if not isinstance(object_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", object_sha):
-            raise SDKBootstrapError("Kernel SDK Git tag contains an invalid object SHA")
-        if object_sha in visited:
-            raise SDKBootstrapError("Kernel SDK annotated tag contains a cycle")
-        visited.add(object_sha)
-        if object_type == "commit":
-            return object_sha
-        if object_type != "tag":
-            raise SDKBootstrapError("Kernel SDK Git tag resolves to an unsupported object")
-        tag_object = fetch_github_json(
-            f"https://api.github.com/repos/cdin-editor/kernel/git/tags/{object_sha}"
-        )
-        if tag_object.get("sha") != object_sha:
-            raise SDKBootstrapError("Kernel SDK annotated tag object identity mismatch")
-        obj = tag_object.get("object")
-    raise SDKBootstrapError("Kernel SDK annotated tag nesting exceeds the safety limit")
-
-
-def verify_release_asset_identity(pin: dict, asset: dict) -> None:
-    """Bind the download to the exact tag commit and GitHub Release asset."""
+    repository = pin.get("repository")
+    version = pin.get("version")
     tag = pin.get("tag")
     revision = pin.get("revision")
-    repository = pin.get("repository")
-    if (
-        not isinstance(repository, str)
-        or repository.rstrip("/") != "https://github.com/cdin-editor/kernel"
-    ):
+    if repository != "https://github.com/cdin-editor/kernel":
         raise SDKBootstrapError("Kernel SDK repository pin is invalid")
     if (
-        not isinstance(tag, str)
-        or tag != f"v{pin.get('version')}"
+        not isinstance(version, str)
+        or not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version)
+        or tag != f"v{version}"
         or not isinstance(revision, str)
         or not re.fullmatch(r"[0-9a-f]{40}", revision)
     ):
-        raise SDKBootstrapError("Kernel SDK tag/source revision pin is invalid")
-
-    release = fetch_github_json(
-        f"https://api.github.com/repos/cdin-editor/kernel/releases/tags/{urllib.parse.quote(tag, safe='')}"
-    )
-    if (
-        release.get("tag_name") != tag
-        or release.get("draft") is True
-        or release.get("prerelease") is not False
-    ):
-        raise SDKBootstrapError("Kernel SDK GitHub Release is draft, prerelease or tag-mismatched")
-
-    actual_revision = resolve_release_tag_commit(tag)
-    if actual_revision != revision:
-        raise SDKBootstrapError(
-            f"Kernel SDK release tag moved or mismatched: expected {revision}, found {actual_revision}"
-        )
+        raise SDKBootstrapError("Kernel SDK tag/version/source revision pin is invalid")
 
     filename = asset.get("file_name")
     expected_size = asset.get("size_bytes")
     expected_digest = asset.get("sha256")
+    expected_format = asset.get("format")
     if (
         not isinstance(filename, str)
         or Path(filename).name != filename
-        or not filename.startswith("cdin-kernel-")
+        or "\\" in filename
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", filename)
+        or not filename.startswith(f"cdin-kernel-{version}-")
         or isinstance(expected_size, bool)
         or not isinstance(expected_size, int)
         or expected_size <= 0
+        or expected_size > MAX_ARCHIVE_BYTES
         or not isinstance(expected_digest, str)
         or not re.fullmatch(r"[0-9a-f]{64}", expected_digest)
+        or expected_format not in {"tar.gz", "zip"}
+        or (expected_format == "zip" and not filename.endswith(".zip"))
+        or (expected_format == "tar.gz" and not filename.endswith(".tar.gz"))
     ):
         raise SDKBootstrapError("Kernel SDK locked asset identity is malformed")
 
-    assets = release.get("assets")
-    if not isinstance(assets, list):
-        raise SDKBootstrapError("Kernel SDK Release has no asset inventory")
-    matches = [item for item in assets if isinstance(item, dict) and item.get("name") == filename]
-    if len(matches) != 1:
-        raise SDKBootstrapError("Kernel SDK Release must contain exactly one pinned asset")
-    api_asset = matches[0]
-    if api_asset.get("size") != expected_size:
-        raise SDKBootstrapError("Kernel SDK GitHub asset size differs from deps.lock")
-    if api_asset.get("digest") != f"sha256:{expected_digest}":
-        raise SDKBootstrapError("Kernel SDK GitHub asset digest differs from deps.lock")
+
+def release_asset_download_url(pin: dict, asset: dict) -> str:
+    """Build the canonical public browser-download URL for a locked Release asset."""
+    verify_locked_asset_identity(pin, asset)
+    repository = pin["repository"].rstrip("/")
+    tag = urllib.parse.quote(pin["tag"], safe="")
+    filename = urllib.parse.quote(asset["file_name"], safe="")
+    return f"{repository}/releases/download/{tag}/{filename}"
 
 
 def target_key(system: str | None = None, machine: str | None = None) -> str:
@@ -428,13 +224,8 @@ def verify_asset(path: Path, asset: dict) -> None:
 
 
 def download_asset(pin: dict, asset: dict) -> Path:
-    filename = asset.get("file_name")
-    if (
-        not isinstance(filename, str)
-        or Path(filename).name != filename
-        or not filename.startswith("cdin-kernel-")
-    ):
-        raise SDKBootstrapError("locked Kernel SDK filename is not a safe basename")
+    verify_locked_asset_identity(pin, asset)
+    filename = asset["file_name"]
 
     _ensure_safe_cache_directory(CACHE)
     destination = CACHE / filename
@@ -469,7 +260,7 @@ def download_asset(pin: dict, asset: dict) -> Path:
     if cached:
         return destination
 
-    url = f"{pin['repository'].rstrip('/')}/releases/download/{pin['tag']}/{filename}"
+    url = release_asset_download_url(pin, asset)
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" or parsed.hostname != "github.com":
         raise SDKBootstrapError("Kernel SDK source must be a canonical GitHub HTTPS URL")
