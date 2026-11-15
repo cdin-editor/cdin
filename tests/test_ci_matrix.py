@@ -74,14 +74,14 @@ class NativeProductMatrixTests(unittest.TestCase):
         for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
             with self.subTest(workflow=path.name):
                 content = path.read_text(encoding="utf-8")
-                start = content.index("      - name: Verify cross-repository GitHub read token")
+                start = content.index("      - name: Verify Registry Release discovery token")
                 next_step = content.find("\n      - ", start + 8)
                 step = content[start:] if next_step < 0 else content[start:next_step]
                 self.assertIn("\n        shell: bash\n", step)
                 self.assertLess(step.index("shell: bash"), step.index("run: |"))
                 if path == WORKFLOW:
                     self.assertLess(
-                        content.index("Verify cross-repository GitHub read token"),
+                        content.index("Verify Registry Release discovery token"),
                         content.index("Set up MSYS2 toolchain (Windows)"),
                     )
 
@@ -91,21 +91,18 @@ class NativeProductMatrixTests(unittest.TestCase):
         self.assertIn("platform.machine().lower()", self.workflow)
         self.assertIn('os.environ.get("MSYSTEM") != "UCRT64"', self.workflow)
 
-    def test_hosted_cross_repository_api_access_requires_the_read_only_secret(self) -> None:
+    def test_registry_release_discovery_requires_the_read_only_secret(self) -> None:
         for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
             with self.subTest(workflow=path.name):
                 content = path.read_text(encoding="utf-8")
-                self.assertIn(
-                    "CDIN_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
-                    content,
-                )
+                self.assertNotIn("CDIN_GITHUB_API_TOKEN:", content)
                 self.assertIn(
                     "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
                 self.assertIn("GH_TOKEN: ${{ github.token }}", content)
                 self.assertIn(
-                    "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix.",
+                    "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery.",
                     content,
                 )
                 self.assertIn("exit 1", content)
@@ -113,7 +110,7 @@ class NativeProductMatrixTests(unittest.TestCase):
                     "GH_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
                     content,
                 )
-                preflight = content.index("Verify cross-repository GitHub read token")
+                preflight = content.index("Verify Registry Release discovery token")
                 checkout = content.index("actions/checkout@")
                 self.assertGreater(preflight, checkout, path.name)
                 if path == WORKFLOW:
@@ -121,7 +118,7 @@ class NativeProductMatrixTests(unittest.TestCase):
                     sanitizer_setup = content.index("Install native dependencies")
                     self.assertLess(preflight, first_build_setup)
                     sanitizer_preflight = content.index(
-                        "Verify cross-repository GitHub read token", preflight + 1
+                        "Verify Registry Release discovery token", preflight + 1
                     )
                     sanitizer_checkout = content.index(
                         "actions/checkout@", checkout + 1
@@ -136,7 +133,7 @@ class NativeProductMatrixTests(unittest.TestCase):
         # The source-build/sanitizer job has its own runner and must be guarded too.
         self.assertEqual(
             self.workflow.count(
-                "::error::CDIN_GITHUB_READ_TOKEN is required for the parallel cross-repository Release/tag matrix."
+                "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery."
             ),
             2,
         )
