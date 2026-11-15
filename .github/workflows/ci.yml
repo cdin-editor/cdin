@@ -21,7 +21,7 @@ jobs:
       matrix:
         include:
           - target: linux-x86_64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             shell: bash
             profile: tui
           - target: linux-arm64
@@ -41,7 +41,7 @@ jobs:
             shell: msys2 {0}
             profile: tui
           - target: linux-x86_64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             shell: bash
             profile: gui-sdl
           - target: linux-arm64
@@ -269,7 +269,7 @@ jobs:
     name: Attest trusted main-branch source snapshot
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [full-stack-e2e, sanitizers]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -308,7 +308,7 @@ jobs:
 
   sanitizers:
     name: Full stack / ASan + UBSan + leak detection
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
