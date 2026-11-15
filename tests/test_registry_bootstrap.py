@@ -916,6 +916,7 @@ class KernelSDKCacheTests(unittest.TestCase):
         self.payload = b"immutable-kernel-sdk-fixture"
         self.asset = {
             "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
+            "format": "tar.gz",
             "size_bytes": len(self.payload),
             "sha256": hashlib.sha256(self.payload).hexdigest(),
         }
