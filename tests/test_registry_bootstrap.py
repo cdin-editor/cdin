@@ -43,6 +43,7 @@ from scripts.registry import (
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
+    registry_prepare_command,
     registry_source_build_ldflags,
     verify_backend_artifact,
     expected_frontend_variants,
@@ -303,6 +304,21 @@ class RegistrySourceBuildMetadataTests(unittest.TestCase):
     def test_source_build_rejects_abbreviated_commit_identity(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "full lowercase commit SHA"):
             registry_source_build_ldflags("1.0.0", "c5b6900")
+
+
+class RegistryPrepareCommandTests(unittest.TestCase):
+    def test_prepare_runs_one_resolution_pass_and_uses_a_shared_cache(self) -> None:
+        command = registry_prepare_command(
+            Path("registry"),
+            Path("product.yaml"),
+            Path("catalog-index.json"),
+            Path("workspace"),
+            cache_dir=Path("cache/registry"),
+        )
+        self.assertEqual(command[:2], ["registry", "prepare"])
+        self.assertIn("--cache-dir", command)
+        self.assertEqual(command[command.index("--cache-dir") + 1], "cache/registry")
+        self.assertNotIn("resolve", command)
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
@@ -1067,7 +1083,7 @@ class KernelSDKCompositionTests(unittest.TestCase):
 
 
 
-class KernelSDKOfflineCacheTests(unittest.TestCase):
+class KernelSDKCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.cache = Path(self.temporary.name).resolve() / "cache"
@@ -1095,6 +1111,20 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
             root / ".deps" / "cache" / "kernel-sdk",
         )
         self.assertNotIn("build", SDK_CACHE.relative_to(root).parts)
+
+    def test_online_mode_reuses_exact_cached_bytes_without_github_api(self) -> None:
+        self.cache.mkdir(parents=True)
+        cached = self.cache / self.asset["file_name"]
+        cached.write_bytes(self.payload)
+        with patch("scripts.deps.CACHE", self.cache), \\
+             patch.dict(os.environ, {}, clear=True), \\
+             patch(
+                 "scripts.deps.verify_release_asset_identity",
+                 side_effect=AssertionError("consumer install must not query GitHub's Releases API"),
+             ):
+            result = download_asset(self.pin, self.asset)
+        self.assertEqual(result, cached)
+        self.assertEqual(result.read_bytes(), self.payload)
 
     def test_offline_mode_reuses_only_exact_lock_pinned_cache_bytes(self) -> None:
         self.cache.mkdir(parents=True)
