@@ -91,6 +91,19 @@ class NativeProductMatrixTests(unittest.TestCase):
         self.assertIn("platform.machine().lower()", self.workflow)
         self.assertIn('os.environ.get("MSYSTEM") != "UCRT64"', self.workflow)
 
+    def test_product_acceptance_checks_the_staged_sdl3_sdk_prefix(self) -> None:
+        acceptance = PRODUCT_ACCEPTANCE_WORKFLOW.read_text(encoding="utf-8")
+        build_stack = (ROOT / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+        self.assertIn('PREFIX = ROOT / ".deps" / "install"', build_stack)
+        self.assertIn(
+            'sdl_sdk = root / ".deps" / "install" / "share" / "cdin" / "sdl3-sdk.json"',
+            acceptance,
+        )
+        self.assertNotIn(
+            'sdl_sdk = root / ".deps" / "sdk" / "share" / "cdin" / "sdl3-sdk.json"',
+            acceptance,
+        )
+
     def test_registry_release_discovery_requires_the_read_only_secret(self) -> None:
         for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
             with self.subTest(workflow=path.name):
