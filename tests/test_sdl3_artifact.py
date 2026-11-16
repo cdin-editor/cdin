@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import tomllib
 import unittest
+import urllib.request
 from unittest.mock import patch
 
 from scripts import sdl3_artifact as sdk
@@ -163,6 +164,46 @@ class PublicReleaseURLTests(unittest.TestCase):
         self.assertNotIn("api.github.com", source)
         self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
         self.assertNotIn("fetch_github_json", source)
+
+
+    def test_downloader_rejects_noncanonical_urls_before_network(self) -> None:
+        invalid_urls = [
+            "http://github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://github.com:444/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://user@github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz?token=bad",
+            "https://github.com/example/other/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "asset.tar.gz"
+            for url in invalid_urls:
+                with self.subTest(url=url):
+                    with patch.object(
+                        sdk.urllib.request,
+                        "build_opener",
+                        side_effect=AssertionError("untrusted URL reached network"),
+                    ):
+                        with self.assertRaisesRegex(
+                            sdk.SDL3ArtifactError,
+                            "canonical public Release asset",
+                        ):
+                            sdk._download(url, destination, expected_size=1, max_size=1)
+
+    def test_asset_redirect_rejects_credentials_and_nonstandard_ports(self) -> None:
+        handler = sdk._AssetRedirectHandler()
+        request = urllib.request.Request(
+            "https://github.com/cdin-editor/cdin/releases/download/tag/asset"
+        )
+        invalid_redirects = [
+            "https://user@release-assets.githubusercontent.com/path",
+            "https://release-assets.githubusercontent.com:444/path",
+            "https://release-assets.githubusercontent.com:bad/path",
+            "http://release-assets.githubusercontent.com/path",
+        ]
+        for url in invalid_redirects:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(sdk.SDL3ArtifactError, "redirect"):
+                    handler.redirect_request(request, None, 302, "Found", {}, url)
 
 
 class TargetAndPinTests(unittest.TestCase):
