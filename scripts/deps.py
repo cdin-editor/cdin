@@ -48,7 +48,18 @@ class SDKBootstrapError(RuntimeError):
 class _ReleaseRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, fp, code, message, headers, new_url):
         parsed = urllib.parse.urlsplit(new_url)
-        if parsed.scheme != "https" or parsed.hostname not in ALLOWED_REDIRECT_HOSTS:
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise SDKBootstrapError("SDK download redirect has an invalid port") from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in ALLOWED_REDIRECT_HOSTS
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
             raise SDKBootstrapError(f"SDK download redirect rejected: {new_url}")
         return super().redirect_request(request, fp, code, message, headers, new_url)
 
@@ -262,8 +273,21 @@ def download_asset(pin: dict, asset: dict) -> Path:
 
     url = release_asset_download_url(pin, asset)
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "github.com":
-        raise SDKBootstrapError("Kernel SDK source must be a canonical GitHub HTTPS URL")
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise SDKBootstrapError("Kernel SDK source URL has an invalid port") from error
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.startswith("/cdin-editor/kernel/releases/download/")
+    ):
+        raise SDKBootstrapError("Kernel SDK source URL is not a canonical public Release asset")
 
     opener = urllib.request.build_opener(_ReleaseRedirectHandler())
     request = urllib.request.Request(
@@ -282,7 +306,18 @@ def download_asset(pin: dict, asset: dict) -> Path:
         with os.fdopen(descriptor, "wb") as output:
             with opener.open(request, timeout=45) as response:
                 final = urllib.parse.urlsplit(response.geturl())
-                if final.scheme != "https" or final.hostname not in ALLOWED_REDIRECT_HOSTS:
+                try:
+                    final_port = final.port
+                except ValueError as error:
+                    raise SDKBootstrapError("Kernel SDK final download URL has an invalid port") from error
+                if (
+                    final.scheme != "https"
+                    or final.hostname not in ALLOWED_REDIRECT_HOSTS
+                    or final_port not in (None, 443)
+                    or final.username is not None
+                    or final.password is not None
+                    or final.fragment
+                ):
                     raise SDKBootstrapError("Kernel SDK final download URL is not trusted")
                 content_length = response.headers.get("Content-Length")
                 if content_length and int(content_length) != asset["size_bytes"]:
