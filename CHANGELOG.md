@@ -11,8 +11,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Select explicit, least-privilege cross-repository GitHub API credentials for Kernel SDK, Registry and SDL3 release/tag discovery. Ignore the automatically scoped Actions `GITHUB_TOKEN` when reading component repositories; require the dedicated read token in hosted CI/Product Acceptance matrices, while preserving local-shell fallback and anonymous public API access for local one-off operations.
-- Keep the dedicated read-only Actions secret separate from `GH_TOKEN`, so same-repository GitHub CLI operations retain their normal permissions. Hosted CI and Product Acceptance fail at preflight when the cross-repository secret is absent; local one-off public API fallback remains subject to the anonymous rate limit. Actual API calls still enforce immutable tag, descriptor, digest, size and archive validation.
+- Remove GitHub REST API discovery from the Kernel, Registry executable and SDL3 SDK bootstrap scripts. These consumers now download canonical public Release URLs and verify lock-pinned or descriptor-pinned archive bytes, source identity, size and SHA-256 locally; they no longer consume cross-repository API credentials.
+- Scope `CDIN_GITHUB_READ_TOKEN` to the Registry CLI's runtime component `release_sources` discovery only. CI and Product Acceptance retain a fail-fast preflight for that operation, while same-repository GitHub CLI calls continue using the separate `GH_TOKEN`.
 - Pin Linux x86_64 CI and sanitizer builds to Ubuntu 24.04/glibc 2.39, and reject packaging from a different glibc baseline. This prevents the moving `ubuntu-latest` label from silently producing binaries that require newer `GLIBC_*` symbols than the declared Linux ABI.
 
 - Validate the split Frontend graph with the shared Core dependency in both immutable artifact and developer Registry-source modes. Resolve component delivery from the actual Manifest instead of assuming that a source-built Registry implies source-built components.
