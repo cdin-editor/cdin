@@ -4,29 +4,23 @@ CDIN uses Registry as an independent build-time dependency resolver and artifact
 
 The normative boundary is defined by the [Spec Registry contracts](https://github.com/cdin-editor/spec/blob/main/docs/architecture/registry-contracts.md), [ADR-0025 — Immutable Target Artifact Delivery](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md), [ADR-0028 — GitHub Release Metadata Discovery](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0028-github-release-metadata-discovery.md), and the [module ownership boundaries](https://github.com/cdin-editor/spec/blob/main/docs/architecture/module-boundaries.md).
 
-## Current artifact-first and API-authentication status — 2026-11-16
+## Current artifact-first and static product Catalog status — 2026-11-16
 
 Use the [dependency and delivery matrix](dependency-matrix.md) for the exact candidate versions, immutable source identities, metadata assets, target packages and acceptance state. This section supersedes the older dated implementation notes below wherever they describe previous package pins or a Registry executable that had not yet been published.
 
 - Kernel/logger SDK 1.2.3, Runtime 1.0.0, Backend 1.2.2, Frontend Core/TUI/GUI-SDL 1.2.2 and SDL3 SDK 3.4.16 have published immutable package identities. Their publication does not by itself complete CDIN product acceptance.
-- Registry stable `v1.0.1` is published with five executables, a same-tag Catalog and descriptor. It includes the Manifest schema-floor fix and authenticated cross-repository Release discovery. The earlier immutable `v1.0.0` binary remains unchanged and is not used by this consumer.
+- Registry stable `v1.0.1` is published with five executables, a same-tag generic Catalog and descriptor. It includes the Manifest schema-floor fix and authenticated cross-repository Release discovery. The earlier immutable `v1.0.0` binary remains unchanged and is not used by this consumer.
+- CDIN product resolution uses its own static `entries` Catalog at `registry/catalog-index.json`, SHA-256 pinned by `tooling.cdin_catalog` in `deps.lock`. All six component metadata assets are bound to exact public Release URLs and digests; the CDIN consumer does not run Registry `release_sources` discovery.
 - CDIN PR #149 is the active artifact-first candidate. It is not merged and its ten target/profile Product Acceptance jobs must pass on the exact PR head before #121/#122/#124 can be closed.
 - Product integration remains incomplete independently of packaging: live IME/PaneTree E2E, production Unicode shaping and bidirectional text (including Persian/Arabic), real TUI/GUI editing, lifecycle/recovery, performance/soak, security and installed distribution gates remain under CDIN #111/#118.
 
-### Cross-repository GitHub API credential for Registry runtime discovery
+### Immutable CDIN product Catalog
 
-The Registry executable resolves component `release_sources` across several repositories and therefore needs a dedicated read credential for its runtime GitHub Release discovery. The automatic GitHub Actions `GITHUB_TOKEN` is scoped to the repository running the workflow and must not be repurposed for those cross-repository reads. In contrast, the Python bootstrap that acquires the pinned Kernel SDK and Registry executable downloads public Release assets directly and makes no GitHub REST API requests.
+CDIN's Product Definitions pin exact component versions for this release candidate. A dynamic Catalog would therefore repeat work without changing the selected graph, while requiring every native CI job to enumerate cross-repository Releases and tags. Instead, CDIN owns `registry/catalog-index.json` as its immutable product Catalog. The six `entries` bind the selected Backend, Frontend variants, Kernel and Runtime metadata to canonical public GitHub Release asset URLs and exact SHA-256 digests.
 
-Configure an Actions secret named `CDIN_GITHUB_READ_TOKEN` as a fine-grained personal access token or GitHub App installation token with **Contents: read only** for the selected repositories:
+`deps.lock` pins the Catalog file path and SHA-256. `scripts/registry.py` verifies that pin, rejects symlinks and paths outside the repository, and rejects a `release_sources` Catalog before invoking Registry. Registry validates the Catalog schema and verifies each metadata payload against its declared SHA-256 before parsing or resolving dependencies. The native CI, sanitizer and Product Acceptance workflows therefore need no cross-repository PAT or GitHub App credential and do not call the GitHub Release API during product resolution.
 
-- `cdin-editor/runtime`
-- `cdin-editor/backend`
-- `cdin-editor/frontend`
-- `cdin-editor/registry`
-
-The CI and Product Acceptance workflows expose this secret to the Registry CLI as `REGISTRY_GITHUB_API_TOKEN`. Do not grant write permissions. The token is used only for Registry's component Release discovery; it is never printed, embedded in artifacts or distributed with CDIN. Kernel SDK, Registry executable and SDL3 SDK bootstrap scripts do not read or use this credential: they fetch public browser-download URLs and verify lock-pinned/descriptor-pinned bytes locally. `GH_TOKEN` remains available for ordinary GitHub CLI operations and must not be substituted for the Registry cross-repository read credential.
-
-For hosted CI and Product Acceptance, configure the Actions secret `CDIN_GITHUB_READ_TOKEN`; the workflow maps it only to `REGISTRY_GITHUB_API_TOKEN` for Registry's component-release discovery. A local Registry CLI run may set `REGISTRY_GITHUB_API_TOKEN` (or the documented local `GH_TOKEN`/`GITHUB_TOKEN` fallback) with read access to the component repositories. The Kernel SDK bootstrap and the Registry executable bootstrap need no API token and do not make GitHub REST calls.
+The Registry v1.0.1 distribution still carries and verifies its own same-tag generic Catalog as part of the immutable release descriptor. That bundle Catalog is not the product input passed to the CDIN Registry invocation. Same-repository `GH_TOKEN` is kept separate for ordinary GitHub CLI operations.
 
 ## Ownership
 
@@ -45,7 +39,7 @@ A Catalog Index uses exactly one of the two supported models:
 1. Static `entries`, preserving compatibility with existing immutable Catalog snapshots.
 2. Dynamic `release_sources`, declaring one source per component/variant/repository. Registry enumerates the complete eligible GitHub Release inventory and resolves the highest compatible SemVer; it does not use the most recently published release or the first API result.
 
-A single Catalog document must not mix `entries` and `release_sources`. Existing static Catalogs remain valid during migration. CDIN must not switch Product Definitions to dynamic discovery until the pinned Registry executable implements Data Contract 1.4.0 and all participating component publishers have published valid canonical metadata assets.
+A single Catalog document must not mix `entries` and `release_sources`. Static `entries` are the correct model when a product intentionally pins a finite immutable set of component versions. CDIN uses this model because both Product Definitions constrain the current release candidate to exact component versions. Dynamic `release_sources` remains appropriate for consumers that explicitly want Registry to discover the highest compatible published SemVer across component Releases; it is not required for CDIN product acceptance.
 
 For each new versioned component release, its owning repository generates Component Release Metadata from the exact tag commit after package artifacts and checksums exist, then uploads the JSON as an asset on that GitHub Release. It is not committed under a per-version `registry/releases/` source-tree path.
 
@@ -128,7 +122,7 @@ make stack-dev
 make check
 ```
 
-On current CDIN `main`, `make registry` continues to use its existing immutable pin. CDIN PR #149 now carries the updated artifact-first candidate and pins the published Registry `v1.0.1` Release at tag commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, including the descriptor digest and byte size. The Release contains the five target executables, same-tag Catalog and checksums. PR #149 remains unmerged until exact-head consumer CI verifies the published bytes, cache behavior and Manifest replay on every supported target.
+On current CDIN `main`, `make registry` continues to use its existing immutable pin. CDIN PR #149 now carries the updated artifact-first candidate and pins the published Registry `v1.0.1` Release at tag commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, including the descriptor digest and byte size. The Release contains the five target executables, same-tag generic Catalog and checksums. CDIN separately pins its product Catalog in `deps.lock`; PR #149 remains unmerged until exact-head consumer CI verifies the published bytes, static metadata hashes, cache behavior and Manifest replay on every supported target.
 
 For a GUI-SDL source-development stack, use `make registry-gui-dev` and the explicit SDL3 developer-source opt-in provided by the GUI stack target. Ordinary GUI-SDL consumer installation must use the pinned prebuilt SDK and must not build SDL3 from source.
 

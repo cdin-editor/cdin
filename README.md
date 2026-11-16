@@ -2,12 +2,11 @@
 
 The composition root for the CDIN editor components.
 
-CDIN supplies declarative Product Definitions and uses the independently
-maintained Registry tool to resolve, acquire and verify immutable component
-artifacts or explicitly permitted developer source. It builds, packages and
-launches the prepared product. It does not own a Catalog Index or component
-repository map; those are maintained with Registry and component release
-metadata, respectively.
+CDIN owns declarative Product Definitions and an immutable Product Catalog
+Index. The independently maintained Registry tool validates that Catalog,
+resolves the component graph, and acquires verified artifacts or explicitly
+permitted developer source. Each Catalog entry binds a public Release Metadata
+URL to its exact SHA-256. CDIN then builds, packages and launches the product.
 
 ## Components
 
@@ -18,7 +17,7 @@ metadata, respectively.
 | **Backend** | Sessions, OS services, Runtime host and Frontend Protocol server. |
 | **Frontend** | Input adapters, semantic UI presentation, layout and rendering. |
 | **Registry** | Build-time release resolution, immutable artifact/source acquisition and Resolved Manifest; never a runtime dependency. |
-| **CDIN** | Product Definitions, build, packaging, launcher and process lifecycle. |
+| **CDIN** | Product Definitions, immutable Product Catalog, build, packaging, launcher and process lifecycle. |
 
 ## Current status
 
@@ -30,7 +29,7 @@ metadata, respectively.
 - **Runtime:** stable `v1.0.0`, including the platform-neutral Lua module archives and canonical Release metadata.
 - **Backend:** stable `v1.2.2`, with five target-native CMake development packages and canonical Release metadata.
 - **Frontend:** stable `v1.2.2`, with separate Core, TUI and GUI-SDL packages for the five maintained native targets.
-- **Registry:** stable `v1.0.1` is published as an immutable Release with five native executables, a dynamic `release_sources` Catalog, a source/asset descriptor and SHA256SUMS. CDIN PR #149 pins the exact tag-resolved commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27` and descriptor digest `c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403`. Registry remains a build-time tool, not a runtime dependency.
+- **Registry:** stable `v1.0.1` is published as an immutable Release with five native executables, its generic Catalog, a source/asset descriptor and SHA256SUMS. CDIN PR #149 pins the exact tag-resolved commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27` and descriptor digest `c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403`. CDIN uses its own separately pinned product Catalog. Registry remains a build-time tool, not a runtime dependency.
 - **SDL3 SDK:** `sdl3-sdk-v3.4.16` is published as an immutable-tagged prerelease. Its five target archives are pinned by tag-resolved source commit, byte size and SHA-256 in `deps.lock`; only GUI-SDL may acquire it.
 
 ### Product integration state
@@ -39,7 +38,7 @@ metadata, respectively.
 - CDIN PR [#148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 tag during recovery and makes live smoke tests resolve the Runtime package selected by the active CMake configuration.
 - CDIN PR [#149](https://github.com/cdin-editor/cdin/pull/149) carries the artifact-first consumer refresh: Registry consumer and explicit developer source both pin immutable `1.0.1` at commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`, Backend/Frontend `1.2.2`, Runtime `1.0.0`, the exact five-target SDL3 SDK pin, dynamic Backend artifact validation, stable Product Definition prerelease policy, and public artifact-first Kernel/Registry/SDL3 bootstraps. It remains open; exact-head CI, Product Acceptance and SDL3 checks must pass before merge. Registry publication is complete, but CDIN clean-consumer acceptance remains in progress.
 - The TUI Product Definition does not declare or acquire SDL3. The GUI-SDL Product Definition declares the external SDL3 SDK contract.
-- Hosted CI, sanitizer and Product Acceptance require `CDIN_GITHUB_READ_TOKEN` only for the Registry CLI's runtime component Release discovery (fine-grained `Contents: read` for Runtime, Backend, Frontend and Registry). Kernel SDK, Registry executable and SDL3 SDK bootstraps use public Release asset URLs with pinned byte hashes and require no API token. The repository-scoped Actions `GITHUB_TOKEN` is not reused for cross-repository Registry discovery.
+- CDIN product resolution uses six static Catalog entries with exact public Release Metadata URLs and SHA-256 digests, pinned by `tooling.cdin_catalog` in `deps.lock`. Consumer, sanitizer and Product Acceptance workflows therefore make no cross-repository Release-discovery API calls and require no PAT secret. The Registry and SDK bootstraps still verify all downloaded bytes.
 - Linux distributions target glibc `2.39` and are built on Ubuntu `24.04`; CI does not use the moving `ubuntu-latest` label for these packages. Build and packaging checks reject a different host glibc version so the declared ABI cannot understate the binary's real runtime requirement.
 - GUI-SDL's current renderer still uses diagnostic debug text and does not provide production shaping, font fallback, grapheme layout or bidi. Persian/Arabic editing is not a supported stable claim.
 - The GUI-SDL IME and PaneTree implementations exist in Frontend `v1.2.2`, but their compile-time capability gates default to OFF in the published packages. They must remain unadvertised until CDIN #118 passes against the exact selected stack.
@@ -71,7 +70,7 @@ make stack-gui-dev                  # explicit hybrid developer/CI GUI-SDL path
 
 On Windows, use `.deps/install/bin/cdin.exe` from MSYS2 UCRT64.
 
-**Current release readiness:** the ordinary `make install` path is wired to the immutable Registry 1.0.0 binary/Catalog and published component packages; no source checkout is part of that consumer path. The exact five-target × two-profile install, offline/cache and extracted-product acceptance is still being validated. The `*-dev` targets remain explicit contributor/CI source-build paths and are not substitutes for consumer installation.
+**Current release readiness:** the ordinary `make install` path uses the immutable Registry 1.0.1 executable, the CDIN-owned SHA-256-pinned Product Catalog and published component packages; no source checkout or cross-repository Release API discovery is part of that consumer path. The exact five-target × two-profile install, offline/cache and extracted-product acceptance is still being validated. The `*-dev` targets remain explicit contributor/CI source-build paths and are not substitutes for consumer installation.
 
 ## Documentation
 
