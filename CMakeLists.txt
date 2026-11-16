@@ -23,6 +23,16 @@ if(CDIN_REGISTRY_PROFILE STREQUAL "tui" AND CDIN_ENABLE_GUI_SDL)
     message(FATAL_ERROR "The tui Registry profile must not enable the GUI-SDL adapter")
 endif()
 
+# Keep CTest's product-level Registry verifier on the exact workspace selected
+# by the active product profile. This is also the path consumed by
+# scripts/build_stack.py before it configures and builds the Composition Root.
+if(NOT DEFINED CDIN_REGISTRY_WORKSPACE OR CDIN_REGISTRY_WORKSPACE STREQUAL "")
+    set(CDIN_REGISTRY_WORKSPACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}"
+        CACHE PATH "Prepared Registry workspace selected for this CDIN product profile"
+        FORCE)
+endif()
+
 # ROOT-007 is PROPOSED: check compatibility of assembled component interfaces.
 # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L28-L28
 # The Composition Root never compiles copied component sources.
@@ -152,15 +162,17 @@ if(BUILD_TESTING)
     find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
     # ROOT-010: component selection and source collection are owned by Registry.
     # https://github.com/cdin-editor/spec/blob/main/docs/components/cdin.md#L31-L31
-    set(CDIN_REGISTRY_WORKSPACE
-        "${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}")
-    set(CDIN_REGISTRY_EXECUTABLE "${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry")
-    if(WIN32)
-        set(CDIN_REGISTRY_EXECUTABLE "${CDIN_REGISTRY_EXECUTABLE}.exe")
+    set(CDIN_REGISTRY_VERIFY_ARGS
+        --profile "${CDIN_REGISTRY_PROFILE}"
+        --verify-workspace)
+    if(CDIN_DEVELOPER_SOURCE_COMPONENTS)
+        list(APPEND CDIN_REGISTRY_VERIFY_ARGS
+            --source-build
+            --developer-source-components)
     endif()
     add_test(NAME cdin_registry_manifest_verify
-        COMMAND "${CDIN_REGISTRY_EXECUTABLE}" manifest verify
-                --input "${CDIN_REGISTRY_WORKSPACE}/registry-manifest.json")
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"
+                ${CDIN_REGISTRY_VERIFY_ARGS})
     set(CDIN_REGISTRY_WORKSPACE_E2E_ARGS
         --workspace "${CDIN_REGISTRY_WORKSPACE}"
         --profile "${CDIN_REGISTRY_PROFILE}")

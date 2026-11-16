@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -22,10 +23,13 @@ except ImportError:  # Direct execution: scripts/ is sys.path[0].
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 REGISTRY_SOURCE = ROOT / ".deps" / "tools" / "registry"
-REGISTRY_CATALOG = REGISTRY_SOURCE / "catalogs" / "cdin-components" / "catalog-index.json"
+REGISTRY_CATALOG = ROOT / "registry" / "catalog-index.json"
 REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
+# Keep Registry's private metadata/API cache separate from the executable
+# distribution cache: Registry secures its cache tree recursively.
 REGISTRY_CACHE = WORKSPACE_ROOT / "cache" / "registry"
+REGISTRY_METADATA_CACHE = WORKSPACE_ROOT / "cache" / "registry-metadata"
 
 
 def run(
@@ -71,6 +75,35 @@ def load_lock() -> dict:
     return tomllib.loads(LOCK.read_text(encoding="utf-8"))
 
 
+
+def verify_product_catalog() -> Path:
+    """Verify CDIN's immutable product Catalog before invoking Registry."""
+    pin = load_lock().get("tooling", {}).get("cdin_catalog", {})
+    relative_path = pin.get("path")
+    expected_sha256 = pin.get("sha256")
+    if relative_path != "registry/catalog-index.json":
+        raise RuntimeError("deps.lock must pin the CDIN product Catalog at registry/catalog-index.json")
+    if not isinstance(expected_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+        raise RuntimeError("deps.lock CDIN product Catalog SHA-256 pin is invalid")
+    catalog = ROOT / relative_path
+    if catalog.is_symlink() or not catalog.is_file():
+        raise RuntimeError(f"pinned CDIN product Catalog is missing or unsafe: {catalog}")
+    if not catalog.resolve(strict=True).is_relative_to(ROOT.resolve()):
+        raise RuntimeError("pinned CDIN product Catalog resolves outside the repository")
+    data = catalog.read_bytes()
+    if not data or len(data) > 8 * 1024 * 1024:
+        raise RuntimeError("pinned CDIN product Catalog is empty or exceeds the 8 MiB limit")
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError("CDIN product Catalog SHA-256 mismatch")
+    document = json.loads(data)
+    if document.get("catalog_id") != "cdin-components" or not isinstance(document.get("entries"), list):
+        raise RuntimeError("pinned CDIN product Catalog must contain the cdin-components entries model")
+    if "release_sources" in document:
+        raise RuntimeError("CDIN product Catalog must use immutable entries, not GitHub Release discovery")
+    return catalog
+
+
 def registry_pin(*, development: bool = False) -> tuple[str, str]:
     entry = load_lock()["tooling"]["registry"]
     if development:
@@ -94,30 +127,51 @@ def checkout_registry(*, development: bool = False) -> None:
         raise RuntimeError(f"Registry source pin mismatch: expected {revision}, found {actual}")
 
 
+def registry_source_build_ldflags(version: str, revision: str) -> str:
+    """Bind a source-built Registry CLI to the exact locked release identity."""
+    if re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+        r"(?:-(?:dev(?:\.[0-9]+)?|(?:alpha|beta|rc)\.[0-9]+))?",
+        version,
+    ) is None:
+        raise RuntimeError(f"pinned Registry source version is not valid SemVer: {version!r}")
+    if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise RuntimeError("pinned Registry source revision must be a full lowercase commit SHA")
+    return (
+        "-X github.com/cdin-editor/registry/internal/buildinfo.Version="
+        + version
+        + " -X github.com/cdin-editor/registry/internal/buildinfo.Commit="
+        + revision
+    )
+
+
 def build_registry(
     *,
     run_tests: bool = True,
     source_build: bool = False,
     offline: bool = False,
 ) -> Path:
-    global REGISTRY_CATALOG
     if not source_build:
         pin = load_lock()["tooling"]["registry"]
-        binary, catalog = acquire_registry_artifact(
+        binary, release_catalog = acquire_registry_artifact(
             pin,
             cache_root=REGISTRY_CACHE,
             offline=offline,
         )
-        REGISTRY_CATALOG = catalog
         print(f"Verified Registry executable: {binary}", flush=True)
-        print(f"Verified Registry Catalog: {catalog}", flush=True)
+        print(f"Verified Registry release-bundle Catalog: {release_catalog}", flush=True)
         return binary
 
     if shutil.which("git") is None or shutil.which("go") is None:
         raise RuntimeError(
             "Registry source builds are developer-only and require Git and Go 1.27.3 or newer"
         )
+    development_pin = load_lock()["tooling"]["registry"]["development"]
     _, revision = registry_pin(development=True)
+    version = development_pin.get("version")
+    if not isinstance(version, str):
+        raise RuntimeError("deps.lock Registry development pin is missing its SemVer version")
+    ldflags = registry_source_build_ldflags(version, revision)
     if run_tests or not REGISTRY_SOURCE.exists():
         checkout_registry(development=True)
     else:
@@ -131,14 +185,18 @@ def build_registry(
     REGISTRY_BUILD.mkdir(parents=True, exist_ok=True)
     binary = REGISTRY_BUILD / ("registry.exe" if os.name == "nt" else "registry")
     stamp = REGISTRY_BUILD / "registry-source.sha"
+    stamp_value = revision + "\n" + version + "\n"
     if (
         run_tests
         or not binary.is_file()
         or not stamp.is_file()
-        or stamp.read_text(encoding="utf-8").strip() != revision
+        or stamp.read_text(encoding="utf-8") != stamp_value
     ):
-        run_registry_go(["go", "build", "-trimpath", "-o", str(binary), "./cmd/registry"])
-        stamp.write_text(revision + "\n", encoding="utf-8")
+        run_registry_go([
+            "go", "build", "-trimpath", "-ldflags", ldflags,
+            "-o", str(binary), "./cmd/registry",
+        ])
+        stamp.write_text(stamp_value, encoding="utf-8")
     return binary
 
 
@@ -179,9 +237,13 @@ def detect_target_tuple(
                 f"unsupported Linux C runtime {libc_name!r}; CDIN artifacts require glibc >= 2.39"
             )
         match = re.match(r"^(\d+)\.(\d+)", libc_version)
-        if not match or tuple(map(int, match.groups())) < (2, 39):
+        if not match:
+            raise RuntimeError(f"cannot determine Linux glibc version: {libc_version or 'unknown'}")
+        detected_glibc = tuple(map(int, match.groups()))
+        if detected_glibc != (2, 39):
             raise RuntimeError(
-                f"Linux glibc {libc_version or 'unknown'} is older than the supported 2.39 baseline"
+                f"CDIN Linux distributions must be built against the pinned glibc 2.39 baseline; "
+                f"this host provides {libc_version or 'unknown'}. Use an Ubuntu 24.04 build runner."
             )
         return {"os": "linux", "architecture": architecture, "abi": "gnu-glibc-2.39"}
 
@@ -241,6 +303,71 @@ def create_effective_product_definition(
     return destination
 
 
+def verify_backend_artifact(
+    backend: dict,
+    workspace: Path,
+    target: dict[str, str],
+) -> Path:
+    """Validate the selected Backend package without pinning a package release number.
+
+    Registry owns SemVer/dependency/contract selection. CDIN validates that the
+    selected Manifest entry is an immutable target-native Backend package with
+    the expected public package layout; a new compatible Backend release must
+    not require a source-code edit to this composition root.
+    """
+    version = backend.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError("Registry Manifest is missing the selected Backend version")
+    if backend.get("delivery") != "artifact":
+        raise RuntimeError(
+            f"CDIN requires Backend {version} as a verified Registry artifact; "
+            "refusing a silent source fallback"
+        )
+    selected_artifact = backend.get("selected_artifact")
+    if not isinstance(selected_artifact, dict):
+        raise RuntimeError("Registry Manifest is missing Backend's selected artifact")
+    if selected_artifact.get("kind") != "native-development-package":
+        raise RuntimeError("Backend selected artifact is not a native development package")
+    if selected_artifact.get("layout") != "cmake-prefix-v1":
+        raise RuntimeError("Backend package does not declare the cmake-prefix-v1 layout")
+    if selected_artifact.get("target") != target:
+        raise RuntimeError(
+            f"Backend artifact target {selected_artifact.get('target')} does not match host {target}"
+        )
+    expected_path = "components/backend/default/package"
+    if selected_artifact.get("workspace_path") != expected_path:
+        raise RuntimeError("Backend package workspace path is not canonical")
+    backend_package = workspace / expected_path
+    if backend_package.is_symlink() or not backend_package.is_dir():
+        raise RuntimeError(f"Registry Backend package is missing or unsafe: {backend_package}")
+    return backend_package
+
+
+def expected_frontend_variants(
+    profile: str,
+    components: list[dict],
+) -> set[str]:
+    """Return the resolved Frontend dependency closure for one product profile.
+
+    Manifest v1.1 can represent a mixed product delivery set while each
+    Frontend variant is artifact-delivered. Detect shared Core from the
+    selected Frontend entries themselves, not a product-wide delivery flag.
+    """
+    if profile not in {"tui", "gui-sdl"}:
+        raise ValueError(f"unsupported Frontend product profile: {profile}")
+    required = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
+    frontend_entries = [
+        item for item in components
+        if item.get("component_id") == "frontend"
+    ]
+    artifact_delivery = any(
+        item.get("delivery") == "artifact"
+        or isinstance(item.get("selected_artifact"), dict)
+        for item in frontend_entries
+    )
+    return required | ({"core"} if artifact_delivery else set())
+
+
 def verify_workspace(
     binary: Path,
     profile: str,
@@ -262,12 +389,7 @@ def verify_workspace(
         item["variant"] for item in manifest["components"]
         if item["component_id"] == "frontend"
     }
-    expected_variants = {"tui"} if profile == "tui" else {"tui", "gui-sdl"}
-    # The split Frontend package contract makes Core a transitive dependency
-    # of each adapter. The current developer Catalog predates that split and
-    # continues to materialize the whole Frontend source tree.
-    if manifest.get("resolution", {}).get("delivery_mode") == "artifact":
-        expected_variants.add("core")
+    expected_variants = expected_frontend_variants(profile, manifest["components"])
     if frontend_variants != expected_variants:
         raise RuntimeError(
             f"Registry selected Frontend variants {sorted(frontend_variants)}, "
@@ -279,27 +401,7 @@ def verify_workspace(
         for item in manifest["components"]
     }
     backend = by_key[("backend", "default")]
-    if backend["version"] != "1.2.1" or backend.get("delivery") != "artifact":
-        raise RuntimeError(
-            "CDIN requires Backend 1.2.1 as a verified Registry artifact; "
-            "refusing a silent source fallback"
-        )
-    selected_artifact = backend.get("selected_artifact")
-    if not isinstance(selected_artifact, dict):
-        raise RuntimeError("Registry Manifest is missing Backend's selected artifact")
-    if selected_artifact.get("kind") != "native-development-package":
-        raise RuntimeError("Backend selected artifact is not a native development package")
-    if selected_artifact.get("layout") != "cmake-prefix-v1":
-        raise RuntimeError("Backend package does not declare the cmake-prefix-v1 layout")
-    if selected_artifact.get("target") != target:
-        raise RuntimeError(
-            f"Backend artifact target {selected_artifact.get('target')} does not match host {target}"
-        )
-    backend_package = workspace / "components" / "backend" / "default" / "package"
-    if selected_artifact.get("workspace_path") != "components/backend/default/package":
-        raise RuntimeError("Backend package workspace path is not canonical")
-    if not backend_package.is_dir():
-        raise RuntimeError(f"Registry Backend package is missing: {backend_package}")
+    verify_backend_artifact(backend, workspace, target)
 
     for key, component in by_key.items():
         if key[0] == "backend":
@@ -339,6 +441,28 @@ def verify_workspace(
 
 
 
+def registry_prepare_command(
+    binary: Path,
+    product: Path,
+    catalog: Path,
+    workspace: Path,
+    *,
+    cache_dir: Path | None = None,
+) -> list[str]:
+    """Build one cached Registry prepare invocation for a product workspace."""
+    cache_root = REGISTRY_METADATA_CACHE if cache_dir is None else cache_dir
+    return [
+        str(binary),
+        "prepare",
+        "--product", str(product),
+        "--catalog", str(catalog),
+        "--allow-host", "raw.githubusercontent.com",
+        "--allow-host", "github.com",
+        "--cache-dir", str(cache_root),
+        "--output", str(workspace),
+    ]
+
+
 def prepare(
     profile: str,
     binary: Path,
@@ -346,9 +470,7 @@ def prepare(
     developer_source_components: bool,
 ) -> None:
     source_product, workspace, replay = paths(profile)
-    catalog = REGISTRY_CATALOG
-    if not catalog.is_file():
-        raise RuntimeError(f"pinned Registry Catalog Index is missing: {catalog}")
+    catalog = verify_product_catalog()
     if workspace.exists() or replay.exists():
         raise RuntimeError(
             f"Registry output already exists for {profile}; remove {workspace} and {replay} "
@@ -369,14 +491,10 @@ def prepare(
         )
         run([str(binary), "validate", "product-definition", str(product)])
         run([str(binary), "validate", "catalog-index", str(catalog)])
-        common = [
-            "--product", str(product),
-            "--catalog", str(catalog),
-            "--allow-host", "raw.githubusercontent.com",
-            "--allow-host", "github.com",
-        ]
-        run([str(binary), "resolve", *common])
-        run([str(binary), "prepare", *common, "--output", str(workspace)])
+        # Registry prepare performs Catalog loading, resolution and workspace
+        # preparation in one operation. A separate resolve command repeats the
+        # full public GitHub Release scan and doubles API traffic.
+        run(registry_prepare_command(binary, product, catalog, workspace))
         verify_workspace(
             binary,
             profile,
@@ -390,6 +508,7 @@ def prepare(
             "--input", str(manifest_path),
             "--output", str(replay),
             "--allow-host", "github.com",
+            "--cache-dir", str(REGISTRY_METADATA_CACHE),
         ])
         replay_manifest = replay / "registry-manifest.json"
         run([str(binary), "manifest", "verify", "--input", str(replay_manifest)])

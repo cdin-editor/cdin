@@ -6,20 +6,19 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import tomllib
 import unittest
-from unittest.mock import patch
-import urllib.request
 
 from scripts.registry_artifact import (
     REGISTRY_REPOSITORY_URI,
     RegistryBootstrapError,
     TARGETS,
-    _TrustedAPIHostRedirectHandler,
     GitHubReleaseClient,
+    _public_release_asset_url,
     acquire_registry_artifact,
     detect_target,
     verify_binary_target,
-    _api_asset_identity,
+    _validate_pin,
 )
 
 
@@ -35,137 +34,60 @@ def elf64(machine: int = 62) -> bytes:
 
 
 
-class RegistryReleaseAPIAuthenticationTests(unittest.TestCase):
-    def test_uses_workflow_token_only_for_the_github_api_origin(self) -> None:
-        captured = {}
-
-        class FakeResponse:
-            status = 200
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def geturl(self):
-                return "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
-
-            def read(self, _limit: int) -> bytes:
-                return b'{"tag_name":"v0.2.0-dev.1"}'
-
-        class FakeOpener:
-            def open(self, request, timeout: int):
-                captured["authorization"] = request.get_header("Authorization")
-                captured["timeout"] = timeout
-                return FakeResponse()
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-registry-test"}, clear=True), \
-             patch("scripts.registry_artifact.urllib.request.build_opener", return_value=FakeOpener()):
-            value = GitHubReleaseClient().get_json(
-                "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
-            )
-
-        self.assertEqual(value["tag_name"], "v0.2.0-dev.1")
-        self.assertEqual(captured["authorization"], "Bearer ghs-registry-test")
-        self.assertEqual(captured["timeout"], 30)
-
-class RegistryAPIHostRedirectTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.handler = _TrustedAPIHostRedirectHandler()
-        self.request = urllib.request.Request(
-            "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
+class RegistryPublicReleaseURLTests(unittest.TestCase):
+    def test_builds_canonical_public_release_asset_urls(self) -> None:
+        self.assertEqual(
+            _public_release_asset_url("v1.0.1", "registry-release-1.0.1.json"),
+            "https://github.com/cdin-editor/registry/releases/download/"
+            "v1.0.1/registry-release-1.0.1.json",
+        )
+        self.assertEqual(
+            _public_release_asset_url("v1.0.1", "registry-linux-amd64"),
+            "https://github.com/cdin-editor/registry/releases/download/"
+            "v1.0.1/registry-linux-amd64",
         )
 
-    def test_rejects_api_redirect_to_another_host(self) -> None:
-        with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
-            self.handler.redirect_request(
-                self.request, None, 302, "Found", {},
-                "https://example.invalid/repos/cdin-editor/registry/release",
-            )
+    def test_rejects_unknown_asset_names_and_invalid_tags(self) -> None:
+        with self.assertRaisesRegex(RegistryBootstrapError, "untrusted Registry Release asset name"):
+            _public_release_asset_url("v1.0.1", "../registry-linux-amd64")
+        with self.assertRaisesRegex(RegistryBootstrapError, "invalid pinned Registry release tag"):
+            _public_release_asset_url("latest", "registry-linux-amd64")
 
-    def test_rejects_nonstandard_api_redirect_port(self) -> None:
-        with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
-            self.handler.redirect_request(
-                self.request, None, 302, "Found", {},
-                "https://api.github.com:444/repos/cdin-editor/registry/release",
-            )
-
-    def test_rejects_malformed_api_redirect_port(self) -> None:
-        with self.assertRaisesRegex(RegistryBootstrapError, "invalid port"):
-            self.handler.redirect_request(
-                self.request, None, 302, "Found", {},
-                "https://api.github.com:not-a-port/repos/cdin-editor/registry/release",
-            )
-
-    def test_rejects_api_redirect_query_or_fragment(self) -> None:
-        for suffix in ("?token=value", "#fragment"):
-            with self.subTest(suffix=suffix):
-                with self.assertRaisesRegex(RegistryBootstrapError, "left the trusted API origin"):
-                    self.handler.redirect_request(
-                        self.request, None, 302, "Found", {},
-                        "https://api.github.com/repos/cdin-editor/registry/release" + suffix,
-                    )
-
-
-class RegistryReleaseAssetURLTests(unittest.TestCase):
-    def _asset(self, url: str) -> dict:
-        return {
-            "name": "registry-linux-amd64",
-            "digest": "sha256:" + "a" * 64,
-            "size": 123,
-            "browser_download_url": url,
-        }
-
-    def test_accepts_canonical_github_release_asset_url(self) -> None:
-        url = "https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"
-        result = _api_asset_identity(
-            self._asset(url),
-            name="registry-linux-amd64",
-            sha256="a" * 64,
-            size=123,
+    def test_bootstrap_has_no_github_rest_api_or_api_token_dependency(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "registry_artifact.py").read_text(
+            encoding="utf-8"
         )
-        self.assertEqual(result, url)
+        self.assertNotIn("api.github.com", source)
+        self.assertNotIn("REGISTRY_GITHUB_API_TOKEN", source)
+        self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
 
-    def test_rejects_nonstandard_asset_url_port(self) -> None:
-        with self.assertRaisesRegex(RegistryBootstrapError, "untrusted download URL"):
-            _api_asset_identity(
-                self._asset("https://github.com:444/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"),
-                name="registry-linux-amd64",
-                sha256="a" * 64,
-                size=123,
-            )
 
-    def test_rejects_malformed_asset_url_port(self) -> None:
-        with self.assertRaisesRegex(RegistryBootstrapError, "invalid download URL port"):
-            _api_asset_identity(
-                self._asset("https://github.com:not-a-port/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64"),
-                name="registry-linux-amd64",
-                sha256="a" * 64,
-                size=123,
-            )
-
-    def test_rejects_asset_url_query_or_fragment(self) -> None:
-        for suffix in ("?redirect=evil", "#fragment"):
-            with self.subTest(suffix=suffix):
-                with self.assertRaisesRegex(RegistryBootstrapError, "untrusted download URL"):
-                    _api_asset_identity(
-                        self._asset("https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-linux-amd64" + suffix),
-                        name="registry-linux-amd64",
-                        sha256="a" * 64,
-                        size=123,
-                    )
+    def test_downloader_rejects_noncanonical_urls_before_network(self) -> None:
+        client = GitHubReleaseClient()
+        untrusted_urls = [
+            "http://github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://example.invalid/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://github.com:444/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://user@github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64",
+            "https://github.com/cdin-editor/registry/releases/download/v1.0.1/registry-linux-amd64?token=bad",
+        ]
+        for url in untrusted_urls:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(RegistryBootstrapError, "untrusted Registry asset URL"):
+                    client.download(url, maximum=1024)
 
 
 class FakeGitHubClient:
-    def __init__(self, *, tag_commit: str | None = None, binary: bytes | None = None):
-        self.tag_commit = tag_commit or "a" * 40
+    def __init__(
+        self,
+        *,
+        binary: bytes | None = None,
+        source_commit: str = "a" * 40,
+    ):
         self.binary = binary or elf64()
+        self.source_commit = source_commit
         self.downloads: dict[str, bytes] = {}
-        self.release: dict = {}
-        self.release_url = (
-            "https://api.github.com/repos/cdin-editor/registry/releases/tags/v0.2.0-dev.1"
-        )
+        self.calls: list[str] = []
 
         catalog = {
             "schema_version": "1.0.0",
@@ -194,7 +116,7 @@ class FakeGitHubClient:
                 "repository_uri": REGISTRY_REPOSITORY_URI,
                 "version": "0.2.0-dev.1",
                 "tag": "v0.2.0-dev.1",
-                "source_commit": "a" * 40,
+                "source_commit": self.source_commit,
             },
             "catalog": {
                 "asset_name": "catalog-index.json",
@@ -206,44 +128,17 @@ class FakeGitHubClient:
             "executables": executables,
         }
         self.descriptor_bytes = json.dumps(descriptor, sort_keys=True).encode("utf-8")
-        self.downloads["https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/registry-release-0.2.0-dev.1.json"] = self.descriptor_bytes
-        self.downloads["https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/catalog-index.json"] = self.catalog_bytes
+        self.downloads[
+            _public_release_asset_url("v0.2.0-dev.1", "registry-release-0.2.0-dev.1.json")
+        ] = self.descriptor_bytes
+        self.downloads[
+            _public_release_asset_url("v0.2.0-dev.1", "catalog-index.json")
+        ] = self.catalog_bytes
         for asset_name, payload in binaries.items():
-            self.downloads[
-                f"https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/{asset_name}"
-            ] = payload
-
-        assets = []
-        for name, payload in [
-            ("registry-release-0.2.0-dev.1.json", self.descriptor_bytes),
-            ("catalog-index.json", self.catalog_bytes),
-            *binaries.items(),
-        ]:
-            assets.append({
-                "id": len(assets) + 1,
-                "name": name,
-                "size": len(payload),
-                "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
-                "browser_download_url": (
-                    "https://github.com/cdin-editor/registry/releases/download/v0.2.0-dev.1/"
-                    + name
-                ),
-            })
-        self.release = {
-            "tag_name": "v0.2.0-dev.1",
-            "draft": False,
-            "prerelease": True,
-            "assets": assets,
-        }
-
-    def get_json(self, url: str) -> dict:
-        if url == self.release_url:
-            return self.release
-        if url.endswith("/git/ref/tags/v0.2.0-dev.1"):
-            return {"object": {"type": "commit", "sha": self.tag_commit}}
-        raise AssertionError(f"unexpected API request: {url}")
+            self.downloads[_public_release_asset_url("v0.2.0-dev.1", asset_name)] = payload
 
     def download(self, url: str, *, maximum: int) -> bytes:
+        self.calls.append(url)
         payload = self.downloads[url]
         if len(payload) > maximum:
             raise AssertionError("fixture exceeds requested maximum")
@@ -251,6 +146,20 @@ class FakeGitHubClient:
 
 
 class RegistryArtifactBootstrapTests(unittest.TestCase):
+    def test_committed_registry_pin_matches_the_published_immutable_release(self) -> None:
+        lock_path = Path(__file__).resolve().parents[1] / "deps.lock"
+        lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+        pin = lock["tooling"]["registry"]
+        revision, version, tag, descriptor_sha, descriptor_size = _validate_pin(pin)
+        self.assertEqual(revision, "ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27")
+        self.assertEqual(version, "1.0.1")
+        self.assertEqual(tag, "v1.0.1")
+        self.assertEqual(
+            descriptor_sha,
+            "c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403",
+        )
+        self.assertEqual(descriptor_size, 1633)
+
     def _pin(self, client: FakeGitHubClient) -> dict:
         return {
             "repository": "https://github.com/cdin-editor/registry.git",
@@ -281,7 +190,7 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
         with self.assertRaisesRegex(RegistryBootstrapError, "machine mismatch"):
             verify_binary_target(elf64(183), os_name="linux", architecture="amd64")
 
-    def test_downloads_only_after_tag_and_descriptor_identity_verification(self) -> None:
+    def test_downloads_public_assets_after_descriptor_identity_verification(self) -> None:
         client = FakeGitHubClient()
         with tempfile.TemporaryDirectory() as temporary:
             binary, catalog = acquire_registry_artifact(
@@ -292,6 +201,14 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             )
             self.assertEqual(binary.read_bytes(), client.binary)
             self.assertEqual(catalog.read_bytes(), client.catalog_bytes)
+            self.assertEqual(
+                client.calls,
+                [
+                    _public_release_asset_url("v0.2.0-dev.1", "registry-release-0.2.0-dev.1.json"),
+                    _public_release_asset_url("v0.2.0-dev.1", "catalog-index.json"),
+                    _public_release_asset_url("v0.2.0-dev.1", "registry-linux-amd64"),
+                ],
+            )
             if os.name != "nt":
                 self.assertTrue(binary.stat().st_mode & 0o100)
 
@@ -304,9 +221,6 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             )
 
             class NoNetwork:
-                def get_json(self, _url: str) -> dict:
-                    raise AssertionError("offline cache lookup unexpectedly used the network")
-
                 def download(self, _url: str, *, maximum: int) -> bytes:
                     raise AssertionError("offline cache lookup unexpectedly downloaded an asset")
 
@@ -349,9 +263,6 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             linked.symlink_to(real, target_is_directory=True)
 
             class NoNetwork:
-                def get_json(self, _url: str) -> dict:
-                    raise AssertionError("unsafe cache path reached network")
-
                 def download(self, _url: str, *, maximum: int) -> bytes:
                     raise AssertionError("unsafe cache path reached asset download")
 
@@ -377,9 +288,6 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
             binary.chmod(0o644)
 
             class NoNetwork:
-                def get_json(self, _url: str) -> dict:
-                    raise AssertionError("offline cache verification must not fetch release metadata")
-
                 def download(self, _url: str, *, maximum: int) -> bytes:
                     raise AssertionError("offline cache verification must not download assets")
 
@@ -394,40 +302,23 @@ class RegistryArtifactBootstrapTests(unittest.TestCase):
                     offline=True,
                 )
 
-    def test_rejects_moved_tag_before_downloading_assets(self) -> None:
-        client = FakeGitHubClient(tag_commit="b" * 40)
+    def test_rejects_descriptor_with_a_source_commit_outside_the_lock(self) -> None:
+        client = FakeGitHubClient(source_commit="b" * 40)
         with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaisesRegex(RegistryBootstrapError, "tag moved or mismatched"):
+            with self.assertRaisesRegex(
+                RegistryBootstrapError,
+                "Registry release descriptor identity differs from deps.lock",
+            ):
                 acquire_registry_artifact(
                     self._pin(client),
                     cache_root=Path(temporary).resolve() / "cache",
                     target=("linux", "amd64"),
                     client=client,
                 )
-
-    def test_resolves_annotated_tag_objects(self) -> None:
-        client = FakeGitHubClient()
-
-        class AnnotatedTagClient(FakeGitHubClient):
-            def get_json(self, url: str) -> dict:
-                if url.endswith("/git/ref/tags/v0.2.0-dev.1"):
-                    return {"object": {"type": "tag", "sha": "b" * 40}}
-                if url.endswith("/git/tags/" + "b" * 40):
-                    return {
-                        "sha": "b" * 40,
-                        "object": {"type": "commit", "sha": "a" * 40},
-                    }
-                return super().get_json(url)
-
-        with tempfile.TemporaryDirectory() as temporary:
-            binary, catalog = acquire_registry_artifact(
-                self._pin(client),
-                cache_root=Path(temporary).resolve() / "cache",
-                target=("linux", "amd64"),
-                client=AnnotatedTagClient(),
-            )
-            self.assertTrue(binary.is_file())
-            self.assertTrue(catalog.is_file())
+        self.assertEqual(
+            client.calls,
+            [_public_release_asset_url("v0.2.0-dev.1", "registry-release-0.2.0-dev.1.json")],
+        )
 
 
 if __name__ == "__main__":

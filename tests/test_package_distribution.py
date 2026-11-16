@@ -7,9 +7,11 @@ import os
 import platform
 import sys
 import tempfile
+import tomllib
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -26,11 +28,9 @@ from package_distribution import (  # noqa: E402
 def host_target() -> dict[str, str]:
     os_name, architecture = detect_host()
     if os_name == "linux":
-        libc, version = platform.libc_ver()
-        if libc.lower() not in {"glibc", "gnu libc"} or not version:
-            raise RuntimeError(f"tests require a glibc host, got {libc}/{version}")
-        major, minor = version.split(".")[:2]
-        abi = f"gnu-glibc-{major}.{minor}"
+        # The distribution contract is deliberately pinned, not inferred from
+        # whichever newer glibc happens to be installed on the test runner.
+        abi = "gnu-glibc-2.39"
     elif os_name == "darwin":
         major = platform.mac_ver()[0].split(".")[0]
         abi = f"macos-{major}"
@@ -68,12 +68,23 @@ class InstalledDistributionTests(unittest.TestCase):
             self.executable.chmod(0o755)
         self.workspace.mkdir()
         self.target = host_target()
+        self.glibc_patcher = None
+        if self.target["os"] == "linux":
+            # Make the packaging fixtures deterministic on hosts whose system
+            # glibc is newer than the published Linux ABI baseline.
+            self.glibc_patcher = patch(
+                "package_distribution.platform.libc_ver",
+                return_value=("glibc", "2.39"),
+            )
+            self.glibc_patcher.start()
         if self.target["os"] == "windows":
             os.environ["MSYSTEM"] = "UCRT64"
         self.write_manifest("tui")
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+        if self.glibc_patcher is not None:
+            self.glibc_patcher.stop()
         if self.previous_msystem is None:
             os.environ.pop("MSYSTEM", None)
         else:
@@ -195,6 +206,16 @@ class InstalledDistributionTests(unittest.TestCase):
         with self.assertRaisesRegex(DistributionError, "refusing to overwrite"):
             self.package(run_smoke=False)
 
+    def test_rejects_a_builder_with_glibc_newer_than_the_package_baseline(self) -> None:
+        if self.target["os"] != "linux":
+            self.skipTest("Linux glibc baseline applies only to Linux distributions")
+        with patch(
+            "package_distribution.platform.libc_ver",
+            return_value=("glibc", "2.43"),
+        ):
+            with self.assertRaisesRegex(DistributionError, "newer than package baseline"):
+                self.package(run_smoke=False)
+
     def test_rejects_a_registry_target_for_another_architecture(self) -> None:
         manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))
         manifest["resolution"]["target"]["architecture"] = (
@@ -228,19 +249,75 @@ class InstalledDistributionTests(unittest.TestCase):
             {"org.cdin.kernel-abi", "org.lua.puc-lua-c-api", "org.m-mdy-m.log-c-api"},
         )
 
-    def test_gui_sdl_build_info_records_pinned_sdl3_source_identity(self) -> None:
+    def write_sdl3_sdk_fixture(self) -> None:
+        lock = tomllib.loads((ROOT / "deps.lock").read_text(encoding="utf-8"))
+        source = lock["tooling"]["sdl3"]
+        sdk_pin = lock["dependencies"]["sdl3_sdk"]
+        target_os = "macos" if self.target["os"] == "darwin" else self.target["os"]
+        metadata = {
+            "schema": "cdin.sdl3-sdk.v1",
+            "version": sdk_pin["version"],
+            "target": {
+                "os": target_os,
+                "architecture": self.target["architecture"],
+                "abi": self.target["abi"],
+            },
+            "source": {"url": source["archive"], "sha256": source["sha256"]},
+            "linkage": "static",
+            "cmake_package": "SDL3",
+        }
+        manifest = self.prefix / "share" / "cdin" / "sdl3-sdk.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(metadata, sort_keys=True) + "\n", encoding="utf-8")
+        header = self.prefix / "include" / "SDL3" / "SDL.h"
+        header.parent.mkdir(parents=True, exist_ok=True)
+        header.write_text("/* SDL3 SDK fixture */\n", encoding="utf-8")
+        version_header = self.prefix / "include" / "SDL3" / "SDL_version.h"
+        version_header.write_text("#define SDL3_VERSION 30416\n", encoding="utf-8")
+        cmake = self.prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake"
+        cmake.parent.mkdir(parents=True, exist_ok=True)
+        cmake.write_text("# SDL3 CMake SDK fixture\n", encoding="utf-8")
+        license_file = self.prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt"
+        license_file.parent.mkdir(parents=True, exist_ok=True)
+        license_file.write_text("SDL3 license fixture\n", encoding="utf-8")
+        library = self.prefix / "lib" / (
+            "SDL3-static.lib" if self.target["os"] == "windows" else "libSDL3.a"
+        )
+        library.parent.mkdir(parents=True, exist_ok=True)
+        library.write_bytes(b"verified prebuilt SDL3 SDK fixture")
+
+    def test_gui_sdl_build_info_records_pinned_prebuilt_sdl3_sdk_identity(self) -> None:
         self.write_manifest("gui-sdl")
-        library = self.prefix / "lib" / "libSDL3.a"
-        library.parent.mkdir(parents=True)
-        library.write_bytes(b"pinned SDL3 SDK fixture")
+        self.write_sdl3_sdk_fixture()
         result = self.package(profile="gui-sdl", run_smoke=False)
         with tempfile.TemporaryDirectory(prefix="cdin-package-sdl-info-") as temporary:
             extracted = safe_extract(Path(result["archive"]), Path(temporary))
             build_info = json.loads((extracted / "BUILD-INFO.json").read_text(encoding="utf-8"))
         sdl = build_info["build_dependencies"]["sdl3"]
         self.assertEqual(sdl["version"], "3.4.16")
-        self.assertEqual(sdl["delivery"], "pinned-source-build")
-        self.assertEqual(len(sdl["source_archive_sha256"]), 64)
+        self.assertEqual(sdl["tag"], "sdl3-sdk-v3.4.16")
+        self.assertEqual(sdl["source_revision"], "d249122c51acbab7262a6cd1e675922fd043bac7")
+        self.assertEqual(sdl["delivery"], "prebuilt-sdk")
+        target_os = "macos" if self.target["os"] == "darwin" else self.target["os"]
+        self.assertEqual(
+            sdl["asset"]["file_name"],
+            f"sdl3-sdk-3.4.16-{target_os}-{self.target['architecture']}.tar.gz",
+        )
+        self.assertEqual(len(sdl["asset"]["sha256"]), 64)
+        self.assertEqual(len(sdl["sidecar"]["sha256"]), 64)
+        self.assertEqual(sdl["source"]["archive_sha256"], "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68")
+
+    def test_gui_sdl_distribution_rejects_mismatched_sdk_manifest(self) -> None:
+        self.write_manifest("gui-sdl")
+        self.write_sdl3_sdk_fixture()
+        manifest = self.prefix / "share" / "cdin" / "sdl3-sdk.json"
+        metadata = json.loads(manifest.read_text(encoding="utf-8"))
+        metadata["target"]["architecture"] = (
+            "arm64" if self.target["architecture"] == "x86_64" else "x86_64"
+        )
+        manifest.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(DistributionError, "does not match the pinned immutable SDK"):
+            self.package(profile="gui-sdl", run_smoke=False)
 
     def test_rejects_missing_immutable_artifact_provenance(self) -> None:
         manifest = json.loads((self.workspace / "registry-manifest.json").read_text(encoding="utf-8"))

@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 from scripts.build_stack import (
     runtime_module_package_root,
-    runtime_root_for_stack,
     stage_cmake_prefix,
     stage_frontend_variant_prefix,
     stage_kernel_sdk_prefix,
@@ -29,19 +28,27 @@ FRONTEND_PACKAGE_FILES = _REGISTRY_E2E["FRONTEND_PACKAGE_FILES"]
 from scripts.deps import (
     CACHE as SDK_CACHE,
     SDKBootstrapError,
-    _GitHubAPIRedirectHandler,
+    _ReleaseRedirectHandler,
     install_sdk_atomically,
     parse_kernel_abi,
     parse_build_info,
     download_asset,
-    fetch_github_json,
-    verify_release_asset_identity,
+    release_asset_download_url,
+    verify_locked_asset_identity,
     load_pin,
 )
 from scripts.registry import (
+    REGISTRY_CATALOG,
+    REGISTRY_METADATA_CACHE,
+    REGISTRY_CACHE,
     create_effective_product_definition,
     detect_target_tuple,
     registry_go_environment,
+    registry_prepare_command,
+    registry_source_build_ldflags,
+    verify_backend_artifact,
+    verify_product_catalog,
+    expected_frontend_variants,
 )
 from scripts.smoke_support import resolve_runtime_root
 import scripts.smoke_support as smoke_support
@@ -49,30 +56,7 @@ import scripts.smoke_support as smoke_support
 
 
 
-class KernelSDKAPIRedirectTests(unittest.TestCase):
-    def test_rejects_release_identity_api_redirect_to_another_host(self) -> None:
-        handler = _GitHubAPIRedirectHandler()
-        request = urllib.request.Request(
-            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        )
-        with self.assertRaisesRegex(SDKBootstrapError, "left the trusted API origin"):
-            handler.redirect_request(
-                request, None, 302, "Found", {}, "https://example.invalid/redirect"
-            )
-
-    def test_rejects_malformed_api_redirect_port(self) -> None:
-        handler = _GitHubAPIRedirectHandler()
-        request = urllib.request.Request(
-            "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-        )
-        with self.assertRaisesRegex(SDKBootstrapError, "invalid port"):
-            handler.redirect_request(
-                request, None, 302, "Found", {}, "https://api.github.com:not-a-port/redirect"
-            )
-
-
 class KernelSDKReleasePinTests(unittest.TestCase):
-
     def test_repository_lock_pins_the_published_kernel_123_release_assets(self) -> None:
         pin = load_pin()
         self.assertEqual(pin["repository"], "https://github.com/cdin-editor/kernel")
@@ -96,108 +80,130 @@ class KernelSDKReleasePinTests(unittest.TestCase):
                 self.assertEqual(asset["size_bytes"], size)
                 self.assertEqual(asset["sha256"], digest)
                 self.assertEqual(asset["format"], "zip" if target.startswith("windows-") else "tar.gz")
+                verify_locked_asset_identity(pin, asset)
 
-    def test_github_api_uses_the_workflow_token_when_available(self) -> None:
-        requested = {}
+    def test_builds_canonical_public_release_download_url(self) -> None:
+        pin = load_pin()
+        asset = pin["assets"]["linux-x86_64"]
+        self.assertEqual(
+            release_asset_download_url(pin, asset),
+            "https://github.com/cdin-editor/kernel/releases/download/"
+            "v1.2.3/cdin-kernel-1.2.3-linux-x86_64.tar.gz",
+        )
 
-        class FakeResponse:
-            status = 200
+    def test_rejects_untrusted_repository_and_asset_paths(self) -> None:
+        pin = load_pin()
+        asset = dict(pin["assets"]["linux-x86_64"])
+        bad_pin = dict(pin, repository="https://example.invalid/kernel")
+        with self.assertRaisesRegex(SDKBootstrapError, "repository pin is invalid"):
+            verify_locked_asset_identity(bad_pin, asset)
 
-            def __enter__(self):
-                return self
+        bad_asset = dict(asset, file_name="../cdin-kernel-1.2.3-linux-x86_64.tar.gz")
+        with self.assertRaisesRegex(SDKBootstrapError, "locked asset identity is malformed"):
+            release_asset_download_url(pin, bad_asset)
 
-            def __exit__(self, *_args):
-                return False
-
-            def geturl(self):
-                return "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-
-            def read(self, _limit: int) -> bytes:
-                return b'{"tag_name":"v1.2.1"}'
-
-        class FakeOpener:
-            def open(self, request, timeout: int):
-                requested["authorization"] = request.get_header("Authorization")
-                requested["timeout"] = timeout
-                return FakeResponse()
-
-        with patch.dict(os.environ, {"GITHUB_TOKEN": "ghs-test-token"}, clear=True), \
-             patch("scripts.deps.urllib.request.build_opener", return_value=FakeOpener()):
-            payload = fetch_github_json(
-                "https://api.github.com/repos/cdin-editor/kernel/releases/tags/v1.2.1"
-            )
-
-        self.assertEqual(payload["tag_name"], "v1.2.1")
-        self.assertEqual(requested["authorization"], "Bearer ghs-test-token")
-        self.assertEqual(requested["timeout"], 30)
+    def test_bootstrap_has_no_github_rest_api_dependency(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "deps.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("api.github.com", source)
+        self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
 
 
-    revision = "f4875b6eb59bd76878e7ff486b6114abd9bb1329"
-    tag_object = "a" * 40
-    asset = {
-        "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
-        "size_bytes": 268126,
-        "sha256": "05779c5a23a24b3a5cb4e978d803f8e4bd81c73dbf5ba2b47e36b34ed0ddda21",
-    }
+    def test_release_redirect_rejects_credentials_and_nonstandard_ports(self) -> None:
+        handler = _ReleaseRedirectHandler()
+        request = urllib.request.Request(
+            "https://github.com/cdin-editor/kernel/releases/download/v1.2.3/archive.tar.gz"
+        )
+        invalid_redirects = [
+            "https://user@release-assets.githubusercontent.com/archive",
+            "https://release-assets.githubusercontent.com:444/archive",
+            "https://release-assets.githubusercontent.com:not-a-port/archive",
+            "http://release-assets.githubusercontent.com/archive",
+        ]
+        for url in invalid_redirects:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(SDKBootstrapError, "redirect"):
+                    handler.redirect_request(request, None, 302, "Found", {}, url)
 
-    def setUp(self) -> None:
-        self.pin = {
-            "repository": "https://github.com/cdin-editor/kernel",
-            "tag": "v1.2.1",
-            "version": "1.2.1",
-            "revision": self.revision,
+
+class RegistrySourceBuildMetadataTests(unittest.TestCase):
+    def test_source_build_embeds_the_locked_semver_and_commit(self) -> None:
+        flags = registry_source_build_ldflags(
+            "1.0.0",
+            "c5b6900319cebe22f2d035a6c3b23a32f06a48b5",
+        )
+        self.assertIn(
+            "-X github.com/cdin-editor/registry/internal/buildinfo.Version=1.0.0",
+            flags,
+        )
+        self.assertIn(
+            "-X github.com/cdin-editor/registry/internal/buildinfo.Commit="
+            "c5b6900319cebe22f2d035a6c3b23a32f06a48b5",
+            flags,
+        )
+
+    def test_source_build_rejects_non_semver_development_version(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "not valid SemVer"):
+            registry_source_build_ldflags("development", "c5b6900319cebe22f2d035a6c3b23a32f06a48b5")
+
+    def test_source_build_rejects_abbreviated_commit_identity(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "full lowercase commit SHA"):
+            registry_source_build_ldflags("1.0.0", "c5b6900")
+
+
+
+class CDINProductCatalogTests(unittest.TestCase):
+    def test_product_catalog_is_static_and_bound_to_the_lock_digest(self) -> None:
+        import tomllib
+
+        catalog_path = verify_product_catalog()
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(catalog_path, REGISTRY_CATALOG)
+        lock = tomllib.loads((root / "deps.lock").read_text(encoding="utf-8"))
+        pin = lock["tooling"]["cdin_catalog"]
+        self.assertEqual(pin["path"], "registry/catalog-index.json")
+        self.assertEqual(hashlib.sha256(catalog_path.read_bytes()).hexdigest(), pin["sha256"])
+
+        document = json.loads(catalog_path.read_text(encoding="utf-8"))
+        self.assertEqual(document["catalog_id"], "cdin-components")
+        self.assertNotIn("release_sources", document)
+        identities = {
+            (item["component_id"], item.get("variant", "default"), item["version"])
+            for item in document["entries"]
         }
+        self.assertEqual(identities, {
+            ("backend", "default", "1.2.2"),
+            ("frontend", "core", "1.2.2"),
+            ("frontend", "tui", "1.2.2"),
+            ("frontend", "gui-sdl", "1.2.2"),
+            ("kernel", "default", "1.2.3"),
+            ("runtime", "default", "1.0.0"),
+        })
+        for entry in document["entries"]:
+            self.assertRegex(entry["metadata_sha256"], r"^[0-9a-f]{64}$")
+            self.assertRegex(entry["metadata_uri"], r"^https://github\.com/cdin-editor/[^/]+/releases/download/")
+            self.assertNotIn("api.github.com", entry["metadata_uri"])
 
-    def _api_responses(self, *, commit: str | None = None, digest: str | None = None):
-        commit = commit or self.revision
-        digest = digest or self.asset["sha256"]
-        release = {
-            "tag_name": "v1.2.1",
-            "draft": False,
-            "prerelease": False,
-            "assets": [{
-                "name": self.asset["file_name"],
-                "size": self.asset["size_bytes"],
-                "digest": "sha256:" + digest,
-            }],
-        }
+    def test_product_catalog_cache_is_separate_from_registry_executable_cache(self) -> None:
+        self.assertEqual(REGISTRY_METADATA_CACHE, REGISTRY_CACHE.parent / "registry-metadata")
+        self.assertNotEqual(REGISTRY_METADATA_CACHE, REGISTRY_CACHE)
 
-        def fetch(url: str) -> dict:
-            if url.endswith("/releases/tags/v1.2.1"):
-                return release
-            if url.endswith("/git/ref/tags/v1.2.1"):
-                return {"object": {"type": "tag", "sha": self.tag_object}}
-            if url.endswith("/git/tags/" + self.tag_object):
-                return {
-                    "sha": self.tag_object,
-                    "object": {"type": "commit", "sha": commit},
-                }
-            raise AssertionError(f"unexpected GitHub API URL: {url}")
 
-        return fetch
-
-    def test_verifies_annotated_tag_commit_and_github_asset_digest_size(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(),
-        ):
-            verify_release_asset_identity(self.pin, self.asset)
-
-    def test_rejects_tag_resolving_to_a_different_source_commit(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(commit="0" * 40),
-        ):
-            with self.assertRaisesRegex(SDKBootstrapError, "tag moved or mismatched"):
-                verify_release_asset_identity(self.pin, self.asset)
-
-    def test_rejects_github_asset_digest_that_differs_from_lock(self) -> None:
-        with patch(
-            "scripts.deps.fetch_github_json",
-            side_effect=self._api_responses(digest="0" * 64),
-        ):
-            with self.assertRaisesRegex(SDKBootstrapError, "digest differs from deps.lock"):
-                verify_release_asset_identity(self.pin, self.asset)
+class RegistryPrepareCommandTests(unittest.TestCase):
+    def test_prepare_runs_one_resolution_pass_and_uses_a_separate_cache(self) -> None:
+        command = registry_prepare_command(
+            Path("registry"),
+            Path("product.yaml"),
+            Path("catalog-index.json"),
+            Path("workspace"),
+        )
+        self.assertEqual(command[:2], ["registry", "prepare"])
+        self.assertIn("--cache-dir", command)
+        cache_dir = Path(command[command.index("--cache-dir") + 1])
+        self.assertEqual(cache_dir, REGISTRY_METADATA_CACHE)
+        self.assertNotEqual(cache_dir, REGISTRY_CACHE)
+        self.assertNotIn("resolve", command)
 
 
 class RegistryGoEnvironmentTests(unittest.TestCase):
@@ -302,36 +308,279 @@ class RegistryMakeTargetTests(unittest.TestCase):
         self.assertIn('if args.registry_source_build and shutil.which("git") is None:', stack_script)
         self.assertNotIn('for tool in ("git", "cmake", "make", "pkg-config"):', stack_script)
         self.assertIn("--source-build --developer-source-components", makefile)
-        # CI is allowed to test the explicit source build; normal Make targets are not.
+        # CI builds the pinned Registry CLI from source, but component and
+        # SDL3 delivery must still follow the actual Manifest/artifact pins.
         self.assertIn('"scripts/registry.py", "--source-build", "--developer-source-components"', pipeline)
         self.assertIn('"scripts/build_stack.py", "--registry-source-build"', pipeline)
+        self.assertNotIn('"--build-sdl3-from-source"', pipeline)
+
+    def test_developer_registry_build_can_consume_published_frontend_packages(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        stack_script = (root / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+
+        self.assertIn('frontend_deliveries = {', stack_script)
+        self.assertIn('frontend_split_packages = frontend_delivery == "artifact"', stack_script)
+        self.assertIn('if frontend_split_packages:', stack_script)
+        self.assertIn('if frontend_delivery == "source" and args.registry_source_build:', stack_script)
+        self.assertIn('selected_variants = tuple(sorted(frontend_components))', stack_script)
 
 
 
-class RegistryPinSeparationTests(unittest.TestCase):
-    def test_consumer_release_and_developer_source_pins_are_separate(self) -> None:
+class RegistryPinAlignmentTests(unittest.TestCase):
+    def test_consumer_release_and_developer_source_pins_share_the_v101_commit(self) -> None:
         from scripts.registry import registry_pin
+
         lock = Path(__file__).resolve().parents[1] / "deps.lock"
         import tomllib
 
         data = tomllib.loads(lock.read_text(encoding="utf-8"))
         consumer = data["tooling"]["registry"]
         development = consumer["development"]
-        self.assertEqual(consumer["release_tag"], "v0.1.0-dev")
-        self.assertNotIn("release_descriptor_sha256", consumer)
-        self.assertNotIn("release_descriptor_size", consumer)
+
+        expected_repository = "https://github.com/cdin-editor/registry.git"
+        expected_revision = "ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27"
+        self.assertEqual(consumer["release_tag"], "v1.0.1")
+        self.assertEqual(consumer["version"], "1.0.1")
+        self.assertEqual(consumer["revision"], expected_revision)
+        self.assertEqual(consumer["release_descriptor_size"], 1633)
         self.assertEqual(
-            registry_pin(),
-            ("https://github.com/cdin-editor/registry.git", "cdcf86ed6a8788bf20fa0bcd821bb91242ba09a4"),
+            consumer["release_descriptor_sha256"],
+            "c37a1902afe6d41291b0f29d6970408d70dae239881307533673ceaf85634403",
         )
-        self.assertEqual(development["version"], "0.2.0-dev.3")
-        self.assertEqual(
-            registry_pin(development=True),
-            ("https://github.com/cdin-editor/registry.git", "c30ab313638a53d82b1bc63e67af90b1e111551d"),
-        )
-        self.assertNotEqual(consumer["revision"], development["revision"])
+        self.assertEqual(registry_pin(), (expected_repository, expected_revision))
+
+        self.assertEqual(development["version"], "1.0.1")
+        self.assertEqual(development["revision"], expected_revision)
+        self.assertEqual(registry_pin(development=True), (expected_repository, expected_revision))
+
+        # Consumer artifact delivery and explicit developer source delivery
+        # identify the same immutable Registry release commit, while only the
+        # consumer pin carries the published Release descriptor identity.
+        self.assertEqual(consumer["revision"], development["revision"])
+        self.assertNotIn("release_tag", development)
+        self.assertNotIn("release_descriptor_sha256", development)
+        self.assertNotIn("release_descriptor_size", development)
 
 
+class RegistryCTestBootstrapTests(unittest.TestCase):
+    def test_manifest_verification_uses_the_pinned_registry_bootstrap(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        cmake = (root / "CMakeLists.txt").read_text(encoding="utf-8")
+
+        self.assertIn('"${CMAKE_CURRENT_SOURCE_DIR}/scripts/registry.py"', cmake)
+        self.assertIn("--verify-workspace", cmake)
+        self.assertIn("CDIN_DEVELOPER_SOURCE_COMPONENTS", cmake)
+        self.assertIn("set(CDIN_REGISTRY_WORKSPACE", cmake)
+        self.assertIn("${CMAKE_CURRENT_SOURCE_DIR}/.deps/registry-workspace-${CDIN_REGISTRY_PROFILE}", cmake)
+        self.assertIn('--workspace "${CDIN_REGISTRY_WORKSPACE}"', cmake)
+        self.assertNotIn('"${CMAKE_CURRENT_SOURCE_DIR}/build/tools/registry"', cmake)
+        stack_script = (root / "scripts" / "build_stack.py").read_text(encoding="utf-8")
+        self.assertIn('f"-DCDIN_REGISTRY_WORKSPACE={WORKSPACE}"', stack_script)
+
+
+class FrontendArtifactDependencyClosureTests(unittest.TestCase):
+    @staticmethod
+    def selected(variant: str, *, artifact: bool) -> dict:
+        item = {"component_id": "frontend", "variant": variant}
+        if artifact:
+            item["selected_artifact"] = {"artifact_id": f"frontend-{variant}-1.2.2"}
+        return item
+
+    def test_tui_artifact_resolves_shared_core_exactly_once(self) -> None:
+        components = [
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"core", "tui"},
+        )
+
+    def test_gui_artifacts_resolve_tui_gui_and_one_shared_core(self) -> None:
+        components = [
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+            self.selected("gui-sdl", artifact=True),
+        ]
+        self.assertEqual(
+            expected_frontend_variants("gui-sdl", components),
+            {"core", "tui", "gui-sdl"},
+        )
+
+    def test_hybrid_product_uses_frontend_artifact_delivery_not_global_mode(self) -> None:
+        components = [
+            {"component_id": "backend", "variant": "default", "delivery": "artifact"},
+            self.selected("core", artifact=True),
+            self.selected("tui", artifact=True),
+            {"component_id": "runtime", "variant": "default", "delivery": "source"},
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"core", "tui"},
+        )
+
+    def test_legacy_frontend_source_delivery_does_not_require_split_core(self) -> None:
+        components = [
+            {"component_id": "frontend", "variant": "tui", "delivery": "source"}
+        ]
+        self.assertEqual(
+            expected_frontend_variants("tui", components),
+            {"tui"},
+        )
+
+    def test_rejects_unknown_profile(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unsupported Frontend"):
+            expected_frontend_variants("headless", [])
+
+
+class SmokeRuntimeRootResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name).resolve()
+        self.deps = self.root / ".deps"
+        self.deps.mkdir()
+        self.build = self.root / "build" / "stack" / "cdin"
+        self.build.mkdir(parents=True)
+        self.cache = self.build / "CMakeCache.txt"
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _configure_runtime(self, runtime_root: Path) -> None:
+        runtime_entry = runtime_root / "lua" / "cdin" / "runtime.lua"
+        runtime_entry.parent.mkdir(parents=True, exist_ok=True)
+        runtime_entry.write_text("return {}\n", encoding="utf-8")
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
+            encoding="utf-8",
+        )
+
+    def test_resolves_the_artifact_package_selected_by_cmake(self) -> None:
+        runtime_root = (
+            self.deps / "registry-workspace-tui" / "components" / "runtime"
+            / "default" / "package" / "cdin-runtime-1.0.0"
+        )
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_resolves_an_explicit_developer_source_runtime(self) -> None:
+        runtime_root = self.deps / "src" / "runtime"
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
+
+    def test_rejects_a_runtime_path_outside_private_dependencies(self) -> None:
+        runtime_root = self.root / "outside" / "runtime"
+        self._configure_runtime(runtime_root)
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "inside CDIN .deps"):
+                    resolve_runtime_root()
+
+    def test_rejects_a_symlinked_runtime_module(self) -> None:
+        runtime_root = self.deps / "runtime"
+        module_dir = runtime_root / "lua" / "cdin"
+        module_dir.mkdir(parents=True)
+        external = self.root / "outside.lua"
+        external.write_text("return {}\n", encoding="utf-8")
+        module = module_dir / "runtime.lua"
+        try:
+            module.symlink_to(external)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest(f"symlink creation is unavailable: {error}")
+        self.cache.write_text(
+            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
+            encoding="utf-8",
+        )
+        with patch.object(smoke_support, "ROOT", self.root):
+            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
+                with self.assertRaisesRegex(RuntimeError, "symlink"):
+                    resolve_runtime_root()
+
+
+class BackendArtifactCompatibilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.workspace = Path(self.temporary.name).resolve()
+        self.target = {
+            "os": "linux",
+            "architecture": "x86_64",
+            "abi": "gnu-glibc-2.39",
+        }
+        self.package = self.workspace / "components/backend/default/package"
+        self.package.mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def _backend(self, version: str = "1.2.2") -> dict:
+        return {
+            "component_id": "backend",
+            "variant": "default",
+            "version": version,
+            "delivery": "artifact",
+            "selected_artifact": {
+                "artifact_id": f"backend-{version}-linux-x86_64",
+                "kind": "native-development-package",
+                "layout": "cmake-prefix-v1",
+                "target": self.target,
+                "workspace_path": "components/backend/default/package",
+            },
+        }
+
+    def test_accepts_a_registry_selected_backend_1_2_2_artifact(self) -> None:
+        result = verify_backend_artifact(self._backend("1.2.2"), self.workspace, self.target)
+        self.assertEqual(result, self.package)
+
+    def test_accepts_a_later_compatible_backend_version_without_source_edit(self) -> None:
+        result = verify_backend_artifact(self._backend("1.3.0"), self.workspace, self.target)
+        self.assertEqual(result, self.package)
+
+    def test_rejects_source_delivery_without_fallback(self) -> None:
+        backend = self._backend()
+        backend["delivery"] = "source"
+        with self.assertRaisesRegex(RuntimeError, "source fallback"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+    def test_rejects_wrong_target_and_noncanonical_package_layout(self) -> None:
+        backend = self._backend()
+        backend["selected_artifact"]["target"] = {
+            "os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"
+        }
+        with self.assertRaisesRegex(RuntimeError, "does not match host"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+        backend = self._backend()
+        backend["selected_artifact"]["workspace_path"] = "components/backend/default/other"
+        with self.assertRaisesRegex(RuntimeError, "workspace path is not canonical"):
+            verify_backend_artifact(backend, self.workspace, self.target)
+
+    def test_rejects_symlinked_backend_package(self) -> None:
+        real = self.workspace / "real-backend-package"
+        real.mkdir()
+        self.package.rmdir()
+        self.package.symlink_to(real, target_is_directory=True)
+        with self.assertRaisesRegex(RuntimeError, "missing or unsafe"):
+            verify_backend_artifact(self._backend(), self.workspace, self.target)
+
+
+class ProductEnvironmentContractTests(unittest.TestCase):
+    def test_gui_sdl_declares_its_external_sdl3_sdk_provider(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        gui = (root / "registry" / "product-definition.gui-sdl.yaml").read_text(
+            encoding="utf-8"
+        )
+        tui = (root / "registry" / "product-definition.tui.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('contract_id: org.cdin.sdl3-sdk', gui)
+        self.assertIn('version: "3.4.16"', gui)
+        self.assertNotIn('contract_id: org.cdin.sdl3-sdk', tui)
+        self.assertIn('allow_prerelease: false', gui)
+        self.assertIn('allow_prerelease: false', tui)
 
 
 class RegistryTargetDetectionTests(unittest.TestCase):
@@ -344,13 +593,19 @@ class RegistryTargetDetectionTests(unittest.TestCase):
         )
         self.assertEqual(
             detect_target_tuple(
-                system="Linux", machine="aarch64", libc=("glibc", "2.40")
+                system="Linux", machine="aarch64", libc=("glibc", "2.39")
             ),
             {"os": "linux", "architecture": "arm64", "abi": "gnu-glibc-2.39"},
         )
 
-    def test_rejects_old_or_non_gnu_linux_runtime(self) -> None:
-        for libc in (("glibc", "2.38"), ("musl", "1.2.5"), ("", "")):
+    def test_rejects_non_baseline_or_non_gnu_linux_runtime(self) -> None:
+        for libc in (
+            ("glibc", "2.38"),
+            ("glibc", "2.40"),
+            ("glibc", "2.43"),
+            ("musl", "1.2.5"),
+            ("", ""),
+        ):
             with self.subTest(libc=libc):
                 with self.assertRaises(RuntimeError):
                     detect_target_tuple(system="Linux", machine="x86_64", libc=libc)
@@ -713,13 +968,14 @@ class KernelSDKCompositionTests(unittest.TestCase):
 
 
 
-class KernelSDKOfflineCacheTests(unittest.TestCase):
+class KernelSDKCacheTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.cache = Path(self.temporary.name).resolve() / "cache"
         self.payload = b"immutable-kernel-sdk-fixture"
         self.asset = {
             "file_name": "cdin-kernel-1.2.1-linux-x86_64.tar.gz",
+            "format": "tar.gz",
             "size_bytes": len(self.payload),
             "sha256": hashlib.sha256(self.payload).hexdigest(),
         }
@@ -742,6 +998,22 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
         )
         self.assertNotIn("build", SDK_CACHE.relative_to(root).parts)
 
+    def test_online_mode_reuses_exact_cached_bytes_without_github_api(self) -> None:
+        self.cache.mkdir(parents=True)
+        cached = self.cache / self.asset["file_name"]
+        cached.write_bytes(self.payload)
+        with (
+            patch("scripts.deps.CACHE", self.cache),
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "scripts.deps.urllib.request.build_opener",
+                side_effect=AssertionError("consumer install must not query the GitHub REST API"),
+            ),
+        ):
+            result = download_asset(self.pin, self.asset)
+        self.assertEqual(result, cached)
+        self.assertEqual(result.read_bytes(), self.payload)
+
     def test_offline_mode_reuses_only_exact_lock_pinned_cache_bytes(self) -> None:
         self.cache.mkdir(parents=True)
         cached = self.cache / self.asset["file_name"]
@@ -749,8 +1021,8 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache reuse must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache reuse must not access the network"),
              ):
             result = download_asset(self.pin, self.asset)
         self.assertEqual(result, cached)
@@ -760,8 +1032,8 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "true"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache miss must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache miss must not access the network"),
              ):
             with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK installation requires"):
                 download_asset(self.pin, self.asset)
@@ -773,8 +1045,8 @@ class KernelSDKOfflineCacheTests(unittest.TestCase):
         with patch("scripts.deps.CACHE", self.cache), \
              patch.dict(os.environ, {"CDIN_OFFLINE": "1"}), \
              patch(
-                 "scripts.deps.verify_release_asset_identity",
-                 side_effect=AssertionError("offline cache verification must not access GitHub"),
+                 "scripts.deps.urllib.request.build_opener",
+                 side_effect=AssertionError("offline cache verification must not access the network"),
              ):
             with self.assertRaisesRegex(SDKBootstrapError, "offline Kernel SDK cache entry"):
                 download_asset(self.pin, self.asset)
@@ -966,56 +1238,6 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         with patch("scripts.build_stack.WORKSPACE", self.workspace):
             self.assertEqual(runtime_module_package_root(manifest), root)
 
-    def test_developer_registry_mode_still_uses_a_selected_runtime_artifact(self) -> None:
-        root = (
-            self.workspace / "components/runtime/default/package"
-            / "cdin-runtime-1.0.0"
-        )
-        entry = root / "lua/cdin/runtime.lua"
-        entry.parent.mkdir(parents=True)
-        entry.write_text("return {}\n", encoding="utf-8")
-        manifest = {
-            "components": [{
-                "component_id": "runtime",
-                "variant": "default",
-                "version": "1.0.0",
-                "delivery": "artifact",
-                "selected_artifact": {
-                    "kind": "runtime-module-archive",
-                    "layout": "lua-module-tree-v1",
-                    "target": {"os": "any", "architecture": "any", "abi": "none"},
-                    "workspace_path": "components/runtime/default/package",
-                },
-            }]
-        }
-        with patch("scripts.build_stack.WORKSPACE", self.workspace):
-            with patch("scripts.build_stack.DEPS", self.workspace / "src"):
-                self.assertEqual(
-                    runtime_root_for_stack(manifest, developer_source_components=True),
-                    root,
-                )
-
-    def test_developer_source_runtime_is_used_only_when_manifest_selects_source(self) -> None:
-        source_root = self.workspace / "src/runtime"
-        entry = source_root / "lua/cdin/runtime.lua"
-        entry.parent.mkdir(parents=True)
-        entry.write_text("return {}\n", encoding="utf-8")
-        manifest = {
-            "components": [{
-                "component_id": "runtime",
-                "variant": "default",
-                "version": "1.0.0",
-                "delivery": "source",
-            }]
-        }
-        with patch("scripts.build_stack.DEPS", self.workspace / "src"):
-            self.assertEqual(
-                runtime_root_for_stack(manifest, developer_source_components=True),
-                source_root,
-            )
-            with self.assertRaisesRegex(RuntimeError, "normal CDIN installation"):
-                runtime_root_for_stack(manifest, developer_source_components=False)
-
     def test_rejects_a_non_universal_runtime_package_target(self) -> None:
         manifest = {
             "components": [{
@@ -1034,70 +1256,6 @@ class RuntimeArtifactRootTests(unittest.TestCase):
         with patch("scripts.build_stack.WORKSPACE", self.workspace):
             with self.assertRaisesRegex(RuntimeError, "universal any/any/none"):
                 runtime_module_package_root(manifest)
-
-
-class SmokeRuntimeRootResolutionTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name).resolve()
-        self.deps = self.root / ".deps"
-        self.deps.mkdir()
-        self.build = self.root / "build/stack/cdin"
-        self.build.mkdir(parents=True)
-        self.cache = self.build / "CMakeCache.txt"
-
-    def tearDown(self) -> None:
-        self.temporary.cleanup()
-
-    def _configure_runtime(self, runtime_root: Path) -> None:
-        runtime_entry = runtime_root / "lua/cdin/runtime.lua"
-        runtime_entry.parent.mkdir(parents=True, exist_ok=True)
-        runtime_entry.write_text("return {}\n", encoding="utf-8")
-        self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
-            encoding="utf-8",
-        )
-
-    def test_resolves_runtime_from_the_artifact_package_selected_by_cmake(self) -> None:
-        runtime_root = (
-            self.deps / "registry-workspace-tui/components/runtime/default/package"
-            / "cdin-runtime-1.0.0"
-        )
-        self._configure_runtime(runtime_root)
-        with patch.object(smoke_support, "ROOT", self.root):
-            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
-                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
-
-    def test_resolves_runtime_from_explicit_developer_source_configuration(self) -> None:
-        runtime_root = self.deps / "src/runtime"
-        self._configure_runtime(runtime_root)
-        with patch.object(smoke_support, "ROOT", self.root):
-            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
-                self.assertEqual(resolve_runtime_root(), runtime_root / "lua")
-
-    def test_rejects_runtime_path_outside_private_dependency_root(self) -> None:
-        external = self.root / "outside/runtime"
-        self._configure_runtime(external)
-        with patch.object(smoke_support, "ROOT", self.root):
-            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
-                with self.assertRaisesRegex(RuntimeError, "inside CDIN .deps"):
-                    resolve_runtime_root()
-
-    def test_rejects_missing_or_symlinked_runtime_entry(self) -> None:
-        runtime_root = self.deps / "runtime"
-        runtime_root.mkdir()
-        (runtime_root / "lua/cdin").mkdir(parents=True)
-        outside = self.root / "outside.lua"
-        outside.write_text("return {}\n", encoding="utf-8")
-        (runtime_root / "lua/cdin/runtime.lua").symlink_to(outside)
-        self.cache.write_text(
-            f"CDIN_RUNTIME_SOURCE_DIR:PATH={runtime_root}\n",
-            encoding="utf-8",
-        )
-        with patch.object(smoke_support, "ROOT", self.root):
-            with patch.object(smoke_support, "CMAKE_CACHE", self.cache):
-                with self.assertRaisesRegex(RuntimeError, "symlink"):
-                    resolve_runtime_root()
 
 
 class RegistryArtifactConsumerValidationTests(unittest.TestCase):

@@ -4,10 +4,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 import tempfile
+import tomllib
 import unittest
+import urllib.request
 from unittest.mock import patch
 
 from scripts import sdl3_artifact as sdk
@@ -72,6 +75,8 @@ def make_lock(archive: Path | None = None) -> dict:
             "format": "tar.gz",
             "size_bytes": 123,
             "sha256": "c" * 64,
+            "sidecar_size_bytes": 100,
+            "sidecar_sha256": "d" * 64,
         }
         if archive is not None and key == "linux-x86_64":
             asset["size_bytes"] = archive.stat().st_size
@@ -114,6 +119,8 @@ def write_lock(path: Path, lock: dict) -> None:
             'format = "{}"'.format(asset["format"]),
             "size_bytes = {}".format(asset["size_bytes"]),
             'sha256 = "{}"'.format(asset["sha256"]),
+            "sidecar_size_bytes = {}".format(asset["sidecar_size_bytes"]),
+            'sidecar_sha256 = "{}"'.format(asset["sidecar_sha256"]),
             "",
         ])
     source = lock["tooling"]["sdl3"]
@@ -125,6 +132,78 @@ def write_lock(path: Path, lock: dict) -> None:
         "",
     ])
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+class PublicReleaseURLTests(unittest.TestCase):
+    def test_builds_public_urls_only_for_pinned_release_assets(self) -> None:
+        lock = make_lock()
+        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        self.assertEqual(
+            sdk.public_release_asset_url(pin, asset["file_name"]),
+            "https://github.com/cdin-editor/cdin/releases/download/"
+            "sdl3-sdk-v3.4.16/sdl3-sdk-3.4.16-linux-x86_64.tar.gz",
+        )
+        self.assertEqual(
+            sdk.public_release_asset_url(pin, asset["file_name"] + ".sha256"),
+            "https://github.com/cdin-editor/cdin/releases/download/"
+            "sdl3-sdk-v3.4.16/sdl3-sdk-3.4.16-linux-x86_64.tar.gz.sha256",
+        )
+
+    def test_rejects_unpinned_release_assets_and_malformed_pin(self) -> None:
+        lock = make_lock()
+        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "untrusted SDL3 SDK Release asset name"):
+            sdk.public_release_asset_url(pin, "../untrusted.tar.gz")
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "exactly five target assets"):
+            sdk.public_release_asset_url(dict(pin, assets={}), asset["file_name"])
+
+    def test_bootstrap_has_no_github_rest_api_or_api_token_dependency(self) -> None:
+        source = (Path(__file__).resolve().parents[1] / "scripts" / "sdl3_artifact.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("api.github.com", source)
+        self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
+        self.assertNotIn("fetch_github_json", source)
+
+
+    def test_downloader_rejects_noncanonical_urls_before_network(self) -> None:
+        invalid_urls = [
+            "http://github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://github.com:444/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://user@github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+            "https://github.com/cdin-editor/cdin/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz?token=bad",
+            "https://github.com/example/other/releases/download/sdl3-sdk-v3.4.16/archive.tar.gz",
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary) / "asset.tar.gz"
+            for url in invalid_urls:
+                with self.subTest(url=url):
+                    with patch.object(
+                        sdk.urllib.request,
+                        "build_opener",
+                        side_effect=AssertionError("untrusted URL reached network"),
+                    ):
+                        with self.assertRaisesRegex(
+                            sdk.SDL3ArtifactError,
+                            "canonical public Release asset",
+                        ):
+                            sdk._download(url, destination, expected_size=1, max_size=1)
+
+    def test_asset_redirect_rejects_credentials_and_nonstandard_ports(self) -> None:
+        handler = sdk._AssetRedirectHandler()
+        request = urllib.request.Request(
+            "https://github.com/cdin-editor/cdin/releases/download/tag/asset"
+        )
+        invalid_redirects = [
+            "https://user@release-assets.githubusercontent.com/path",
+            "https://release-assets.githubusercontent.com:444/path",
+            "https://release-assets.githubusercontent.com:bad/path",
+            "http://release-assets.githubusercontent.com/path",
+        ]
+        for url in invalid_redirects:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(sdk.SDL3ArtifactError, "redirect"):
+                    handler.redirect_request(request, None, 302, "Found", {}, url)
 
 
 class TargetAndPinTests(unittest.TestCase):
@@ -146,6 +225,51 @@ class TargetAndPinTests(unittest.TestCase):
             sdk.validate_pin({"tooling": {"sdl3": {
                 "version": "3.4.16", "archive": SOURCE_URL, "sha256": SOURCE_SHA
             }}}, "linux-x86_64")
+
+    def test_committed_lock_matches_the_published_five_target_sdk_release(self) -> None:
+        lock = tomllib.loads(sdk.LOCK.read_text(encoding="utf-8"))
+        pin = lock["dependencies"]["sdl3_sdk"]
+        self.assertEqual(pin["repository"], "https://github.com/cdin-editor/cdin")
+        self.assertEqual(pin["tag"], "sdl3-sdk-v3.4.16")
+        self.assertEqual(pin["version"], "3.4.16")
+        self.assertEqual(pin["revision"], "d249122c51acbab7262a6cd1e675922fd043bac7")
+
+        expected = {
+            "linux-x86_64": (
+                "sdl3-sdk-3.4.16-linux-x86_64.tar.gz", 2711768,
+                "dfb692b98c3a249ef7606286062f6fb9da5b808635324c2cbdffb8b8bba2776a",
+                102, "6a174cde6398da7ee479b7997f377356dc965b6a162672f01fca9ba6650d5734",
+            ),
+            "linux-arm64": (
+                "sdl3-sdk-3.4.16-linux-arm64.tar.gz", 2677647,
+                "75123f596aafc6c331bc7286020049bce8ca11468b7b80b422d6d2e907263441",
+                101, "39c7c3faa33683395cf7408766b9c1f25a5191358f3592b5d1fe21f42b05031b",
+            ),
+            "macos-x86_64": (
+                "sdl3-sdk-3.4.16-macos-x86_64.tar.gz", 2168788,
+                "d596b2625521dace0f80fa7f2ce55e7b7657916ef2e4ea0027d0f659fae2c59f",
+                102, "71e20eb370fc6fc982784fea0cb6cfe586a0c9b8397bfc161ba9b8decc898c23",
+            ),
+            "macos-arm64": (
+                "sdl3-sdk-3.4.16-macos-arm64.tar.gz", 2165743,
+                "f41bc805fe3a900232b7d89f23f317b40811996e8ad086bd10fc5f713beb6619",
+                101, "063c899e6a6aa3b9330de17f88678c71818e39c501a9065538430e660b3132b5",
+            ),
+            "windows-x86_64": (
+                "sdl3-sdk-3.4.16-windows-x86_64.tar.gz", 2665888,
+                "66440cb77ddd3accb42ba7f3b19f261c7f31b1247660f817cd2eedcbe99f6667",
+                105, "bb365cc380d82cfe39d84644d15b0e9bfd5085cdc8e55466e0dc980799e46fe9",
+            ),
+        }
+        self.assertEqual(set(pin["assets"]), set(sdk.TARGETS))
+        for target, (filename, size, digest, sidecar_size, sidecar_digest) in expected.items():
+            with self.subTest(target=target):
+                asset = pin["assets"][target]
+                self.assertEqual(asset["file_name"], filename)
+                self.assertEqual(asset["size_bytes"], size)
+                self.assertEqual(asset["sha256"], digest)
+                self.assertEqual(asset["sidecar_size_bytes"], sidecar_size)
+                self.assertEqual(asset["sidecar_sha256"], sidecar_digest)
 
     def test_validates_semver_source_version(self) -> None:
         sdk.validate_pin(make_lock(), "linux-x86_64")
@@ -178,119 +302,108 @@ class TargetAndPinTests(unittest.TestCase):
             sdk.validate_pin(lock, "linux-x86_64")
 
 
-class ReleaseIdentityTests(unittest.TestCase):
-    def test_requires_exact_prerelease_tag_commit_digest_and_size(self) -> None:
+class LockedReleaseIdentityTests(unittest.TestCase):
+    def test_validates_exact_five_target_locked_release_identity(self) -> None:
         lock = make_lock()
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
-        release_assets = []
-        for pinned in pin["assets"].values():
-            release_assets.append({
-                "name": pinned["file_name"],
-                "size": pinned["size_bytes"],
-                "digest": "sha256:" + pinned["sha256"],
-            })
-            release_assets.append({
-                "name": pinned["file_name"] + ".sha256",
-                "size": 100,
-            })
-        release = {
-            "tag_name": pin["tag"],
-            "draft": False,
-            "prerelease": True,
-            "assets": release_assets,
+        allowed = sdk._validate_locked_release_pin(pin)
+        expected = {
+            f"sdl3-sdk-3.4.16-{target}.tar.gz{suffix}"
+            for target in sdk.TARGETS
+            for suffix in ("", ".sha256")
         }
-        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
-        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
-            self.assertEqual(sdk.verify_release(pin, asset), release)
+        self.assertEqual(allowed, expected)
+        sdk.verify_locked_release(pin, asset)
 
-    def test_rejects_a_release_with_a_moved_tag(self) -> None:
+    def test_rejects_an_asset_object_that_is_not_the_locked_record(self) -> None:
         lock = make_lock()
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
-        release = {
-            "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": [
-                {"name": asset["file_name"], "size": asset["size_bytes"],
-                 "digest": "sha256:" + asset["sha256"]},
-                {"name": asset["file_name"] + ".sha256"},
-            ],
-        }
-        moved = {"object": {"type": "commit", "sha": "d" * 40}}
-        with patch.object(sdk, "fetch_github_json", side_effect=[release, moved]):
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "tag target mismatch"):
-                sdk.verify_release(pin, asset)
+        changed = dict(asset, sha256="e" * 64)
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "not part of the locked Release"):
+            sdk.verify_locked_release(pin, changed)
 
-    def test_rejects_missing_release_asset_digest(self) -> None:
+    def test_rejects_malformed_source_revision_and_unexpected_release_target(self) -> None:
         lock = make_lock()
         pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
-        release_assets = []
-        for key, pinned in pin["assets"].items():
-            item = {"name": pinned["file_name"], "size": pinned["size_bytes"]}
-            if key != "linux-x86_64":
-                item["digest"] = "sha256:" + pinned["sha256"]
-            release_assets.append(item)
-            release_assets.append({
-                "name": pinned["file_name"] + ".sha256", "size": 100,
-            })
-        release = {
-            "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": release_assets,
-        }
-        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
-        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "size/digest differs"):
-                sdk.verify_release(pin, asset)
+        malformed = dict(pin, revision="not-a-full-commit")
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "source revision pin is malformed"):
+            sdk.public_release_asset_url(malformed, asset["file_name"])
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "untrusted SDL3 SDK Release asset name"):
+            sdk.public_release_asset_url(pin, "source.zip")
 
-    def test_rejects_missing_release_checksum_sidecar(self) -> None:
-        lock = make_lock()
-        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
-        release_assets = []
-        for pinned in pin["assets"].values():
-            release_assets.append({
-                "name": pinned["file_name"],
-                "size": pinned["size_bytes"],
-                "digest": "sha256:" + pinned["sha256"],
-            })
-            release_assets.append({
-                "name": pinned["file_name"] + ".sha256", "size": 100,
-            })
-        release_assets.remove({
-            "name": asset["file_name"] + ".sha256", "size": 100,
-        })
-        release = {
-            "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": release_assets,
-        }
-        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
-        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "inventory must contain exactly five"):
-                sdk.verify_release(pin, asset)
 
-    def test_rejects_unexpected_release_asset(self) -> None:
-        lock = make_lock()
-        pin, asset, _source = sdk.validate_pin(lock, "linux-x86_64")
-        release_assets = []
-        for key, pinned in pin["assets"].items():
-            release_assets.append({
-                "name": pinned["file_name"],
-                "size": pinned["size_bytes"],
-                "digest": "sha256:" + pinned["sha256"],
-            })
-            release_assets.append({
-                "name": pinned["file_name"] + ".sha256",
-                "size": 100,
-            })
-        release_assets.append({"name": "source.zip", "size": 10})
-        release = {
-            "tag_name": pin["tag"], "draft": False, "prerelease": True,
-            "assets": release_assets,
+class ChecksumSidecarTests(unittest.TestCase):
+    def test_accepts_exact_lf_and_crlf_sidecars(self) -> None:
+        filename = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
+        archive_digest = "a" * 64
+        for ending in (b"\n", b"\r\n"):
+            payload = f"{archive_digest}  {filename}".encode("ascii") + ending
+            asset = {
+                "sha256": archive_digest,
+                "sidecar_size_bytes": len(payload),
+                "sidecar_sha256": hashlib.sha256(payload).hexdigest(),
+            }
+            with self.subTest(ending=ending):
+                sdk.verify_checksum_sidecar_bytes(payload, asset, filename)
+
+    def test_rejects_wrong_checksum_even_when_sidecar_digest_is_pinned(self) -> None:
+        filename = "sdl3-sdk-3.4.16-windows-x86_64.tar.gz"
+        archive_digest = "a" * 64
+        payload = f"{'b' * 64}  {filename}\r\n".encode("ascii")
+        asset = {
+            "sha256": archive_digest,
+            "sidecar_size_bytes": len(payload),
+            "sidecar_sha256": hashlib.sha256(payload).hexdigest(),
         }
-        tag_ref = {"object": {"type": "commit", "sha": REVISION}}
-        with patch.object(sdk, "fetch_github_json", side_effect=[release, tag_ref]):
-            with self.assertRaisesRegex(sdk.SDL3ArtifactError, "unexpected"):
-                sdk.verify_release(pin, asset)
+        with self.assertRaisesRegex(sdk.SDL3ArtifactError, "does not match"):
+            sdk.verify_checksum_sidecar_bytes(payload, asset, filename)
 
 
 class ArchiveAndPackageTests(unittest.TestCase):
+    def test_online_download_uses_public_locked_archive_and_checksum_urls(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive = root / "source.tar.gz"
+            make_archive(archive, package_files())
+            lock = make_lock(archive)
+            pin, asset, source = sdk.validate_pin(lock, "linux-x86_64")
+            filename = asset["file_name"]
+            sidecar_bytes = f"{asset['sha256']}  {filename}\n".encode("ascii")
+            asset["sidecar_size_bytes"] = len(sidecar_bytes)
+            asset["sidecar_sha256"] = hashlib.sha256(sidecar_bytes).hexdigest()
+            cache = root / "cache"
+            cache.mkdir()
+            requested: list[str] = []
+
+            def fake_download(
+                url: str,
+                destination: Path,
+                *,
+                expected_size: int,
+                max_size: int,
+            ) -> None:
+                requested.append(url)
+                payload = (
+                    archive.read_bytes()
+                    if url.endswith("/" + filename)
+                    else sidecar_bytes
+                )
+                self.assertEqual(len(payload), expected_size)
+                self.assertLessEqual(len(payload), max_size)
+                destination.write_bytes(payload)
+
+            with patch.object(sdk, "_download", side_effect=fake_download):
+                downloaded = sdk.download_asset(pin, asset, source, cache=cache)
+
+            self.assertEqual(downloaded.read_bytes(), archive.read_bytes())
+            self.assertEqual(
+                requested,
+                [
+                    sdk.public_release_asset_url(pin, filename),
+                    sdk.public_release_asset_url(pin, filename + ".sha256"),
+                ],
+            )
+
     def test_extracts_and_verifies_exact_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

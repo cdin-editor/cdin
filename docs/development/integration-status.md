@@ -1,3 +1,141 @@
+# Live audit correction — 2026-11-16 (immutable product Catalog; no API discovery)
+
+**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes earlier snapshots below for the current CDIN PR #149 bootstrap and CI failure diagnosis. Registry publication, successful SDK workflows and green component CI do not themselves prove CDIN product acceptance.
+
+## Verified root cause
+
+The failing exact-head CI and Product Acceptance jobs all reached the Registry `prepare` command and failed with `GITHUB_RATE_LIMIT_EXHAUSTED` while enumerating component Releases from `api.github.com`. The same failure appeared across Windows and macOS, both TUI and GUI-SDL, before the component build began. This was not an SDL3 SDK or compiler failure. CDIN's Product Definitions already pin exact component versions, so dynamically enumerating every component Release was unnecessary work and made each native matrix job depend on a shared cross-repository API quota.
+
+## Corrected product input model
+
+- CDIN owns `registry/catalog-index.json`, a static Registry `entries` Catalog containing six immutable Release Metadata assets: Backend 1.2.2, Frontend Core/TUI/GUI-SDL 1.2.2, Kernel 1.2.3 and Runtime 1.0.0.
+- Each entry uses a canonical public Release download URL and the GitHub-published SHA-256 digest for that exact metadata asset.
+- `deps.lock` pins the Catalog path and its exact 1,902-byte SHA-256 (`16384288f38191a069f9837d178a3cbeed6c1c5dde91d6c5ae71928ccea4f224`). `scripts/registry.py` verifies the pin and rejects dynamic `release_sources` inputs before running Registry.
+- CI, sanitizers and Product Acceptance no longer need `CDIN_GITHUB_READ_TOKEN` / `REGISTRY_GITHUB_API_TOKEN`; normal product resolution makes no cross-repository Release-discovery API calls. Metadata downloads and package artifacts still undergo digest, size, target and safe-extraction checks.
+- The Registry v1.0.1 executable bundle remains pinned and its generic Catalog/descriptor remains integrity-checked by the bootstrap, but the CDIN product resolver receives the separately pinned CDIN Catalog.
+
+## Current acceptance boundary
+
+The next exact-head CI, sanitizer and ten-way Product Acceptance runs must pass against this static Catalog before PR #149 can be considered merge-ready. The prior failed run IDs are historical evidence of the eliminated dynamic-discovery failure and must not be counted as current results. Continue to keep #111/#118 product gates separate: live IME/PaneTree, Unicode shaping/bidi (including Persian/Arabic), interactive launch/input, lifecycle/recovery, performance/soak, security and distribution acceptance remain outstanding.
+
+**No CDIN `v1.0.0` Stable tag or Release is authorized by install/build checks alone.**
+
+---
+
+## Historical integration baseline — 2026-11-15 (before public bootstrap URLs)
+
+**Historical record only.** The implementation and credential details in this dated section have been superseded by the November 16 correction above. Its original run IDs and API-bootstrap design are retained only to explain earlier failures.
+
+### Exact active work and repository identities
+
+| Area | Current identity | Status |
+|---|---|---|
+| Spec | Stable `v1.4.0`; ADR-0028 accepted; Spec main snapshot recorded above in the dependency matrix | Normative baseline remains independent from component package SemVer. |
+| Kernel | Stable `v1.2.3`; tag commit `2fb09f52dc1a9963cf358ec54d584c520e174e67`; ABI `1.1.0`; logger C API `0.1.0` | Five immutable SDK targets published. |
+| Runtime | Stable `v1.0.0`; tag commit `eb48a511ea6d5085db38e501784290d80cb03947` | Platform-neutral Lua module artifacts published; Runtime #16 remains open for downstream acceptance. |
+| Backend | Stable `v1.2.2`; tag commit `41681388d8294efeb371b0d337b426a72c19aeae` | Five target-native package artifacts published; Backend #35 remains open for downstream acceptance. |
+| Frontend | Stable `v1.2.2`; tag commit `728406c1e677d601c55b82b4fbf1a77eecfd8581` | Core/TUI/GUI-SDL packages published for supported targets; Frontend #15/#40 remain downstream acceptance work. |
+| Registry | Stable `v1.0.0`; tag commit `c5b6900319cebe22f2d035a6c3b23a32f06a48b5`. Main at `34e91f26f81cc89489c97b36ad52051af4aca59a` contains merged PR #75 and #77. | Immutable `v1.0.0` binary has a Manifest schema-floor defect. The code fix is merged, but immutable `v1.0.1` tag/Release/assets have not been published. Registry #71 remains open. |
+| SDL3 SDK | `3.4.16`, tag commit `d249122c51acbab7262a6cd1e675922fd043bac7` | Five immutable target SDK archives and checksums published; GUI-SDL only. |
+| CDIN main | `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`; project version `0.2.0` | No Stable `v1.0.0` tag or application release. |
+
+### Existing PRs — continue here; do not fork parallel work
+
+- CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains open, non-draft, based on `main` at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`, exact current head `dd851c387787833b60597094204a0e240b1f0c26` (31 files). It carries the artifact-first lock/Product Definitions, developer-vs-consumer Registry pin separation, SDL3 SDK consumption, dynamic dependency validation, two unused-local review fixes, cross-repository API credential selection, token-selection tests, mandatory CI credential preflight, regression coverage for both workflow YAMLs, Product Acceptance's inclusion of the matrix guard, Pipeline registration, and refreshed installation/distribution/release-boundary documentation. CI checks its token immediately after checkout; Product Acceptance runs the same matrix guard in its bootstrap-contract test step. Both previously open review threads about unused locals have been replied to and resolved. The PR has not been merged. The latest full Product Acceptance attempt was cancelled; a new run is required after the read-only Actions secret is configured.
+- Registry [PR #78](https://github.com/cdin-editor/registry/pull/78) is open and **Ready for review**, based on Registry main `34e91f26f81cc89489c97b36ad52051af4aca59a`, exact head `00e076dbb4dc19defd59ec1171ecd95de2c68de2`. It makes the cross-repository API credential contract explicit in Registry's normal resolve and Manifest-discovery paths, adds tests and documentation, and preserves the local-shell fallback. Its exact-head CI/Pipeline quality, Docs/YAML, Security and Workspace integrations on Linux, Windows and macOS all pass. No unresolved review threads or submitted reviews remain; the PR is not merged yet.
+
+### Credential contract and observed CI blocker
+
+GitHub Actions' automatic `GITHUB_TOKEN` is scoped to the workflow repository. The cross-repository readers must not assume that this token is suitable for the separate Kernel, Runtime, Backend, Frontend or Registry repositories.
+
+- CDIN `scripts/deps.py` and `scripts/sdl3_artifact.py` read `CDIN_GITHUB_API_TOKEN`, then `GH_TOKEN`; they ignore the automatic Actions `GITHUB_TOKEN` in CI and retain a `GITHUB_TOKEN` fallback for local shells.
+- CDIN's Registry bootstrap reads `REGISTRY_GITHUB_API_TOKEN`, then `CDIN_GITHUB_API_TOKEN`, then `GH_TOKEN`; it likewise ignores the automatic Actions token in CI and preserves the local-shell fallback.
+- Registry CLI reads `REGISTRY_GITHUB_API_TOKEN`, then explicit `GH_TOKEN`; it ignores the automatic Actions `GITHUB_TOKEN` in CI and preserves the local-shell fallback. Both normal prepare/resolve and Manifest update discovery pass the selected credential into the API client.
+- The workflows map Actions secret `CDIN_GITHUB_READ_TOKEN` into the dedicated `CDIN_GITHUB_API_TOKEN` and `REGISTRY_GITHUB_API_TOKEN` variables. Separately, each job exposes its own `github.token` as `GH_TOKEN` for same-repository GitHub CLI operations; job/workflow permissions keep that token read-only. Dependency readers prefer their dedicated cross-repository token and do not use the repo-scoped Actions token for component Release/tag discovery. The read secret is required for hosted CI, sanitizer and Product Acceptance; missing configuration fails at preflight.
+- Recommended secret: fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. No write permission is required. The connected GitHub integration cannot create repository Actions secrets; the secret must be configured by a repository administrator.
+
+The Product Acceptance run `43649329733` proved that anonymous fallback is insufficient for the parallel matrix: Linux x86_64 GUI-SDL validated the Registry binary/Catalog and Product Definition, resolved the stable Backend/Frontend/Runtime packages, then failed in `prepare` with `GITHUB_RATE_LIMIT_EXHAUSTED` while resolving Kernel tag `v1.2.3`. The workflows were therefore restored to fail-fast preflight when the read token is absent. Local one-off anonymous API use remains possible but is not CI acceptance evidence.
+
+### Latest exact-head workflow state
+
+| Repository / PR | Workflow run | Latest observed state |
+|---|---|---|
+| CDIN #149 | [CI #43652127757](https://github.com/cdin-editor/cdin/actions/runs/43652127757) | Queued; 11 jobs, not yet verified. |
+| CDIN #149 | [Product Acceptance #43652127753](https://github.com/cdin-editor/cdin/actions/runs/43652127753) | All ten installed-product jobs are queued on the current preflight/token-separation head; no pass recorded yet. |
+| CDIN #149 | [SDL3 SDK #43652127717](https://github.com/cdin-editor/cdin/actions/runs/43652127717) | Five SDK target jobs queued; the immutable-release check skipped because the SDK Release already exists. |
+| Registry #78 | [CI #43649479004](https://github.com/cdin-editor/registry/actions/runs/43649479004) | Passed: Catalog preflight and Pipeline quality. |
+| Registry #78 | [Docs/YAML #43649478929](https://github.com/cdin-editor/registry/actions/runs/43649478929) | Passed: YAML lint and Markdown/workflow syntax. |
+| Registry #78 | [Security #43649478998](https://github.com/cdin-editor/registry/actions/runs/43649478998) | Passed: secret scanning. |
+| Registry #78 | [Workspace native platforms #43649478692](https://github.com/cdin-editor/registry/actions/runs/43649478692) | Linux and Windows passed; macOS remains queued. |
+
+The CDIN run above demonstrates that a missing read token must be configured before the matrix can pass; the latest workflows fail fast with a clear message instead of spending runner time on anonymous rate-limited requests. Registry's duplicate test name and Go token-precedence regressions were also fixed on PR #78. Queued checks are not evidence of success.
+
+### Installation and distribution documentation correction
+
+The active documentation now distinguishes published packages from product acceptance: Kernel 1.2.3 (ABI 1.1.0/logger 0.1.0), Backend/Frontend 1.2.2, Runtime 1.0.0 and SDL3 SDK 3.4.16 are published; Registry's current immutable consumer binary remains v1.0.0 with its known Manifest schema-floor defect, and the corrected immutable v1.0.1 Release is still absent. The normal consumer pin has not been changed to an unpublished commit. The CMake/project version remains 0.2.0.
+
+The installed-prefix archive is a development/CI artifact, not a clean-machine installer or versioned Release. Lua 5.4 remains an environment dependency rather than a bundled runtime. `.github/workflows/release.yml` still verifies main ancestry and deliberately fails closed at the product-readiness gate; do not publish a source ZIP as CDIN 1.0.0.
+
+### Stable release gates — unchanged
+
+1. Publish the immutable Registry `v1.0.1` tag/Release from the merged schema fix and authenticate-discovery fix, with the five target executables, same-tag Catalog, release descriptor and final checksums. Verify every asset against the release descriptor before changing the CDIN consumer pin.
+2. Pass CDIN #121/#122/#124 from clean target-specific consumers: cold cache, warm cache, offline replay, no normal source fallback, secure extraction, Manifest provenance and relocated application launch.
+3. Pass CDIN #118 live IME and PaneTree end-to-end acceptance against the exact immutable stack. Keep optional capabilities disabled until this passes.
+4. Complete CDIN #111: supported interactive TUI/GUI-SDL behavior, production GUI text shaping/font fallback/grapheme/bidi including Persian/Arabic, lifecycle/recovery, extension isolation, performance/soak, security and install/upgrade/uninstall distribution evidence.
+5. Only after all gates pass, bump the project/package version, prepare the final release notes/assets, tag `v1.0.0` and publish Stable.
+
+**Release decision: NO-GO for CDIN 1.0.0 Stable.** Do not merge PR #149 merely because artifact publication or source-build jobs pass; do not close #111/#118/#121/#122/#124 from partial evidence.
+
+---
+
+## Current integration update — 2026-11-14 (artifact publication and consumer refresh)
+
+**Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This snapshot distinguishes published component/SDK artifacts, CDIN's currently merged main commit, and the in-flight consumer refresh. It supersedes the 2026-11-13 inventory below; older sections remain historical evidence and are not current state.
+
+### Exact repository and release identities
+
+| Area | Immutable identity / observed source | Current finding |
+|---|---|---|
+| Spec | Stable Release `v1.4.0` tag peels to `868ab19087c0ab4d44fb2b05990fbd6520b6c4fa`; current `main` source SHA `274f84f0ca08378db9c4a5cf6820065256f31d5a` | Registry Data Contract baseline 1.4.0 and ADR-0028 are accepted. The latest stable tag and the newer default-branch source must not be conflated. |
+| Kernel | Stable `v1.2.3`, tag commit `2fb09f52dc1a9963cf358ec54d584c520e174e67` | Five target-native SDK archives are published. Kernel ABI 1.1.0 and logger C API 0.1.0 remain separate compatibility identities. |
+| Runtime | Stable `v1.0.0`, tag commit `eb48a511ea6d5085db38e501784290d80cb03947` | Platform-neutral Lua module archives, checksums and canonical metadata Release Asset are published. Runtime #16 remains open for downstream clean-consumer verification. |
+| Backend | Stable `v1.2.2`, tag commit `41681388d8294efeb371b0d337b426a72c19aeae` | Five target-native CMake packages and canonical `backend-1.2.2.json` metadata are published. Backend #35 remains open for downstream Manifest/install proof. |
+| Frontend | Stable `v1.2.2`, tag commit `728406c1e677d601c55b82b4fbf1a77eecfd8581` | Core, TUI and GUI-SDL variants have five-target native package archives and canonical metadata. Frontend #40 remains open for clean-prefix consumption and product proof. |
+| Registry | Stable Release `v1.0.0`, tag commit `c5b6900319cebe22f2d035a6c3b23a32f06a48b5`, Release ID `445222506`; PR #75 merge `e4e722f33990828c5d9e37e0c8a0e8d5028d06db`; PR #77 merge `34e91f26f81cc89489c97b36ad52051af4aca59a` | Five native executables, dynamic Catalog, descriptor and `SHA256SUMS` are published. PR #75 fixes the 1.1.0/1.2.0 Manifest feature-floor mismatch. PR #77 adds optional Bearer authentication for GitHub Release discovery with cross-host credential stripping; CI, Security, Docs/YAML, Code Quality and Linux/Windows/macOS Workspace integration passed. The immutable patch Release `v1.0.1` is not yet published; normal CDIN consumers must stay on the verified `v1.0.0` identity until that Release exists and its assets are verified. Registry #71 remains open for clean consumer/offline/replay acceptance. |
+| SDL3 SDK | Prerelease tag `sdl3-sdk-v3.4.16`, tag commit `d249122c51acbab7262a6cd1e675922fd043bac7` | Five target archives and checksum sidecars are published. CDIN #124 is now a consumer-verification issue, not an unpublished-Release issue. |
+| CDIN | Merged `main` after PR #148: `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5` | Project/CLI version remains 0.2.0. No `v1.0.0` Stable tag or product Release has been created. |
+
+### CDIN consumer work in progress
+
+- Registry `v1.0.0` consumer proof is still blocked because that immutable binary contains the pre-fix Manifest builder. Upstream [Registry PR #75](https://github.com/cdin-editor/registry/pull/75) is merged at `e4e722f33990828c5d9e37e0c8a0e8d5028d06db`. CDIN source-build metadata is also fixed: the source-built CLI embeds a valid locked SemVer and exact commit. The developer-only source pin now targets the merged patch commit as `1.0.1`; normal consumers remain pinned to the released `1.0.0` binary until a verifiable immutable `v1.0.1` Release is published. Then align both pins and rerun the full target/profile matrix.
+- [PR #148](https://github.com/cdin-editor/cdin/pull/148) is merged at `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It preserves the immutable SDL3 SDK tag when a missing Release must be rebuilt, and makes the live extension/TUI smoke helpers resolve Runtime from the configured CMake package root.
+- [PR #149](https://github.com/cdin-editor/cdin/pull/149) is open on the artifact-first consumer branch, based on merged main commit `dc9d6314a8424ef9b1247cbc50af1af11f4e8ba5`. It now pins Registry stable `v1.0.0` and its dynamic Catalog to exact tag commit `c5b6900319cebe22f2d035a6c3b23a32f06a48b5`; selects Backend/Frontend 1.2.2 and Runtime 1.0.0; removes the Backend 1.2.1 hardcode while retaining artifact/target/layout/path validation; pins all five SDL3 SDK assets; declares the GUI-only external SDL3 contract; and sets both stable Product Definitions to reject component prereleases.
+- Registry [PR #77](https://github.com/cdin-editor/registry/pull/77) is merged at `34e91f26f81cc89489c97b36ad52051af4aca59a`. It adds optional CLI token forwarding for both normal Catalog prepare and Manifest discovery/replay metadata verification, applies `Authorization: Bearer` only to `api.github.com`, strips it on cross-host redirects, and tests ordinary metadata/asset non-leakage plus header-injection rejection. It uses the job-scoped read-only token already exposed as `GITHUB_TOKEN` by CDIN CI/Product Acceptance.
+- PR #149 refreshed its developer Registry pin to the merged authenticated patch commit `34e91f26f81cc89489c97b36ad52051af4aca59a` (version 1.0.1) while leaving the published consumer pin on v1.0.0. The previous CMake/CTest workspace failure is fixed by deriving and explicitly passing `CDIN_REGISTRY_WORKSPACE` from the active TUI/GUI-SDL profile. Before Registry PR #77 merged, CI [run 43636246077](https://github.com/cdin-editor/cdin/actions/runs/43636246077) passed both Linux ARM64 developer/source profiles (Manifest schema 1.2.0, Registry workspace E2E, CMake/CTest, CLI/lifecycle smoke, include boundaries, 68 bootstrap tests and distribution/release tests). The earlier Linux x86_64 GUI-SDL attempt failed from unauthenticated GitHub API rate limiting; the merged Registry auth fix now supplies the existing read-only GITHUB_TOKEN only to api.github.com. A new exact-head CDIN CI matrix is queued against merged Registry commit `34e91f26f81cc89489c97b36ad52051af4aca59a` in [run 43639737276](https://github.com/cdin-editor/cdin/actions/runs/43639737276); do not treat the earlier Linux ARM64 passes or any queued checks as a full exact-head matrix result. Product Acceptance [run 43639737323](https://github.com/cdin-editor/cdin/actions/runs/43639737323) has already confirmed the installed Linux x86_64 GUI-SDL consumer still fails at Registry `v1.0.0` Manifest schema validation (`1.1.0` versus required `1.2.0`). The upstream patch is merged, but Git ref inspection confirms that `refs/tags/v1.0.1` and its GitHub Release do not yet exist; the release workflow can only publish after that immutable tag is pushed.
+- Product Acceptance [run 43635884144](https://github.com/cdin-editor/cdin/actions/runs/43635884144) still fails at `make install` on Linux because the consumer lock intentionally pins the only published Registry binary, `v1.0.0`; that immutable executable emits Manifest schema 1.1.0 and Spec correctly requires 1.2.0 for ADR-0028 provenance. The schema fix is merged to Registry main by PR #75, but `v1.0.1` has no Git tag/Release yet. After that tag is pushed and its release descriptor/digests are published, both Registry pins and tests must be updated, then all ten installed-product jobs must pass. Merge of PR #149 and any CDIN Stable release remain blocked until then.
+- The Registry consumer pin remains the published immutable `v1.0.0` Release/Catalog pair; the explicit developer source pin is a separate lock section at merged patch commit `34e91f26f81cc89489c97b36ad52051af4aca59a` (version `1.0.1`) so developer CI can test the Manifest and authenticated API fixes before the Release is published. Normal consumer installation still uses only the verified binary; source builds remain explicit developer/CI-only behavior. The Catalog uses six `github-releases-v1` sources rather than duplicated component version entries.
+- The GUI-SDL Product Definition declares `org.cdin.sdl3-sdk = 3.4.16`; the TUI Product Definition does not declare SDL3. The SDK lock contains the actual five archive sizes and GitHub API SHA-256 digests. TUI must never download or stage SDL3.
+
+### Optional capabilities and UI limitations
+
+Backend 1.2.2 and Runtime 1.0.0 contain the Protocol/Runtime handling for `ime-composition/1` and `pane-splitter-resize/1`. Frontend 1.2.2 also contains the GUI-SDL paths, but its published normal package build keeps both `CDIN_FRONTEND_GUI_SDL_ENABLE_IME_COMPOSITION` and `CDIN_FRONTEND_GUI_SDL_ENABLE_PANE_SPLITTER` disabled by default. The CDIN live product E2E in #118 has not passed, so these capabilities remain unadvertised. A component capability implementation or Spec vector is not product integration evidence.
+
+The released GUI-SDL renderer still uses SDL diagnostic debug text and does not provide production shaping, font fallback, grapheme layout or bidi. Persian/Arabic editing is not a stable product claim. TUI and GUI-SDL remain experimental product paths; native compilation and a headless document smoke do not prove supported interactive launch/cleanup across all targets.
+
+### Product gates — remain open
+
+- **CDIN #111:** overarching product acceptance: supported TUI/GUI launch, real editing UX, GUI text shaping and Persian/Arabic/bidi, Windows console readiness, extension lifecycle, transport/process recovery, performance/soak, clean installation/upgrade/uninstall, package provenance/signing and complete product distribution.
+- **CDIN #118:** live IME preedit/update/cancel/commit exactly-once and live PaneTree Driver/Observer/stale-revision/atomic-flush tests, against the exact immutable selected stack. Keep both optional capabilities disabled until this passes.
+- **CDIN #121:** verify clean, offline-capable use of the pinned Registry executable/Catalog without Git or Go on every supported target.
+- **CDIN #122:** verify cold-cache, warm-cache and offline artifact-first installation and replay across the five targets and both profiles; prove there is no normal source fallback and extracted products run outside the checkout.
+- **CDIN #124:** consume the published SDK from clean prefixes on all five target ABIs; verify CMake configure/link and SDK integrity, and prove TUI never acquires SDL3.
+- **Runtime #16, Backend #35, Frontend #40 and Registry #58:** close only after their published identities are consumed by exact CDIN Manifests and clean consumer tests.
+- **Registry #71:** Registry stable 1.0.0 is published and the Manifest schema fix is merged. A new immutable patch Release is still required for consumers; clean-consumer, offline-cache, Manifest verification and exact replay remain open.
+
+**Release decision:** CDIN remains DEVELOPMENT — NOT PRODUCT READY. Do not change the product version to 1.0.0, create tag `v1.0.0`, or publish a Stable application Release until #111 and all required target/profile, capability, distribution and recovery acceptance evidence is complete.
+
+---
+
 ## Current integration update — 2026-11-13 (post-release audit, 17:15 UTC)
 
 **Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This checkpoint supersedes older inventory claims below. It distinguishes newly published component Releases from the versions still selected by CDIN's Product Definitions, Catalog and lock files.

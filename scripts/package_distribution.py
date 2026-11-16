@@ -113,8 +113,14 @@ def validate_target(target: Any) -> dict[str, str]:
         actual = re.match(r"^(\d+)\.(\d+)", version)
         if not match or libc.lower() not in {"glibc", "gnu libc"} or not actual:
             raise DistributionError(f"unsupported Linux ABI for distribution: {libc}/{version}/{abi}")
-        if tuple(map(int, actual.groups())) < tuple(map(int, match.groups())):
-            raise DistributionError(f"runner glibc {version} is older than package baseline {abi}")
+        actual_version = tuple(map(int, actual.groups()))
+        package_baseline = tuple(map(int, match.groups()))
+        if actual_version != package_baseline:
+            relation = "newer than" if actual_version > package_baseline else "older than"
+            raise DistributionError(
+                f"runner glibc {version} is {relation} package baseline {abi}; "
+                "rebuild Linux distributions on the pinned Ubuntu 24.04/glibc 2.39 runner"
+            )
     elif host_os == "darwin":
         match = re.match(r"^macos-(\d+)$", abi)
         actual = re.match(r"^(\d+)", platform.mac_ver()[0])
@@ -309,22 +315,69 @@ def build_dependency_summary(target: dict[str, str], profile: str) -> dict[str, 
         }
     }
     if profile == "gui-sdl":
+        sdl = dependencies.get("sdl3_sdk") if isinstance(dependencies, dict) else None
         tooling = lock.get("tooling")
-        sdl = tooling.get("sdl3") if isinstance(tooling, dict) else None
+        source = tooling.get("sdl3") if isinstance(tooling, dict) else None
+        sdl_assets = sdl.get("assets") if isinstance(sdl, dict) else None
+        sdl_asset = sdl_assets.get(asset_key) if isinstance(sdl_assets, dict) else None
+        sdl_revision = sdl.get("revision") if isinstance(sdl, dict) else None
         if (
             not isinstance(sdl, dict)
+            or not isinstance(source, dict)
+            or not isinstance(sdl_revision, str)
+            or not FULL_SHA.fullmatch(sdl_revision)
+            or not isinstance(sdl.get("repository"), str)
+            or not isinstance(sdl.get("tag"), str)
             or not isinstance(sdl.get("version"), str)
-            or not isinstance(sdl.get("archive"), str)
-            or not sdl["archive"].startswith("https://")
-            or not isinstance(sdl.get("sha256"), str)
-            or not HEX_SHA256.fullmatch(sdl["sha256"])
+            or not isinstance(source.get("archive"), str)
+            or not source["archive"].startswith("https://")
+            or not isinstance(source.get("sha256"), str)
+            or not HEX_SHA256.fullmatch(source["sha256"])
+            or not isinstance(sdl_asset, dict)
+            or not isinstance(sdl_asset.get("file_name"), str)
+            or not isinstance(sdl_asset.get("format"), str)
+            or not isinstance(sdl_asset.get("size_bytes"), int)
+            or isinstance(sdl_asset.get("size_bytes"), bool)
+            or sdl_asset["size_bytes"] <= 0
+            or not isinstance(sdl_asset.get("sha256"), str)
+            or not HEX_SHA256.fullmatch(sdl_asset["sha256"])
+            or not isinstance(sdl_asset.get("sidecar_size_bytes"), int)
+            or isinstance(sdl_asset.get("sidecar_size_bytes"), bool)
+            or sdl_asset["sidecar_size_bytes"] <= 0
+            or not isinstance(sdl_asset.get("sidecar_sha256"), str)
+            or not HEX_SHA256.fullmatch(sdl_asset["sidecar_sha256"])
         ):
-            raise DistributionError("deps.lock has no complete immutable SDL3 source SDK pin for GUI-SDL")
+            raise DistributionError(
+                f"deps.lock has no complete immutable prebuilt SDL3 SDK asset for GUI-SDL/{asset_key}"
+            )
+        if (
+            sdl.get("repository") != "https://github.com/cdin-editor/cdin"
+            or sdl.get("tag") != f"sdl3-sdk-v{sdl['version']}"
+            or sdl.get("version") != source.get("version")
+            or sdl_asset.get("file_name") != f"sdl3-sdk-{sdl['version']}-{asset_key}.tar.gz"
+            or sdl_asset.get("format") != "tar.gz"
+        ):
+            raise DistributionError("deps.lock SDL3 SDK release identity is inconsistent")
         result["sdl3"] = {
+            "repository": sdl["repository"],
+            "tag": sdl["tag"],
             "version": sdl["version"],
-            "delivery": "pinned-source-build",
-            "source_archive_uri": sdl["archive"],
-            "source_archive_sha256": sdl["sha256"],
+            "source_revision": sdl_revision,
+            "delivery": "prebuilt-sdk",
+            "asset": {
+                "file_name": sdl_asset["file_name"],
+                "format": sdl_asset["format"],
+                "size_bytes": sdl_asset["size_bytes"],
+                "sha256": sdl_asset["sha256"],
+            },
+            "sidecar": {
+                "size_bytes": sdl_asset["sidecar_size_bytes"],
+                "sha256": sdl_asset["sidecar_sha256"],
+            },
+            "source": {
+                "archive_uri": source["archive"],
+                "archive_sha256": source["sha256"],
+            },
         }
     return result
 
@@ -614,6 +667,48 @@ def package_distribution(
         raise DistributionError("TUI distribution contains SDL3 files")
     if profile == "gui-sdl" and not sdl_files:
         raise DistributionError("GUI-SDL distribution does not contain its pinned SDL3 SDK")
+    if profile == "gui-sdl":
+        sdl_required = (
+            prefix / "include" / "SDL3" / "SDL.h",
+            prefix / "include" / "SDL3" / "SDL_version.h",
+            prefix / "lib" / "cmake" / "SDL3" / "SDL3Config.cmake",
+            prefix / "share" / "cdin" / "sdl3-sdk.json",
+            prefix / "share" / "licenses" / "SDL3" / "LICENSE.txt",
+        )
+        for required in sdl_required:
+            if required.is_symlink() or not required.is_file():
+                raise DistributionError(
+                    f"GUI-SDL distribution is missing a required verified SDK file: {required.relative_to(prefix)}"
+                )
+        static_libraries = (
+            prefix / "lib" / "libSDL3.a",
+            prefix / "lib" / "SDL3-static.lib",
+        )
+        if not any(item.is_file() and not item.is_symlink() for item in static_libraries):
+            raise DistributionError("GUI-SDL distribution is missing its target-native static SDL3 library")
+        sdk_manifest_path = prefix / "share" / "cdin" / "sdl3-sdk.json"
+        sdk_manifest = read_json(sdk_manifest_path, "staged SDL3 SDK manifest")
+        sdl_pin = build_dependencies["sdl3"]
+        target_os = "macos" if target["os"] == "darwin" else target["os"]
+        expected_sdk_manifest = {
+            "schema": "cdin.sdl3-sdk.v1",
+            "version": sdl_pin["version"],
+            "target": {
+                "os": target_os,
+                "architecture": target["architecture"],
+                "abi": target["abi"],
+            },
+            "source": {
+                "url": sdl_pin["source"]["archive_uri"],
+                "sha256": sdl_pin["source"]["archive_sha256"],
+            },
+            "linkage": "static",
+            "cmake_package": "SDL3",
+        }
+        if sdk_manifest != expected_sdk_manifest:
+            raise DistributionError(
+                "staged SDL3 SDK manifest does not match the pinned immutable SDK version/source/target"
+            )
 
     output_directory.mkdir(parents=True, exist_ok=True)
     slug = f"{target['os']}-{target['architecture']}-{profile}"

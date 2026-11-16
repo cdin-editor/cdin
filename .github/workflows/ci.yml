@@ -18,10 +18,11 @@ jobs:
       contents: read
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - target: linux-x86_64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             shell: bash
             profile: tui
           - target: linux-arm64
@@ -41,7 +42,7 @@ jobs:
             shell: msys2 {0}
             profile: tui
           - target: linux-x86_64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             shell: bash
             profile: gui-sdl
           - target: linux-arm64
@@ -65,7 +66,7 @@ jobs:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
-      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -145,8 +146,9 @@ jobs:
           PY
       - name: Verify native product matrix contract
         run: python -m unittest discover -s tests -p test_ci_matrix.py
-      - name: Run Registry and SDL3 artifact bootstrap tests
+      - name: Run SDK, Registry and SDL3 artifact bootstrap tests
         run: |
+          python -m unittest discover -s tests -p test_deps.py
           python -m unittest discover -s tests -p test_registry_artifact.py
           python -m unittest discover -s tests -p "test_*sdl3*.py"
       - name: Prepare Git identity and base branch for gix
@@ -258,7 +260,7 @@ jobs:
     name: Attest trusted main-branch source snapshot
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [full-stack-e2e, sanitizers]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -297,12 +299,12 @@ jobs:
 
   sanitizers:
     name: Full stack / ASan + UBSan + leak detection
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
     env:
-      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

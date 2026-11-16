@@ -17,10 +17,8 @@ import urllib.parse
 import urllib.request
 
 REGISTRY_REPOSITORY_URI = "https://github.com/cdin-editor/registry"
-REGISTRY_API = "https://api.github.com/repos/cdin-editor/registry"
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_BINARY_BYTES = 128 * 1024 * 1024
-MAX_TAG_DEPTH = 8
 VERSION_RE = re.compile(
     r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-(?:dev(?:\.[0-9]+)?|(?:alpha|beta|rc)\.[0-9]+))?$"
@@ -104,95 +102,24 @@ class _TrustedAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, file_pointer, code, message, headers, new_url)
 
 
-class _TrustedAPIHostRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Keep release metadata requests on api.github.com only."""
-
-    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
-        parsed = urllib.parse.urlparse(new_url)
-        try:
-            port = parsed.port
-        except ValueError as error:
-            raise RegistryBootstrapError("invalid port in Registry API redirect") from error
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname != "api.github.com"
-            or port not in (None, 443)
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-            or not parsed.path.startswith("/repos/cdin-editor/registry/")
-        ):
-            raise RegistryBootstrapError("Registry API redirect left the trusted API origin")
-        return super().redirect_request(request, file_pointer, code, message, headers, new_url)
-
-
 class GitHubReleaseClient:
     """Small bounded GitHub client; no shell, Git executable or Go toolchain is used."""
 
-    def get_json(self, url: str) -> dict[str, Any]:
+    def download(self, url: str, *, maximum: int) -> bytes:
         parsed = urllib.parse.urlparse(url)
         try:
             port = parsed.port
         except ValueError as error:
-            raise RegistryBootstrapError("Registry API URL has an invalid port") from error
+            raise RegistryBootstrapError("Registry asset URL has an invalid port") from error
         if (
             parsed.scheme != "https"
-            or parsed.hostname != "api.github.com"
+            or parsed.hostname != "github.com"
             or port not in (None, 443)
-            or not parsed.path.startswith("/repos/cdin-editor/registry/")
             or parsed.username is not None
             or parsed.password is not None
             or parsed.query
             or parsed.fragment
-        ):
-            raise RegistryBootstrapError(f"untrusted Registry API URL: {url!r}")
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "cdin-registry-bootstrap/1",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-        # The hosted matrix shares GitHub's anonymous REST quota. Prefer the
-        # workflow-scoped token for API requests, but never send it to asset
-        # download hosts or redirects outside api.github.com.
-        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        request = urllib.request.Request(url, headers=headers)
-        opener = urllib.request.build_opener(_TrustedAPIHostRedirectHandler())
-        try:
-            with opener.open(request, timeout=30) as response:
-                final_url = urllib.parse.urlparse(response.geturl())
-                try:
-                    final_port = final_url.port
-                except ValueError as error:
-                    raise RegistryBootstrapError("Registry API response has an invalid port") from error
-                if (
-                    response.status != 200
-                    or final_url.scheme != "https"
-                    or final_url.hostname != "api.github.com"
-                    or final_port not in (None, 443)
-                    or final_url.username is not None
-                    or final_url.password is not None
-                    or final_url.query
-                    or final_url.fragment
-                    or not final_url.path.startswith("/repos/cdin-editor/registry/")
-                ):
-                    raise RegistryBootstrapError("Registry API response came from an untrusted origin")
-                data = response.read(MAX_JSON_BYTES + 1)
-        except (OSError, urllib.error.URLError) as error:
-            raise RegistryBootstrapError(f"cannot read Registry release API: {error}") from error
-        if len(data) > MAX_JSON_BYTES:
-            raise RegistryBootstrapError("Registry API JSON exceeds the 8 MiB limit")
-        return _strict_json(data, "Registry API response")
-
-    def download(self, url: str, *, maximum: int) -> bytes:
-        parsed = urllib.parse.urlparse(url)
-        if (
-            parsed.scheme != "https"
-            or parsed.hostname != "github.com"
-            or parsed.username is not None
-            or parsed.password is not None
+            or not parsed.path.startswith("/cdin-editor/registry/releases/download/")
         ):
             raise RegistryBootstrapError(f"untrusted Registry asset URL: {url!r}")
         request = urllib.request.Request(
@@ -356,80 +283,26 @@ def _validate_pin(pin: dict[str, Any]) -> tuple[str, str, str, str, int]:
     return revision, version, tag, descriptor_sha, descriptor_size
 
 
-def _resolve_tag_commit(client: Any, tag: str) -> str:
-    encoded_tag = urllib.parse.quote(tag, safe="")
-    url = f"{REGISTRY_API}/git/ref/tags/{encoded_tag}"
-    reference = client.get_json(url)
-    obj = reference.get("object")
-    visited: set[str] = set()
-    for _ in range(MAX_TAG_DEPTH):
-        if not isinstance(obj, dict):
-            raise RegistryBootstrapError("Registry tag reference has no Git object")
-        object_type = obj.get("type")
-        object_sha = obj.get("sha")
-        if not isinstance(object_sha, str) or GIT_SHA_RE.fullmatch(object_sha) is None:
-            raise RegistryBootstrapError("Registry tag reference has an invalid Git object SHA")
-        if object_sha in visited:
-            raise RegistryBootstrapError("Registry tag object contains a cycle")
-        visited.add(object_sha)
-        if object_type == "commit":
-            return object_sha
-        if object_type != "tag":
-            raise RegistryBootstrapError(f"Registry tag resolves to unsupported Git object type: {object_type!r}")
-        tag_object = client.get_json(f"{REGISTRY_API}/git/tags/{object_sha}")
-        if tag_object.get("sha") != object_sha:
-            raise RegistryBootstrapError("Registry annotated tag object SHA mismatch")
-        obj = tag_object.get("object")
-    raise RegistryBootstrapError("Registry annotated tag nesting exceeds the safety limit")
-
-
-def _asset_index(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    raw_assets = release.get("assets")
-    if not isinstance(raw_assets, list):
-        raise RegistryBootstrapError("Registry release has no asset inventory")
-    result: dict[str, dict[str, Any]] = {}
-    for asset in raw_assets:
-        if not isinstance(asset, dict):
-            raise RegistryBootstrapError("Registry release contains a malformed asset record")
-        name = asset.get("name")
-        if not isinstance(name, str) or not name:
-            raise RegistryBootstrapError("Registry release contains an asset with no name")
-        if name in result:
-            raise RegistryBootstrapError(f"Registry release contains duplicate asset {name!r}")
-        result[name] = asset
-    return result
-
-
-def _api_asset_identity(asset: dict[str, Any], *, name: str, sha256: str, size: int) -> str:
-    if asset.get("name") != name:
-        raise RegistryBootstrapError(f"Registry release is missing asset {name!r}")
-    api_digest = asset.get("digest")
-    if not isinstance(api_digest, str) or not api_digest.startswith("sha256:"):
-        raise RegistryBootstrapError(f"Registry release asset {name!r} has no GitHub SHA-256 digest")
-    if api_digest.removeprefix("sha256:") != sha256:
-        raise RegistryBootstrapError(f"Registry GitHub asset digest does not match the release descriptor: {name}")
-    if asset.get("size") != size:
-        raise RegistryBootstrapError(f"Registry GitHub asset size does not match the release descriptor: {name}")
-    url = asset.get("browser_download_url")
-    parsed = urllib.parse.urlparse(url) if isinstance(url, str) else None
-    try:
-        port = parsed.port if parsed is not None else None
-    except ValueError as error:
-        raise RegistryBootstrapError(
-            f"Registry release asset {name!r} has an invalid download URL port"
-        ) from error
+def _public_release_asset_url(tag: str, asset_name: str) -> str:
+    """Build a canonical URL for one asset from the pinned public Registry Release."""
+    if not isinstance(tag, str) or not tag.startswith("v") or VERSION_RE.fullmatch(tag[1:]) is None:
+        raise RegistryBootstrapError("invalid pinned Registry release tag")
+    allowed_names = {
+        "catalog-index.json",
+        f"registry-release-{tag[1:]}.json",
+        *(name for name, _target in TARGETS.values()),
+    }
     if (
-        parsed is None
-        or parsed.scheme != "https"
-        or parsed.hostname != "github.com"
-        or port not in (None, 443)
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
+        not isinstance(asset_name, str)
+        or asset_name not in allowed_names
+        or Path(asset_name).name != asset_name
+        or "\\" in asset_name
     ):
-        raise RegistryBootstrapError(f"Registry release asset {name!r} has an untrusted download URL")
-    return url
+        raise RegistryBootstrapError(f"untrusted Registry Release asset name: {asset_name!r}")
+    return (
+        f"{REGISTRY_REPOSITORY_URI}/releases/download/"
+        f"{urllib.parse.quote(tag, safe='')}/{urllib.parse.quote(asset_name, safe='')}"
+    )
 
 
 def _validate_descriptor(
@@ -700,29 +573,8 @@ def acquire_registry_artifact(
             "offline Registry installation requires a previously verified cache for this exact pin and target"
         )
     client = client or GitHubReleaseClient()
-    release = client.get_json(f"{REGISTRY_API}/releases/tags/{urllib.parse.quote(tag, safe='')}")
-    if release.get("tag_name") != tag or release.get("draft") is True:
-        raise RegistryBootstrapError("GitHub Registry Release tag is missing, draft or mismatched")
-    expected_prerelease = "-" in version.split("+", 1)[0]
-    if release.get("prerelease") is not expected_prerelease:
-        raise RegistryBootstrapError("GitHub Registry Release prerelease flag differs from its SemVer")
-    resolved_commit = _resolve_tag_commit(client, tag)
-    if resolved_commit != revision:
-        raise RegistryBootstrapError(
-            f"Registry release tag moved or mismatched: expected {revision}, found {resolved_commit}"
-        )
-
-    assets = _asset_index(release)
     descriptor_name = f"registry-release-{version}.json"
-    descriptor_asset = assets.get(descriptor_name)
-    if descriptor_asset is None:
-        raise RegistryBootstrapError(f"Registry release is missing {descriptor_name}")
-    descriptor_url = _api_asset_identity(
-        descriptor_asset,
-        name=descriptor_name,
-        sha256=descriptor_sha,
-        size=descriptor_size,
-    )
+    descriptor_url = _public_release_asset_url(tag, descriptor_name)
     descriptor_bytes = client.download(descriptor_url, maximum=MAX_JSON_BYTES)
     _verify_bytes(
         descriptor_bytes,
@@ -738,24 +590,12 @@ def acquire_registry_artifact(
         tag=tag,
     )
 
-    expected_assets = {
-        "catalog-index.json": (catalog_record["sha256"], catalog_record["size"]),
+    asset_urls = {
+        "catalog-index.json": _public_release_asset_url(tag, "catalog-index.json"),
     }
-    expected_assets.update({
-        item["asset_name"]: (item["sha256"], item["size"])
-        for item in executables.values()
-    })
-    asset_urls: dict[str, str] = {}
-    for name, (digest, size) in expected_assets.items():
-        asset = assets.get(name)
-        if asset is None:
-            raise RegistryBootstrapError(f"Registry release is missing required asset {name!r}")
-        asset_urls[name] = _api_asset_identity(
-            asset,
-            name=name,
-            sha256=digest,
-            size=size,
-        )
+    for item in executables.values():
+        asset_name = item["asset_name"]
+        asset_urls[asset_name] = _public_release_asset_url(tag, asset_name)
 
     catalog_bytes = client.download(asset_urls["catalog-index.json"], maximum=MAX_JSON_BYTES)
     _verify_bytes(

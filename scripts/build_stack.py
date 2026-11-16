@@ -641,27 +641,39 @@ def main() -> int:
     stage_cmake_prefix(backend_package, PREFIX)
 
     gui_enabled = PROFILE == "gui-sdl"
-    if args.registry_source_build:
-        # Explicit developer mode only: current Catalog still delivers Runtime
-        # and Frontend source units. Normal consumer builds never compile them.
-        env = pkg_env()
-        prepare_sdl3(
-            PREFIX, manifest["resolution"]["target"], PROFILE,
-            args.build_sdl3_from_source, env,
+    frontend_components = {
+        item["variant"]: item
+        for item in manifest.get("components", [])
+        if item.get("component_id") == "frontend"
+    }
+    required_frontend_variants = {"tui", "gui-sdl"} if gui_enabled else {"tui"}
+    if not required_frontend_variants.issubset(frontend_components):
+        raise RuntimeError(
+            f"Registry Manifest is missing selected Frontend variants: "
+            f"{sorted(required_frontend_variants - set(frontend_components))}"
         )
-        frontend = DEPS / "frontend"
-        frontend_options = [
-            "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
-            "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
-            f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
-            "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
-            "-DCDIN_FRONTEND_BUILD_APPS=OFF",
-            "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
-        ]
-        cmake_component("frontend", frontend, options=frontend_options, env=env)
-        frontend_prefixes: tuple[Path, ...] = ()
-    else:
-        selected_variants = ("core", "tui", "gui-sdl") if gui_enabled else ("core", "tui")
+    frontend_deliveries = {
+        component.get("delivery", "source")
+        for component in frontend_components.values()
+    }
+    if len(frontend_deliveries) != 1:
+        raise RuntimeError(
+            "CDIN does not support a mixed Frontend source/artifact graph; "
+            f"selected deliveries={sorted(frontend_deliveries)}"
+        )
+    frontend_delivery = next(iter(frontend_deliveries))
+    frontend_split_packages = frontend_delivery == "artifact"
+
+    if frontend_split_packages:
+        # Registry may itself be built from source in developer CI while the
+        # selected Frontend components are already published artifacts. The
+        # component delivery declared by the Manifest, not the Registry CLI
+        # delivery mode, decides whether Frontend source must be compiled.
+        selected_variants = tuple(sorted(frontend_components))
+        if "core" not in frontend_components:
+            raise RuntimeError(
+                "artifact-delivered Frontend adapters must resolve the shared Core package"
+            )
         staged_prefixes: list[Path] = []
         for variant in selected_variants:
             artifact_package = (
@@ -675,18 +687,44 @@ def main() -> int:
             )
             staged_prefixes.append(variant_prefix)
         frontend_prefixes = tuple(staged_prefixes)
+        env = pkg_env(additional_prefixes=frontend_prefixes)
         prepare_sdl3(
             PREFIX, manifest["resolution"]["target"], PROFILE,
-            args.build_sdl3_from_source, pkg_env(additional_prefixes=frontend_prefixes),
+            args.build_sdl3_from_source, env,
         )
         env = pkg_env(additional_prefixes=frontend_prefixes)
+    elif frontend_delivery == "source" and args.registry_source_build:
+        env = pkg_env()
+        prepare_sdl3(
+            PREFIX, manifest["resolution"]["target"], PROFILE,
+            args.build_sdl3_from_source, env,
+        )
+        frontend = DEPS / "frontend"
+        if frontend.is_symlink() or not frontend.is_dir():
+            raise RuntimeError(
+                "Registry selected source-delivered Frontend but its pinned source tree is missing"
+            )
+        frontend_options = [
+            "-DCDIN_FRONTEND_USE_LOG_STUB=OFF",
+            "-DCDIN_FRONTEND_BUILD_UI_TUI=ON",
+            f"-DCDIN_FRONTEND_BUILD_UI_SDL={'ON' if gui_enabled else 'OFF'}",
+            "-DCDIN_FRONTEND_BUILD_UI_HEADLESS=ON",
+            "-DCDIN_FRONTEND_BUILD_APPS=OFF",
+            "-DCDIN_FRONTEND_BUILD_EXAMPLES=OFF",
+        ]
+        cmake_component("frontend", frontend, options=frontend_options, env=env)
+    else:
+        raise RuntimeError(
+            "normal CDIN installation requires artifact-delivered Frontend packages; "
+            "source delivery is allowed only with --registry-source-build"
+        )
 
     root_build = BUILD / "cdin"
     frontend_cmake_options = [
-        f"-DCDIN_FRONTEND_SPLIT_PACKAGES={'OFF' if args.registry_source_build else 'ON'}",
+        f"-DCDIN_FRONTEND_SPLIT_PACKAGES={'ON' if frontend_split_packages else 'OFF'}",
         f"-DCDIN_FRONTEND_PACKAGE_VERSION={pinned_package_version('frontend', PROFILE)}",
     ]
-    if not args.registry_source_build:
+    if frontend_split_packages:
         frontend_cmake_options.extend((
             f"-DCDIN_FRONTEND_CORE_PACKAGE_VERSION={pinned_package_version('frontend', 'core')}",
             f"-DCDIN_FRONTEND_TUI_PACKAGE_VERSION={pinned_package_version('frontend', 'tui')}",
@@ -704,6 +742,7 @@ def main() -> int:
          "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={PREFIX}",
          f"-DCDIN_RUNTIME_SOURCE_DIR={runtime_root}",
          f"-DCDIN_REGISTRY_PROFILE={PROFILE}",
+         f"-DCDIN_REGISTRY_WORKSPACE={WORKSPACE}",
          f"-DCDIN_BACKEND_PACKAGE_VERSION={pinned_package_version('backend')}",
          *frontend_cmake_options,
          "-DCDIN_INSTALL_RUNTIME=ON",

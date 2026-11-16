@@ -11,6 +11,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Replace CDIN product `release_sources` discovery with a checked-in immutable `entries` Catalog for the exact selected component versions. Each entry binds a canonical public Release Metadata URL to its GitHub-published SHA-256; `deps.lock` pins the Catalog file digest and the bootstrap verifies it before every Registry invocation.
+- Remove cross-repository GitHub Release API discovery from native CI, sanitizer and Product Acceptance. Product resolution now consumes the static Catalog and requires no `CDIN_GITHUB_READ_TOKEN` / `REGISTRY_GITHUB_API_TOKEN`; same-repository GitHub CLI operations retain the separate `GH_TOKEN`.
+- Pin Linux x86_64 CI and sanitizer builds to Ubuntu 24.04/glibc 2.39, and reject packaging from a different glibc baseline. This prevents the moving `ubuntu-latest` label from silently producing binaries that require newer `GLIBC_*` symbols than the declared Linux ABI.
+
+- Validate the split Frontend graph with the shared Core dependency in both immutable artifact and developer Registry-source modes. Resolve component delivery from the actual Manifest instead of assuming that a source-built Registry implies source-built components.
+- Run CTest Manifest verification through the pinned Registry bootstrap. Normal consumers now use the verified cached Registry executable and the separately pinned CDIN product Catalog; developer CI uses the explicit pinned Registry source build. Neither path assumes a Registry binary at the old `build/tools/registry` location.
+- Make the developer stack consume published Frontend and SDL3 SDK packages when the Manifest selects artifacts. Building Registry from source no longer forces Runtime/Frontend source builds or SDL3 source compilation.
+- Remove the Backend package-version hardcode from Registry Manifest validation. CDIN now validates the selected immutable Backend artifact's delivery mode, package kind, CMake layout, target tuple, canonical workspace path and symlink safety while allowing Registry to select any compatible Backend SemVer.
+- Resolve Runtime paths in live extension/TUI smoke tests from the exact `CDIN_RUNTIME_SOURCE_DIR` in the active CMake cache. Artifact-first consumers and explicit developer-source builds now test the same Runtime package selected by the Manifest.
+- Pin both normal Registry consumers and the explicit developer/CI source-build path to the immutable Registry `v1.0.1` Release commit `ed7c8fbe5513b6b0d6eb76d31191c696b98f8d27`; verify the descriptor SHA-256/size, same-tag Catalog, five native executables and published asset digests. Preserve the old `v1.0.0` tag and Release unchanged.
+- Embed the exact locked Registry SemVer and full source commit into developer-built Registry binaries with Go linker flags. Source builds no longer emit the unparseable `development` version into Resolved Manifest provenance.
+- Consume the corrected immutable Registry `v1.0.1` release in the normal artifact-first path. It includes the Manifest schema-floor fix from Registry PR [#75](https://github.com/cdin-editor/registry/pull/75) and authenticated cross-repository Release discovery from Registry PR [#78](https://github.com/cdin-editor/registry/pull/78); keep the original `v1.0.0` assets immutable.
+- Declare GUI-SDL's external SDL3 SDK contract and pin the published five-target SDL3 3.4.16 SDK Release, including its exact tag-resolved commit, archive sizes and SHA-256 digests. TUI remains SDL3-free.
+- Pin the exact size and GitHub SHA-256 digest of all five SDL3 checksum sidecars. Verify sidecar bytes and the archive checksum line exactly while accepting only the published LF or CRLF line-ending form.
+- Disable component prerelease selection in both stable product definitions; stable CDIN profiles now resolve stable component releases only.
+
+- Pin the artifact-first Registry consumer to the published stable `v1.0.1` Release, including its exact tag-resolved source commit and release-descriptor SHA-256/size. Use the CDIN-owned static `entries` Catalog with exact metadata URL/SHA-256 pins; keep the developer-only Registry source mode explicit and separate.
+- Update TUI and GUI-SDL Product Definitions to the artifact-ready Backend 1.2.2 and Frontend TUI/GUI-SDL 1.2.2 releases selected by the same-tag Registry Catalog; the previous Backend 1.2.1 / Frontend 1.0.2 entries had no target-native artifacts for the clean consumer.
+
 - Constrain SDK cache/extraction directories to repository or OS-temporary roots, reject traversal and symlinks below the trusted root, and resolve the trusted root before walking components so macOS `/var` aliases remain supported. Preserve rejection of symlink destinations and archive member links, traversal and special files. See [Spec ADR-0025](https://github.com/cdin-editor/spec/blob/main/docs/adr/ADR-0025-immutable-target-artifact-delivery.md#L15-L21) and the [immutable artifact security contract](https://github.com/cdin-editor/spec/blob/main/docs/architecture/immutable-artifact-delivery.md#L227-L231).
 
 

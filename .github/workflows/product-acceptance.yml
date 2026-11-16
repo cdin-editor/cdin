@@ -1,6 +1,23 @@
 name: Product Acceptance
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/product-acceptance.yml"
+      - "deps.lock"
+      - "registry/**"
+      - "scripts/build_stack.py"
+      - "scripts/configure.py"
+      - "scripts/deps.py"
+      - "scripts/package_distribution.py"
+      - "scripts/registry.py"
+      - "scripts/registry_artifact.py"
+      - "tests/test_ci_matrix.py"
+      - "tests/test_package_distribution.py"
+      - "tests/test_registry_artifact.py"
+      - "tests/test_registry_bootstrap.py"
+      - "tests/test_deps.py"
   push:
     branches: [main]
   workflow_dispatch:
@@ -10,7 +27,7 @@ permissions:
 
 concurrency:
   group: product-acceptance-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   installed-product:
@@ -18,6 +35,7 @@ jobs:
     timeout-minutes: 150
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         include:
           - target: linux-x86_64
@@ -68,12 +86,13 @@ jobs:
       CDIN_FRONTEND_VARIANT: ${{ matrix.profile }}
       CDIN_EXPECTED_TARGET: ${{ matrix.target }}
       CDIN_SOURCE_REVISION: ${{ github.sha }}
-      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+
 
       - name: Set up MSYS2 UCRT64 (Windows)
         if: runner.os == 'Windows'
@@ -140,6 +159,8 @@ jobs:
 
       - name: Verify artifact-first bootstrap contracts
         run: |
+          python -m unittest discover -s tests -p test_ci_matrix.py
+          python -m unittest discover -s tests -p test_deps.py
           python -m unittest discover -s tests -p test_registry_artifact.py
           python -m unittest discover -s tests -p "test_*sdl3*.py"
           python -m unittest discover -s tests -p test_package_distribution.py
@@ -168,7 +189,7 @@ jobs:
           if present:
               raise SystemExit("consumer installation created developer source trees: " + ", ".join(present))
           profile = os.environ["CDIN_FRONTEND_VARIANT"]
-          sdl_sdk = root / ".deps" / "sdk" / "share" / "cdin" / "sdl3-sdk.json"
+          sdl_sdk = root / ".deps" / "install" / "share" / "cdin" / "sdl3-sdk.json"
           if profile == "tui" and sdl_sdk.exists():
               raise SystemExit("TUI unexpectedly acquired the SDL3 SDK")
           if profile == "gui-sdl" and not sdl_sdk.is_file():

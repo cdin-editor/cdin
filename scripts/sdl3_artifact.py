@@ -23,8 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 CACHE = ROOT / ".deps" / "cache" / "sdl3-sdk"
 REPOSITORY = "https://github.com/cdin-editor/cdin"
-API = "https://api.github.com/repos/cdin-editor/cdin"
-MAX_API_BYTES = 2 * 1024 * 1024
 MAX_ASSET_BYTES = 512 * 1024 * 1024
 MAX_EXPANDED_BYTES = 1024 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 30_000
@@ -193,8 +191,13 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
         filename = pinned_asset.get("file_name")
         size = pinned_asset.get("size_bytes")
         digest = pinned_asset.get("sha256")
+        sidecar_size = pinned_asset.get("sidecar_size_bytes")
+        sidecar_digest = pinned_asset.get("sidecar_sha256")
         if (
-            set(pinned_asset) != {"file_name", "format", "size_bytes", "sha256"}
+            set(pinned_asset) != {
+                "file_name", "format", "size_bytes", "sha256",
+                "sidecar_size_bytes", "sidecar_sha256",
+            }
             or filename != expected_name
             or pinned_asset.get("format") != "tar.gz"
             or isinstance(size, bool)
@@ -203,6 +206,12 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
             or size > MAX_ASSET_BYTES
             or not isinstance(digest, str)
             or SHA_RE.fullmatch(digest) is None
+            or isinstance(sidecar_size, bool)
+            or not isinstance(sidecar_size, int)
+            or sidecar_size <= 0
+            or sidecar_size > 256
+            or not isinstance(sidecar_digest, str)
+            or SHA_RE.fullmatch(sidecar_digest) is None
         ):
             raise SDL3ArtifactError(
                 f"SDL3 SDK asset pin for {target_name} is malformed"
@@ -215,22 +224,6 @@ def validate_pin(lock: dict[str, Any], key: str) -> tuple[dict[str, Any], dict[s
     }
 
 
-class _APIRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, fp, code, message, headers, new_url):
-        parsed = urllib.parse.urlsplit(new_url)
-        try:
-            port = parsed.port
-        except ValueError as error:
-            raise SDL3ArtifactError("SDL3 GitHub API redirect has an invalid port") from error
-        if (
-            parsed.scheme != "https" or parsed.hostname != "api.github.com"
-            or port not in (None, 443) or parsed.username or parsed.password
-            or parsed.query or parsed.fragment
-        ):
-            raise SDL3ArtifactError("SDL3 GitHub API redirect left the trusted API origin")
-        return super().redirect_request(request, fp, code, message, headers, new_url)
-
-
 class _AssetRedirectHandler(urllib.request.HTTPRedirectHandler):
     allowed_hosts = {
         "github.com",
@@ -240,112 +233,97 @@ class _AssetRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, request, fp, code, message, headers, new_url):
         parsed = urllib.parse.urlsplit(new_url)
-        if parsed.scheme != "https" or parsed.hostname not in self.allowed_hosts:
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise SDL3ArtifactError("SDL3 SDK asset redirect has an invalid port") from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in self.allowed_hosts
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
             raise SDL3ArtifactError(f"SDL3 SDK asset redirect rejected: {new_url}")
         return super().redirect_request(request, fp, code, message, headers, new_url)
 
 
-def fetch_github_json(path: str) -> dict[str, Any]:
-    if not path.startswith("/repos/cdin-editor/cdin/") or "?" in path or "#" in path:
-        raise SDL3ArtifactError("SDL3 GitHub API path is outside the canonical CDIN repository")
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "CDIN-SDL3-SDK-Bootstrap/1",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(f"https://api.github.com{path}", headers=headers)
-    opener = urllib.request.build_opener(_APIRedirectHandler())
-    try:
-        with opener.open(request, timeout=30) as response:
-            final = urllib.parse.urlsplit(response.geturl())
-            if response.status != 200 or final.scheme != "https" or final.hostname != "api.github.com":
-                raise SDL3ArtifactError("SDL3 GitHub API response came from an untrusted origin")
-            data = response.read(MAX_API_BYTES + 1)
-    except (OSError, urllib.error.URLError) as error:
-        raise SDL3ArtifactError(f"cannot inspect immutable SDL3 SDK Release identity: {error}") from error
-    if len(data) > MAX_API_BYTES:
-        raise SDL3ArtifactError("SDL3 GitHub API response exceeds the 2 MiB limit")
-    return strict_json(data, "SDL3 GitHub API response")
-
-
-def resolve_tag_commit(tag: str) -> str:
-    reference = fetch_github_json(
-        f"/repos/cdin-editor/cdin/git/ref/tags/{urllib.parse.quote(tag, safe='')}"
-    )
-    obj = reference.get("object")
-    visited: set[str] = set()
-    for _ in range(8):
-        if not isinstance(obj, dict):
-            raise SDL3ArtifactError("SDL3 SDK Git tag has no Git object")
-        kind, sha = obj.get("type"), obj.get("sha")
-        if not isinstance(sha, str) or GIT_SHA_RE.fullmatch(sha) is None or sha in visited:
-            raise SDL3ArtifactError("SDL3 SDK Git tag contains an invalid/cyclic object SHA")
-        visited.add(sha)
-        if kind == "commit":
-            return sha
-        if kind != "tag":
-            raise SDL3ArtifactError("SDL3 SDK tag resolves to an unsupported Git object")
-        tag_object = fetch_github_json(f"/repos/cdin-editor/cdin/git/tags/{sha}")
-        if tag_object.get("sha") != sha:
-            raise SDL3ArtifactError("SDL3 SDK annotated tag object identity mismatch")
-        obj = tag_object.get("object")
-    raise SDL3ArtifactError("SDL3 SDK annotated tag nesting exceeds 8 objects")
-
-
-def verify_release(pin: dict[str, Any], asset: dict[str, Any]) -> dict[str, Any]:
-    release = fetch_github_json(
-        f"/repos/cdin-editor/cdin/releases/tags/{urllib.parse.quote(pin['tag'], safe='')}"
-    )
+def _validate_locked_release_pin(pin: dict[str, Any]) -> set[str]:
+    """Validate the complete five-target SDL3 Release pin without network access."""
+    if not isinstance(pin, dict) or pin.get("repository") != REPOSITORY:
+        raise SDL3ArtifactError("SDL3 SDK repository pin is not the canonical CDIN repository")
+    version = pin.get("version")
+    tag = pin.get("tag")
+    revision = pin.get("revision")
     if (
-        release.get("tag_name") != pin["tag"]
-        or release.get("draft") is not False
-        or release.get("prerelease") is not True
+        not isinstance(version, str)
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None
+        or tag != f"sdl3-sdk-v{version}"
+        or not isinstance(revision, str)
+        or GIT_SHA_RE.fullmatch(revision) is None
     ):
-        raise SDL3ArtifactError("SDL3 SDK Release must be the exact published prerelease for its pin")
-    actual_revision = resolve_tag_commit(pin["tag"])
-    if actual_revision != pin["revision"]:
-        raise SDL3ArtifactError(
-            f"SDL3 SDK tag target mismatch: expected {pin['revision']}, found {actual_revision}"
-        )
-    api_assets = release.get("assets")
-    if not isinstance(api_assets, list):
-        raise SDL3ArtifactError("SDL3 SDK Release has no asset inventory")
-    expected_names: set[str] = set()
-    indexed: dict[str, dict[str, Any]] = {}
-    for key, pinned_asset in pin["assets"].items():
-        filename = pinned_asset["file_name"]
-        sidecar = filename + ".sha256"
-        expected_names.update((filename, sidecar))
-    for item in api_assets:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-            raise SDL3ArtifactError("SDL3 SDK Release contains a malformed asset record")
-        name = item["name"]
-        if name in indexed:
-            raise SDL3ArtifactError(f"SDL3 SDK Release contains duplicate asset {name}")
-        indexed[name] = item
-    if set(indexed) != expected_names:
-        missing = sorted(expected_names - set(indexed))
-        unexpected = sorted(set(indexed) - expected_names)
-        raise SDL3ArtifactError(
-            f"SDL3 SDK Release inventory must contain exactly five archive/checksum pairs; "
-            f"missing={missing}, unexpected={unexpected}"
-        )
-    for key, pinned_asset in pin["assets"].items():
-        filename = pinned_asset["file_name"]
-        item = indexed[filename]
+        raise SDL3ArtifactError("SDL3 SDK version/tag/source revision pin is malformed")
+
+    assets = pin.get("assets")
+    if not isinstance(assets, dict) or set(assets) != set(TARGETS):
+        raise SDL3ArtifactError("SDL3 SDK lock must contain exactly five target assets")
+    allowed_names: set[str] = set()
+    for target_name in sorted(TARGETS):
+        pinned_asset = assets.get(target_name)
+        expected_name = f"sdl3-sdk-{version}-{target_name}.tar.gz"
+        if not isinstance(pinned_asset, dict) or set(pinned_asset) != {
+            "file_name", "format", "size_bytes", "sha256",
+            "sidecar_size_bytes", "sidecar_sha256",
+        }:
+            raise SDL3ArtifactError(f"SDL3 SDK asset pin for {target_name} is malformed")
+        size = pinned_asset.get("size_bytes")
+        digest = pinned_asset.get("sha256")
+        sidecar_size = pinned_asset.get("sidecar_size_bytes")
+        sidecar_digest = pinned_asset.get("sidecar_sha256")
         if (
-            item.get("size") != pinned_asset["size_bytes"]
-            or item.get("digest") != f"sha256:{pinned_asset['sha256']}"
+            pinned_asset.get("file_name") != expected_name
+            or pinned_asset.get("format") != "tar.gz"
+            or isinstance(size, bool)
+            or not isinstance(size, int)
+            or size <= 0
+            or size > MAX_ASSET_BYTES
+            or not isinstance(digest, str)
+            or SHA_RE.fullmatch(digest) is None
+            or isinstance(sidecar_size, bool)
+            or not isinstance(sidecar_size, int)
+            or sidecar_size <= 0
+            or sidecar_size > 256
+            or not isinstance(sidecar_digest, str)
+            or SHA_RE.fullmatch(sidecar_digest) is None
         ):
-            raise SDL3ArtifactError(
-                f"SDL3 SDK Release Asset size/digest differs from deps.lock for {key}"
-            )
-        if indexed[filename + ".sha256"].get("size", 0) <= 0:
-            raise SDL3ArtifactError(f"SDL3 SDK Release checksum sidecar is empty for {key}")
-    return release
+            raise SDL3ArtifactError(f"SDL3 SDK asset pin for {target_name} is malformed")
+        allowed_names.add(expected_name)
+        allowed_names.add(expected_name + ".sha256")
+    return allowed_names
+
+
+def verify_locked_release(pin: dict[str, Any], asset: dict[str, Any]) -> None:
+    """Ensure the selected archive is exactly one of the assets in the validated lock."""
+    allowed_names = _validate_locked_release_pin(pin)
+    filename = asset.get("file_name") if isinstance(asset, dict) else None
+    if (
+        not isinstance(filename, str)
+        or filename.endswith(".sha256")
+        or filename not in allowed_names
+        or not any(asset == pinned for pinned in pin["assets"].values())
+    ):
+        raise SDL3ArtifactError("selected SDL3 SDK asset is not part of the locked Release")
+
+
+def public_release_asset_url(pin: dict[str, Any], filename: str) -> str:
+    """Build a canonical browser-download URL for a pinned SDK archive or checksum sidecar."""
+    allowed_names = _validate_locked_release_pin(pin)
+    if not isinstance(filename, str) or filename not in allowed_names:
+        raise SDL3ArtifactError(f"untrusted SDL3 SDK Release asset name: {filename!r}")
+    tag = urllib.parse.quote(pin["tag"], safe="")
+    name = urllib.parse.quote(filename, safe="")
+    return f"{REPOSITORY}/releases/download/{tag}/{name}"
 
 
 def _ensure_real_directory(path: Path) -> None:
@@ -424,8 +402,21 @@ def _ensure_real_directory(path: Path) -> None:
 
 def _download(url: str, destination: Path, *, expected_size: int, max_size: int) -> None:
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "github.com":
-        raise SDL3ArtifactError("SDL3 SDK download URL must use the canonical GitHub HTTPS host")
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise SDL3ArtifactError("SDL3 SDK download URL has an invalid port") from error
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.startswith("/cdin-editor/cdin/releases/download/")
+    ):
+        raise SDL3ArtifactError("SDL3 SDK download URL is not a canonical public Release asset")
     opener = urllib.request.build_opener(_AssetRedirectHandler())
     request = urllib.request.Request(url, headers={
         "User-Agent": "CDIN-SDL3-SDK-Bootstrap/1",
@@ -438,7 +429,19 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         with os.fdopen(fd, "wb") as output:
             with opener.open(request, timeout=45) as response:
                 final = urllib.parse.urlsplit(response.geturl())
-                if response.status != 200 or final.scheme != "https" or final.hostname not in _AssetRedirectHandler.allowed_hosts:
+                try:
+                    final_port = final.port
+                except ValueError as error:
+                    raise SDL3ArtifactError("SDL3 SDK final download URL has an invalid port") from error
+                if (
+                    response.status != 200
+                    or final.scheme != "https"
+                    or final.hostname not in _AssetRedirectHandler.allowed_hosts
+                    or final_port not in (None, 443)
+                    or final.username is not None
+                    or final.password is not None
+                    or final.fragment
+                ):
                     raise SDL3ArtifactError("SDL3 SDK final download URL is not trusted")
                 content_length = response.headers.get("Content-Length")
                 if content_length is not None and int(content_length) != expected_size:
@@ -462,8 +465,22 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         temporary.unlink(missing_ok=True)
 
 
+def verify_checksum_sidecar_bytes(data: bytes, asset: dict[str, Any], filename: str) -> None:
+    """Verify the exact pinned sidecar bytes, accepting LF and CRLF line endings."""
+    if (
+        len(data) != asset["sidecar_size_bytes"]
+        or hashlib.sha256(data).hexdigest() != asset["sidecar_sha256"]
+    ):
+        raise SDL3ArtifactError("SDL3 SDK checksum sidecar size/SHA-256 differs from deps.lock")
+    expected_lf = f"{asset['sha256']}  {filename}\n".encode("ascii")
+    expected_crlf = f"{asset['sha256']}  {filename}\r\n".encode("ascii")
+    if data not in (expected_lf, expected_crlf):
+        raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
+
+
 def download_asset(pin: dict[str, Any], asset: dict[str, Any],
                    source: dict[str, str], *, cache: Path = CACHE, offline: bool = False) -> Path:
+    verify_locked_release(pin, asset)
     filename = asset["file_name"]
     cache_name = f"{Path(filename).stem}-{asset['sha256']}.tar.gz"
     _ensure_real_directory(cache)
@@ -480,22 +497,32 @@ def download_asset(pin: dict[str, Any], asset: dict[str, Any],
         if not destination.is_file():
             raise SDL3ArtifactError("offline GUI-SDL install requires the exact pinned SDL3 SDK archive in cache")
         return destination
-    # Online requests revalidate the tag, commit and GitHub asset digest even
-    # when the local archive cache is already populated.
-    release = verify_release(pin, asset)
+    # The complete five-target Release identity is pinned in deps.lock.
+    # Download the public browser asset directly; verify archive and sidecar
+    # bytes against the lock rather than querying GitHub's REST API.
     if destination.is_file():
         return destination
-    url = f"{REPOSITORY}/releases/download/{pin['tag']}/{filename}"
+    url = public_release_asset_url(pin, filename)
     _download(url, destination, expected_size=asset["size_bytes"], max_size=MAX_ASSET_BYTES)
     if sha256_file(destination) != asset["sha256"]:
         destination.unlink(missing_ok=True)
         raise SDL3ArtifactError("downloaded SDL3 SDK archive SHA-256 mismatch")
-    sidecar_url = f"{REPOSITORY}/releases/download/{pin['tag']}/{filename}.sha256"
+    sidecar_url = public_release_asset_url(pin, filename + ".sha256")
     sidecar = cache / (cache_name + ".sha256")
-    _download(sidecar_url, sidecar, expected_size=67 + len(filename), max_size=256)
-    expected_line = f"{asset['sha256']}  {filename}\n"
-    if sidecar.read_text(encoding="ascii") != expected_line:
-        raise SDL3ArtifactError("SDL3 SDK SHA-256 sidecar does not match the locked archive digest")
+    _download(
+        sidecar_url,
+        sidecar,
+        expected_size=asset["sidecar_size_bytes"],
+        max_size=256,
+    )
+    if sha256_file(sidecar) != asset["sidecar_sha256"]:
+        sidecar.unlink(missing_ok=True)
+        raise SDL3ArtifactError("downloaded SDL3 SDK checksum sidecar SHA-256 mismatch")
+    try:
+        verify_checksum_sidecar_bytes(sidecar.read_bytes(), asset, filename)
+    except SDL3ArtifactError:
+        sidecar.unlink(missing_ok=True)
+        raise
     return destination
 
 

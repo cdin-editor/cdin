@@ -18,7 +18,7 @@ make stack-dev
 
 This is the explicit hybrid developer path: Registry is built from its pinned source revision, and Runtime/Frontend source delivery is enabled only for development/CI. Component sources are checked out under `.deps/src/`; build trees and installed dependencies are placed under `.deps/`.
 
-The normal consumer command is `make install`. It is artifact-only and currently fails closed until Registry, Runtime, Frontend and the GUI-SDL SDK immutable Releases are published and pinned. Do not use the developer source path as evidence that artifact-first installation is complete.
+The normal consumer command is `make install`. It is artifact-only; the current component releases are published, and the candidate lock pins Kernel 1.2.3, Runtime 1.0.0, Backend 1.2.2, Frontend 1.2.2 and the five-target SDL3 SDK 3.4.16 for GUI-SDL. However, CDIN main still consumes Registry 1.0.0, whose immutable binary has a Manifest schema-floor regression when ADR-0028 release provenance is present. Registry's schema fix is merged to its main branch, but the immutable Registry 1.0.1 Release is not yet published. CDIN PR #149 carries the updated artifact-first candidate; its clean-consumer/Product Acceptance jobs have not passed. Do not use the developer source path as evidence that artifact-first installation is complete.
 
 The installed executable is:
 
@@ -68,11 +68,7 @@ are local embedding APIs; there is no Frontend Protocol command for loading
 code. Do not point the root at a user-writable download/cache directory or
 untrusted code. Host sandboxing is defense in depth, not process isolation.
 
-This path depends on Backend 1.2.0 candidate [PR #16](https://github.com/cdin-editor/backend/pull/16)
-and remains an integration candidate until the pinned build, live Lua init/unload
-smoke, capability allow/deny and failure-cleanup tests pass on the current
-native matrix. It is not yet a stable extension distribution/marketplace
-contract.
+This path is composed with the published Backend 1.2.2 package and the candidate CDIN/Runtime pins. The public command-line selection path is not a stable extension distribution or marketplace contract: the exact immutable stack still needs live Lua init/unload, capability allow/deny, failure-cleanup and recovery tests on the supported native matrix. Keep extension loading restricted to trusted administrator-controlled roots.
 
 ## 5. Experimental TUI
 
@@ -82,15 +78,17 @@ The POSIX TUI requires the explicit environment opt-in:
 CDIN_ENABLE_EXPERIMENTAL_TUI=1 ./.deps/install/bin/cdin --frontend tui
 ```
 
-This is for development and integration testing only. It is not a supported
-end-user installation path. The merged Frontend request-lifecycle fix
-[PR #11](https://github.com/cdin-editor/frontend/pull/11) is pinned by its
-immutable merge commit `e29df5118e7b822912724b15c0c963b0b99f2f8a`. A separate
-ConPTY adapter fix is under Draft [Frontend PR #16](https://github.com/cdin-editor/frontend/pull/16).
-The last inspected Windows run reached the initial render but did not yet
-observe edited text in the rendered output. Keep Windows TUI fail-closed until
-the input/ACK/redraw path passes the ConPTY acceptance test. GUI-SDL launch
-is not available.
+This is for development and integration testing only; it is not yet a supported
+end-user installation path. The Frontend ConPTY adapter fix in
+[PR #16](https://github.com/cdin-editor/frontend/pull/16) is merged and its
+Windows input/save/quit/restoration E2E passed in CDIN run
+[42265415995](https://github.com/cdin-editor/cdin/actions/runs/42265415995).
+That historical ConPTY pass does not replace current whole-product acceptance:
+TUI and GUI-SDL still need to pass the exact current Registry/component pins,
+clean installation and lifecycle gates before being advertised as stable.
+GUI-SDL uses the published immutable SDL3 SDK 3.4.16, but its current renderer
+is not production-ready: shaping, font fallback, grapheme layout, bidi and
+Persian/Arabic presentation remain incomplete.
 
 ## 6. Source archive
 
@@ -108,8 +106,8 @@ The following are not currently available as verified product deliverables:
 
 - signed Linux, macOS or Windows application installers;
 - a release-ready interactive TUI or GUI editor;
-- a verified Windows Console/ConPTY TUI input and restoration path;
+- complete, supported interactive TUI and GUI-SDL launch/input/shutdown acceptance across the five native targets;
 - a complete application package containing a verified Frontend;
-- a stable release workflow that publishes tested platform artifacts.
+- a versioned product release workflow connected to the verified ten target/profile archives, immutable Registry Manifest, checksums and release provenance.
 
 Do not distribute the current `--check` executable or experimental TUI as a completed interactive editor. Track the remaining work in [Integration status](development/integration-status.md) and [issue #111](https://github.com/cdin-editor/cdin/issues/111).
