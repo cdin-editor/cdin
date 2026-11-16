@@ -1,6 +1,6 @@
-# Live audit correction — 2026-11-15 (Registry v1.0.1 published; CDIN runner and Windows preflight fixes)
+# Live audit correction — 2026-11-16 (public pinned bootstraps; Registry-only API credential)
 
-**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes earlier snapshots below for Registry publication, CDIN PR #149's current head, CI credentials and runner compatibility. Registry publication does not itself prove CDIN product acceptance.
+**Authoritative state: DEVELOPMENT — NOT PRODUCT READY.** This correction supersedes earlier snapshots below for Registry publication, CDIN PR #149's bootstrap implementation, API credential scope and current validation. Registry publication and green dependency CI do not themselves prove CDIN product acceptance.
 
 ## Verified repository state
 
@@ -21,11 +21,11 @@ CDIN [PR #149](https://github.com/cdin-editor/cdin/pull/149) remains the existin
 
 Only results attached to the latest PR head count for merge readiness. Older runs from prior commits may be cancelled when a new commit is pushed; use the PR Checks tab for the current run set rather than treating an earlier green/queued result as evidence for a newer head.
 
-The read-only `CDIN_GITHUB_READ_TOKEN` is now present in hosted job environments (logs show both dedicated token variables masked as `***`). Earlier Windows CI jobs [132914707178](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707178) and [132914707202](https://github.com/cdin-editor/cdin/actions/runs/43676968186/job/132914707202) failed because the token preflight inherited `msys2 {0}` before MSYS2 setup; commit `5abf4b87f2440782a6085862e123bac030915b12` gives that preflight an explicit Bash shell. The new exact-head run must verify the correction.
+The Kernel SDK, Registry executable and SDL3 SDK Python bootstraps now acquire public Release assets directly and validate the exact lock-pinned/descriptor-pinned bytes; these paths do not call `api.github.com` or consume an API token. The Registry CLI still needs `CDIN_GITHUB_READ_TOKEN` for its runtime cross-repository `release_sources` discovery. The CI and Product Acceptance workflows expose that secret only as `REGISTRY_GITHUB_API_TOKEN`; the standard `GH_TOKEN` remains separate for same-repository GitHub CLI operations.
 
-The original empty-secret preflight failure is resolved. New Product Acceptance logs on the preceding exact head showed both cross-repository token variables present as masked secrets. The present CI gate is waiting for the exact-head workflows above; do not infer success until their native and product jobs finish.
+The earlier 403s in Kernel and Registry executable bootstrap were caused by unnecessary public Release/tag REST lookups and have been removed rather than retried. The latest Product Acceptance and CI matrices must still pass on the current exact PR head; do not infer success from results attached to earlier commits.
 
-The configured `CDIN_GITHUB_READ_TOKEN` is a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/cdin`, `kernel`, `runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it to the two dedicated API-token variables; same-repository `GH_TOKEN` remains separate. Current hosted job logs show both dedicated variables are populated and masked.
+Configure `CDIN_GITHUB_READ_TOKEN` as a fine-grained PAT or GitHub App installation token with **Contents: read only** for `cdin-editor/runtime`, `backend`, `frontend` and `registry`. CDIN workflows map it only to `REGISTRY_GITHUB_API_TOKEN` for the Registry CLI; no read token is needed for Kernel or SDL3 public Release downloads. Same-repository `GH_TOKEN` remains separate, and token values must never be logged or committed.
 
 ## Immediate dependency order
 
@@ -38,9 +38,9 @@ Do not merge PR #149, close CDIN #111/#118/#121/#122/#124, or publish CDIN `v1.0
 
 ---
 
-## Current integration update — 2026-11-15 (artifact-first and cross-repository API authentication)
+## Historical integration baseline — 2026-11-15 (before public bootstrap URLs)
 
-**Authoritative product state: DEVELOPMENT — NOT PRODUCT READY.** This top section is the current status snapshot. The dated 2026-11-14 and earlier sections below are historical evidence and must not be read as the latest PR head, credential design or CI state.
+**Historical record only.** The implementation and credential details in this dated section have been superseded by the November 16 correction above. Its original run IDs and API-bootstrap design are retained only to explain earlier failures.
 
 ### Exact active work and repository identities
 
