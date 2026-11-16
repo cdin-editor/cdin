@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -22,13 +23,13 @@ except ImportError:  # Direct execution: scripts/ is sys.path[0].
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "deps.lock"
 REGISTRY_SOURCE = ROOT / ".deps" / "tools" / "registry"
-REGISTRY_CATALOG = REGISTRY_SOURCE / "catalogs" / "cdin-components" / "catalog-index.json"
+REGISTRY_CATALOG = ROOT / "registry" / "catalog-index.json"
 REGISTRY_BUILD = ROOT / "build" / "tools"
 WORKSPACE_ROOT = ROOT / ".deps"
 # Keep Registry's private metadata/API cache separate from the executable
 # distribution cache: Registry secures its cache tree recursively.
 REGISTRY_CACHE = WORKSPACE_ROOT / "cache" / "registry"
-REGISTRY_API_CACHE = WORKSPACE_ROOT / "cache" / "registry-api"
+REGISTRY_METADATA_CACHE = WORKSPACE_ROOT / "cache" / "registry-metadata"
 
 
 def run(
@@ -72,6 +73,35 @@ def profile_name(value: str) -> str:
 
 def load_lock() -> dict:
     return tomllib.loads(LOCK.read_text(encoding="utf-8"))
+
+
+
+def verify_product_catalog() -> Path:
+    """Verify CDIN's immutable product Catalog before invoking Registry."""
+    pin = load_lock().get("tooling", {}).get("cdin_catalog", {})
+    relative_path = pin.get("path")
+    expected_sha256 = pin.get("sha256")
+    if relative_path != "registry/catalog-index.json":
+        raise RuntimeError("deps.lock must pin the CDIN product Catalog at registry/catalog-index.json")
+    if not isinstance(expected_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+        raise RuntimeError("deps.lock CDIN product Catalog SHA-256 pin is invalid")
+    catalog = ROOT / relative_path
+    if catalog.is_symlink() or not catalog.is_file():
+        raise RuntimeError(f"pinned CDIN product Catalog is missing or unsafe: {catalog}")
+    if not catalog.resolve(strict=True).is_relative_to(ROOT.resolve()):
+        raise RuntimeError("pinned CDIN product Catalog resolves outside the repository")
+    data = catalog.read_bytes()
+    if not data or len(data) > 8 * 1024 * 1024:
+        raise RuntimeError("pinned CDIN product Catalog is empty or exceeds the 8 MiB limit")
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError("CDIN product Catalog SHA-256 mismatch")
+    document = json.loads(data)
+    if document.get("catalog_id") != "cdin-components" or not isinstance(document.get("entries"), list):
+        raise RuntimeError("pinned CDIN product Catalog must contain the cdin-components entries model")
+    if "release_sources" in document:
+        raise RuntimeError("CDIN product Catalog must use immutable entries, not GitHub Release discovery")
+    return catalog
 
 
 def registry_pin(*, development: bool = False) -> tuple[str, str]:
@@ -121,17 +151,15 @@ def build_registry(
     source_build: bool = False,
     offline: bool = False,
 ) -> Path:
-    global REGISTRY_CATALOG
     if not source_build:
         pin = load_lock()["tooling"]["registry"]
-        binary, catalog = acquire_registry_artifact(
+        binary, release_catalog = acquire_registry_artifact(
             pin,
             cache_root=REGISTRY_CACHE,
             offline=offline,
         )
-        REGISTRY_CATALOG = catalog
         print(f"Verified Registry executable: {binary}", flush=True)
-        print(f"Verified Registry Catalog: {catalog}", flush=True)
+        print(f"Verified Registry release-bundle Catalog: {release_catalog}", flush=True)
         return binary
 
     if shutil.which("git") is None or shutil.which("go") is None:
@@ -422,7 +450,7 @@ def registry_prepare_command(
     cache_dir: Path | None = None,
 ) -> list[str]:
     """Build one cached Registry prepare invocation for a product workspace."""
-    cache_root = REGISTRY_API_CACHE if cache_dir is None else cache_dir
+    cache_root = REGISTRY_METADATA_CACHE if cache_dir is None else cache_dir
     return [
         str(binary),
         "prepare",
@@ -442,9 +470,7 @@ def prepare(
     developer_source_components: bool,
 ) -> None:
     source_product, workspace, replay = paths(profile)
-    catalog = REGISTRY_CATALOG
-    if not catalog.is_file():
-        raise RuntimeError(f"pinned Registry Catalog Index is missing: {catalog}")
+    catalog = verify_product_catalog()
     if workspace.exists() or replay.exists():
         raise RuntimeError(
             f"Registry output already exists for {profile}; remove {workspace} and {replay} "
@@ -482,7 +508,7 @@ def prepare(
             "--input", str(manifest_path),
             "--output", str(replay),
             "--allow-host", "github.com",
-            "--cache-dir", str(REGISTRY_API_CACHE),
+            "--cache-dir", str(REGISTRY_METADATA_CACHE),
         ])
         replay_manifest = replay / "registry-manifest.json"
         run([str(binary), "manifest", "verify", "--input", str(replay_manifest)])

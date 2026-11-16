@@ -38,7 +38,8 @@ from scripts.deps import (
     load_pin,
 )
 from scripts.registry import (
-    REGISTRY_API_CACHE,
+    REGISTRY_CATALOG,
+    REGISTRY_METADATA_CACHE,
     REGISTRY_CACHE,
     create_effective_product_definition,
     detect_target_tuple,
@@ -46,6 +47,7 @@ from scripts.registry import (
     registry_prepare_command,
     registry_source_build_ldflags,
     verify_backend_artifact,
+    verify_product_catalog,
     expected_frontend_variants,
 )
 from scripts.smoke_support import resolve_runtime_root
@@ -150,6 +152,44 @@ class RegistrySourceBuildMetadataTests(unittest.TestCase):
             registry_source_build_ldflags("1.0.0", "c5b6900")
 
 
+
+class CDINProductCatalogTests(unittest.TestCase):
+    def test_product_catalog_is_static_and_bound_to_the_lock_digest(self) -> None:
+        import tomllib
+
+        catalog_path = verify_product_catalog()
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(catalog_path, REGISTRY_CATALOG)
+        lock = tomllib.loads((root / "deps.lock").read_text(encoding="utf-8"))
+        pin = lock["tooling"]["cdin_catalog"]
+        self.assertEqual(pin["path"], "registry/catalog-index.json")
+        self.assertEqual(hashlib.sha256(catalog_path.read_bytes()).hexdigest(), pin["sha256"])
+
+        document = json.loads(catalog_path.read_text(encoding="utf-8"))
+        self.assertEqual(document["catalog_id"], "cdin-components")
+        self.assertNotIn("release_sources", document)
+        identities = {
+            (item["component_id"], item.get("variant", "default"), item["version"])
+            for item in document["entries"]
+        }
+        self.assertEqual(identities, {
+            ("backend", "default", "1.2.2"),
+            ("frontend", "core", "1.2.2"),
+            ("frontend", "tui", "1.2.2"),
+            ("frontend", "gui-sdl", "1.2.2"),
+            ("kernel", "default", "1.2.3"),
+            ("runtime", "default", "1.0.0"),
+        })
+        for entry in document["entries"]:
+            self.assertRegex(entry["metadata_sha256"], r"^[0-9a-f]{64}$")
+            self.assertRegex(entry["metadata_uri"], r"^https://github\.com/cdin-editor/[^/]+/releases/download/")
+            self.assertNotIn("api.github.com", entry["metadata_uri"])
+
+    def test_product_catalog_cache_is_separate_from_registry_executable_cache(self) -> None:
+        self.assertEqual(REGISTRY_METADATA_CACHE, REGISTRY_CACHE.parent / "registry-metadata")
+        self.assertNotEqual(REGISTRY_METADATA_CACHE, REGISTRY_CACHE)
+
+
 class RegistryPrepareCommandTests(unittest.TestCase):
     def test_prepare_runs_one_resolution_pass_and_uses_a_separate_cache(self) -> None:
         command = registry_prepare_command(
@@ -161,7 +201,7 @@ class RegistryPrepareCommandTests(unittest.TestCase):
         self.assertEqual(command[:2], ["registry", "prepare"])
         self.assertIn("--cache-dir", command)
         cache_dir = Path(command[command.index("--cache-dir") + 1])
-        self.assertEqual(cache_dir, REGISTRY_API_CACHE)
+        self.assertEqual(cache_dir, REGISTRY_METADATA_CACHE)
         self.assertNotEqual(cache_dir, REGISTRY_CACHE)
         self.assertNotIn("resolve", command)
 

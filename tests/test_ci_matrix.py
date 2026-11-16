@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 import re
+import tomllib
 import unittest
 
 
@@ -70,21 +73,6 @@ class NativeProductMatrixTests(unittest.TestCase):
         self.assertIn("target: linux-x86_64\n            os: ubuntu-24.04", acceptance)
         self.assertIn("target: linux-arm64\n            os: ubuntu-24.04-arm", acceptance)
 
-    def test_cross_repository_token_preflight_uses_bash_before_msys2(self) -> None:
-        for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
-            with self.subTest(workflow=path.name):
-                content = path.read_text(encoding="utf-8")
-                start = content.index("      - name: Verify Registry Release discovery token")
-                next_step = content.find("\n      - ", start + 8)
-                step = content[start:] if next_step < 0 else content[start:next_step]
-                self.assertIn("\n        shell: bash\n", step)
-                self.assertLess(step.index("shell: bash"), step.index("run: |"))
-                if path == WORKFLOW:
-                    self.assertLess(
-                        content.index("Verify Registry Release discovery token"),
-                        content.index("Set up MSYS2 toolchain (Windows)"),
-                    )
-
     def test_each_matrix_job_verifies_its_actual_host_and_windows_abi(self) -> None:
         self.assertIn("CDIN_EXPECTED_TARGET: ${{ matrix.target }}", self.workflow)
         self.assertIn("Verify native runner target identity", self.workflow)
@@ -104,60 +92,30 @@ class NativeProductMatrixTests(unittest.TestCase):
             acceptance,
         )
 
-    def test_registry_release_discovery_requires_the_read_only_secret(self) -> None:
+    def test_product_catalog_is_immutable_and_workflows_need_no_cross_repo_token(self) -> None:
+        catalog_path = ROOT / "registry" / "catalog-index.json"
+        catalog_bytes = catalog_path.read_bytes()
+        catalog = json.loads(catalog_bytes)
+        lock = tomllib.loads((ROOT / "deps.lock").read_text(encoding="utf-8"))
+        pin = lock["tooling"]["cdin_catalog"]
+
+        self.assertEqual(pin["path"], "registry/catalog-index.json")
+        self.assertEqual(hashlib.sha256(catalog_bytes).hexdigest(), pin["sha256"])
+        self.assertIn("entries", catalog)
+        self.assertNotIn("release_sources", catalog)
+        self.assertEqual(len(catalog["entries"]), 6)
+        for entry in catalog["entries"]:
+            self.assertRegex(entry["metadata_sha256"], r"^[0-9a-f]{64}$")
+            self.assertTrue(entry["metadata_uri"].startswith("https://github.com/cdin-editor/"))
+            self.assertIn("/releases/download/", entry["metadata_uri"])
+            self.assertNotIn("api.github.com", entry["metadata_uri"])
+
         for path in (WORKFLOW, PRODUCT_ACCEPTANCE_WORKFLOW):
             with self.subTest(workflow=path.name):
                 content = path.read_text(encoding="utf-8")
-                self.assertNotIn("CDIN_GITHUB_API_TOKEN:", content)
-                self.assertIn(
-                    "REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
-                    content,
-                )
-                self.assertIn(
-                    "\n      REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
-                    content,
-                )
-                self.assertNotIn(
-                    "\n            REGISTRY_GITHUB_API_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
-                    content,
-                )
-                self.assertIn("GH_TOKEN: ${{ github.token }}", content)
-                self.assertIn(
-                    "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery.",
-                    content,
-                )
-                self.assertIn("exit 1", content)
-                self.assertNotIn(
-                    "GH_TOKEN: ${{ secrets.CDIN_GITHUB_READ_TOKEN }}",
-                    content,
-                )
-                preflight = content.index("Verify Registry Release discovery token")
-                checkout = content.index("actions/checkout@")
-                self.assertGreater(preflight, checkout, path.name)
-                if path == WORKFLOW:
-                    first_build_setup = content.index("Install native build dependencies (Linux)")
-                    sanitizer_setup = content.index("Install native dependencies")
-                    self.assertLess(preflight, first_build_setup)
-                    sanitizer_preflight = content.index(
-                        "Verify Registry Release discovery token", preflight + 1
-                    )
-                    sanitizer_checkout = content.index(
-                        "actions/checkout@", checkout + 1
-                    )
-                    self.assertGreater(sanitizer_preflight, sanitizer_checkout)
-                    self.assertLess(sanitizer_preflight, sanitizer_setup)
-                else:
-                    self.assertLess(preflight, content.index("Set up MSYS2 UCRT64"))
-                    self.assertLess(preflight, content.index("Install Linux build dependencies"))
-                    self.assertLess(preflight, content.index("Install macOS build dependencies"))
-
-        # The source-build/sanitizer job has its own runner and must be guarded too.
-        self.assertEqual(
-            self.workflow.count(
-                "::error::CDIN_GITHUB_READ_TOKEN is required for Registry cross-repository GitHub Release discovery."
-            ),
-            2,
-        )
+                self.assertNotIn("REGISTRY_GITHUB_API_TOKEN", content)
+                self.assertNotIn("CDIN_GITHUB_READ_TOKEN", content)
+                self.assertNotIn("Verify Registry Release discovery token", content)
 
     def test_matrix_artifacts_are_unique_per_target_and_profile(self) -> None:
         for artifact in (
