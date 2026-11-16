@@ -7,6 +7,7 @@ import os
 import runpy
 import tempfile
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,6 +28,7 @@ FRONTEND_PACKAGE_FILES = _REGISTRY_E2E["FRONTEND_PACKAGE_FILES"]
 from scripts.deps import (
     CACHE as SDK_CACHE,
     SDKBootstrapError,
+    _ReleaseRedirectHandler,
     install_sdk_atomically,
     parse_kernel_abi,
     parse_build_info,
@@ -104,6 +106,23 @@ class KernelSDKReleasePinTests(unittest.TestCase):
         )
         self.assertNotIn("api.github.com", source)
         self.assertNotIn("CDIN_GITHUB_API_TOKEN", source)
+
+
+    def test_release_redirect_rejects_credentials_and_nonstandard_ports(self) -> None:
+        handler = _ReleaseRedirectHandler()
+        request = urllib.request.Request(
+            "https://github.com/cdin-editor/kernel/releases/download/v1.2.3/archive.tar.gz"
+        )
+        invalid_redirects = [
+            "https://user@release-assets.githubusercontent.com/archive",
+            "https://release-assets.githubusercontent.com:444/archive",
+            "https://release-assets.githubusercontent.com:not-a-port/archive",
+            "http://release-assets.githubusercontent.com/archive",
+        ]
+        for url in invalid_redirects:
+            with self.subTest(url=url):
+                with self.assertRaisesRegex(SDKBootstrapError, "redirect"):
+                    handler.redirect_request(request, None, 302, "Found", {}, url)
 
 
 class RegistrySourceBuildMetadataTests(unittest.TestCase):
