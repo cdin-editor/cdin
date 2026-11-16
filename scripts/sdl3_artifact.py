@@ -233,7 +233,18 @@ class _AssetRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, request, fp, code, message, headers, new_url):
         parsed = urllib.parse.urlsplit(new_url)
-        if parsed.scheme != "https" or parsed.hostname not in self.allowed_hosts:
+        try:
+            port = parsed.port
+        except ValueError as error:
+            raise SDL3ArtifactError("SDL3 SDK asset redirect has an invalid port") from error
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in self.allowed_hosts
+            or port not in (None, 443)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+        ):
             raise SDL3ArtifactError(f"SDL3 SDK asset redirect rejected: {new_url}")
         return super().redirect_request(request, fp, code, message, headers, new_url)
 
@@ -391,8 +402,21 @@ def _ensure_real_directory(path: Path) -> None:
 
 def _download(url: str, destination: Path, *, expected_size: int, max_size: int) -> None:
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "github.com":
-        raise SDL3ArtifactError("SDL3 SDK download URL must use the canonical GitHub HTTPS host")
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise SDL3ArtifactError("SDL3 SDK download URL has an invalid port") from error
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.startswith("/cdin-editor/cdin/releases/download/")
+    ):
+        raise SDL3ArtifactError("SDL3 SDK download URL is not a canonical public Release asset")
     opener = urllib.request.build_opener(_AssetRedirectHandler())
     request = urllib.request.Request(url, headers={
         "User-Agent": "CDIN-SDL3-SDK-Bootstrap/1",
@@ -405,7 +429,19 @@ def _download(url: str, destination: Path, *, expected_size: int, max_size: int)
         with os.fdopen(fd, "wb") as output:
             with opener.open(request, timeout=45) as response:
                 final = urllib.parse.urlsplit(response.geturl())
-                if response.status != 200 or final.scheme != "https" or final.hostname not in _AssetRedirectHandler.allowed_hosts:
+                try:
+                    final_port = final.port
+                except ValueError as error:
+                    raise SDL3ArtifactError("SDL3 SDK final download URL has an invalid port") from error
+                if (
+                    response.status != 200
+                    or final.scheme != "https"
+                    or final.hostname not in _AssetRedirectHandler.allowed_hosts
+                    or final_port not in (None, 443)
+                    or final.username is not None
+                    or final.password is not None
+                    or final.fragment
+                ):
                     raise SDL3ArtifactError("SDL3 SDK final download URL is not trusted")
                 content_length = response.headers.get("Content-Length")
                 if content_length is not None and int(content_length) != expected_size:
