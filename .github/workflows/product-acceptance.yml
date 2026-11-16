@@ -198,7 +198,7 @@ jobs:
           if present:
               raise SystemExit("consumer installation created developer source trees: " + ", ".join(present))
           profile = os.environ["CDIN_FRONTEND_VARIANT"]
-          sdl_sdk = root / ".deps" / "sdk" / "share" / "cdin" / "sdl3-sdk.json"
+          sdl_sdk = root / ".deps" / "install" / "share" / "cdin" / "sdl3-sdk.json"
           if profile == "tui" and sdl_sdk.exists():
               raise SystemExit("TUI unexpectedly acquired the SDL3 SDK")
           if profile == "gui-sdl" and not sdl_sdk.is_file():
